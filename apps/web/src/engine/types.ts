@@ -50,7 +50,7 @@ export interface EngineApi {
   ): DocumentSnapshot | Promise<DocumentSnapshot>;
   openImage(bytes: ArrayBuffer, name: string): Promise<DocumentSnapshot>;
   exportPng(): Promise<Uint8Array>;
-  cancelJob(): void | Promise<void>;
+  cancelJob(): boolean | Promise<boolean>;
 }
 export interface EngineFatalEvent {
   type: 'engine-fatal';

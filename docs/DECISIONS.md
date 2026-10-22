@@ -36,6 +36,14 @@
 - Import tiling and PNG export yield between chunks and support cancellation.
   The decoder call itself is synchronous; cancellation resumes after decode.
   Failed/cancelled imports leave the previous document intact.
+- All surface presentation goes through the existing frame pump, including the
+  first opened-image frame. Opening waits for that presentation acknowledgement;
+  import must not render independently and acquire the same WebGPU canvas texture
+  twice in one browser animation frame. Cancellation ends at atomic document commit.
+- wgpu owns canvas dimension changes on both backends. Identical resizes are
+  ignored; presentation resumes one animation frame after reconfiguration to let
+  the transferred canvas/compositor settle. A fixed-height operation bar avoids
+  resizing the viewport again when its Cancel button disappears.
 - Transform round-trips use 1e-8 document-pixel tolerance as recorded in the review.
   View changes (rotation/flip/zoom/pan) never alter exported samples.
 

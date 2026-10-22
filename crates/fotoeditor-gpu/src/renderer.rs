@@ -17,6 +17,7 @@ pub struct Renderer {
     adapter_name: String,
     diagnostic: bool,
     paused: bool,
+    resized: bool,
     viewport: ViewportRenderer,
 }
 
@@ -196,6 +197,7 @@ impl Renderer {
             adapter_name: info.name,
             diagnostic,
             paused: true,
+            resized: true,
             viewport,
         };
         renderer.resize(renderer.canvas.width(), renderer.canvas.height());
@@ -225,6 +227,7 @@ impl Renderer {
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
+        let was_paused = self.paused;
         self.paused = width == 0 || height == 0;
         if self.paused {
             return;
@@ -232,11 +235,15 @@ impl Renderer {
         let max = self.device.limits().max_texture_dimension_2d;
         let width = width.min(max);
         let height = height.min(max);
-        self.canvas.set_width(width);
-        self.canvas.set_height(height);
+        if !was_paused && width == self.config.width && height == self.config.height {
+            return;
+        }
+        // Both wgpu browser backends set the canvas dimensions in configure.
+        // Setting them here too resets the WebGPU presentation texture twice.
         self.config.width = width;
         self.config.height = height;
         self.surface.configure(&self.device, &self.config);
+        self.resized = true;
     }
 
     pub fn clear_tiles(&mut self) {
@@ -259,6 +266,12 @@ impl Renderer {
     }
     pub fn frame(&mut self, doc: Option<&Document>, view: &View, dpr: f64) -> Result<bool, String> {
         if self.paused {
+            return Ok(false);
+        }
+        // A transferred canvas resize crosses the browser compositor boundary.
+        // Acquire a fresh texture on the next animation frame, after it settles.
+        if self.resized {
+            self.resized = false;
             return Ok(false);
         }
         if !self.diagnostic {

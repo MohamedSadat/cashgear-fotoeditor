@@ -11,6 +11,7 @@ let size: PhysicalSize = { width: 0, height: 0 };
 let frames = 0;
 let job = 0;
 let busy = false;
+let presentation: { resolve: () => void; reject: (error: Error) => void } | undefined;
 let name = 'Untitled';
 let cursorScreen: [number, number] | undefined;
 const yieldTask = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -80,7 +81,11 @@ const api: EngineApi = {
   frame() {
     if (disposed || !engine) throw new Error('Engine is unavailable');
     const presented = engine.frame();
-    if (presented) frames++;
+    if (presented) {
+      frames++;
+      presentation?.resolve();
+      presentation = undefined;
+    }
     return {
       presented,
       frames,
@@ -90,6 +95,10 @@ const api: EngineApi = {
     };
   },
   dispose() {
+    ++job;
+    busy = false;
+    presentation?.reject(new Error('Engine disposed'));
+    presentation = undefined;
     disposed = true;
     engine?.dispose();
     engine?.free();
@@ -130,7 +139,12 @@ const api: EngineApi = {
       }
       name = fileName;
       cursorScreen = undefined;
-      e.frame(); // Include first visible atlas upload in the opening operation.
+      // Only FramePump may present a surface. Presenting here as well could
+      // acquire the same browser canvas texture twice within one animation frame.
+      busy = false;
+      await new Promise<void>((resolve, reject) => {
+        presentation = { resolve, reject };
+      });
       return snapshot();
     } finally {
       if (token === job) {
@@ -161,9 +175,13 @@ const api: EngineApi = {
     }
   },
   cancelJob() {
+    // A completed document replacement is atomic and cannot be cancelled after
+    // commit while it waits for its first normal viewport frame.
+    if (!busy) return false;
     ++job;
     requireEngine().cancel_job();
     busy = false;
+    return true;
   },
 };
 expose(api);
