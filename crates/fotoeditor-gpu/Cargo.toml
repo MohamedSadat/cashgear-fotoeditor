@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[dependencies]
+fotoeditor-core = { path = "../fotoeditor-core" }
+
 [dev-dependencies]
 naga = { version = "=30.0.1", features = ["wgsl-in"] }
 

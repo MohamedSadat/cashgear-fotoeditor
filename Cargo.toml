@@ -22,3 +22,13 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+# Pixel/codecs need throughput; shrink the browser/GPU glue separately.
+[profile.release.package.fotoeditor-core]
+opt-level = 3
+[profile.release.package.fotoeditor-io]
+opt-level = 3
+[profile.release.package.image]
+opt-level = 3
+[profile.release.package.png]
+opt-level = 3

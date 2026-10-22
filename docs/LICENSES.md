@@ -44,6 +44,7 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | bumpalo | 3.20.3 | MIT OR Apache-2.0 |
 | Cargo | bytemuck_derive | 1.12.1 | Zlib OR Apache-2.0 OR MIT |
 | Cargo | bytemuck | 1.25.2 | Zlib OR Apache-2.0 OR MIT |
+| Cargo | byteorder-lite | 0.1.0 | Unlicense OR MIT |
 | Cargo | byteorder | 1.5.0 | Unlicense OR MIT |
 | Cargo | bytes | 1.12.1 | MIT |
 | Cargo | camino | 1.2.6 | MIT OR Apache-2.0 |
@@ -124,6 +125,8 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | ident_case | 1.0.1 | MIT/Apache-2.0 |
 | Cargo | idna_adapter | 1.2.2 | Apache-2.0 OR MIT |
 | Cargo | idna | 1.1.0 | MIT OR Apache-2.0 |
+| Cargo | image-webp | 0.2.4 | MIT OR Apache-2.0 |
+| Cargo | image | 0.25.10 | MIT OR Apache-2.0 |
 | Cargo | indexmap | 1.9.3 | Apache-2.0 OR MIT |
 | Cargo | indexmap | 2.14.2 | Apache-2.0 OR MIT |
 | Cargo | infer | 0.22.0 | MIT |
@@ -148,6 +151,7 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | miniz_oxide | 0.8.9 | MIT OR Zlib OR Apache-2.0 |
 | Cargo | miniz_oxide | 0.9.1 | MIT OR Zlib OR Apache-2.0 |
 | Cargo | mio | 1.2.4 | MIT |
+| Cargo | moxcms | 0.8.1 | BSD-3-Clause OR Apache-2.0 |
 | Cargo | muda | 0.20.0 | Apache-2.0 OR MIT |
 | Cargo | naga-types | 30.0.1 | MIT OR Apache-2.0 |
 | Cargo | naga | 30.0.1 | MIT OR Apache-2.0 |
@@ -172,6 +176,8 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | precomputed-hash | 0.1.1 | MIT |
 | Cargo | proc-macro2 | 1.0.107 | MIT OR Apache-2.0 |
 | Cargo | profiling | 1.0.18 | MIT OR Apache-2.0 |
+| Cargo | pxfm | 0.1.30 | BSD-3-Clause OR Apache-2.0 |
+| Cargo | quick-error | 2.0.1 | MIT/Apache-2.0 |
 | Cargo | quick-xml | 0.42.0 | MIT |
 | Cargo | quote | 1.0.47 | MIT OR Apache-2.0 |
 | Cargo | raw-window-handle | 0.6.2 | MIT OR Apache-2.0 OR Zlib |
@@ -309,6 +315,8 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | zerovec | 0.11.9 | Unicode-3.0 |
 | Cargo | zlib-rs | 0.6.8 | Zlib |
 | Cargo | zmij | 1.0.23 | MIT |
+| Cargo | zune-core | 0.5.3 | MIT OR Apache-2.0 OR Zlib |
+| Cargo | zune-jpeg | 0.5.15 | MIT OR Apache-2.0 OR Zlib |
 | npm | @cacheable/memory | 2.2.0 | MIT |
 | npm | @cacheable/utils | 2.5.0 | MIT |
 | npm | @eslint-community/eslint-utils | 4.10.1 | MIT |

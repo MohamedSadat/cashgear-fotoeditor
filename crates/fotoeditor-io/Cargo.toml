@@ -4,3 +4,8 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+
+[dependencies]
+fotoeditor-core = { path = "../fotoeditor-core" }
+image = { version = "=0.25.10", default-features = false, features = ["png", "jpeg", "webp"] }
+png = "=0.18.1"

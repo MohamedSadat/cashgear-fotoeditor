@@ -1,5 +1,41 @@
 # Decisions
 
+## 2026-10-22 — P1 choices and implementation
+
+- User confirmed 6000×4000 as the measured workload and 16,384 pixels maximum per side.
+- New canvas presets: 1920×1080 / 72 DPI (default), 3840×2160 / 72 DPI,
+  6000×4000 / 300 DPI, A4 2480×3508 / 300 DPI, and custom. DPI range 1–2400.
+- Light gray checkerboard inside a transparent canvas, dark gray workspace.
+  Checkerboard is preview only; export preserves transparency and hidden RGB.
+- Wheel/two-finger gestures scroll. Ctrl/Cmd+wheel and browser pinch-wheel zoom
+  around the pointer. Space+drag and middle mouse pan; R+drag rotates the view.
+- P1 opens PNG/JPEG/WebP in Rust, creates a single raster layer, and exports PNG.
+  16-bit input is rejected explicitly until P11. Color conversion/ICC and extended
+  metadata remain P8; P1 treats samples as sRGB and preserves PNG resolution.
+- Document samples are straight RGBA8. Only exact all-zero tiles are sparse;
+  alpha-zero pixels with hidden RGB cannot be discarded. Tile Arcs use COW and
+  stable generation IDs; GPU mirrors can be evicted and rebuilt from CPU samples.
+- Worker session commands atomically replace a document after construction.
+  There are no pixel editing commands in P1. General command execution with
+  apply/revert and undo must precede painting in P2.
+- CPU admission budget: 768 MiB including current document, pending construction,
+  codec/conversion reserve, history (zero in P1), export and bridge copies.
+  Input/output files are capped at 128 MiB. Dense images may hit this memory limit
+  before the maximum side limit. Blank maximum-size canvases remain sparse.
+- GPU display atlas pages are 2048² RGBA8, with a 128 MiB residency ceiling.
+  Visible tiles alone are uploaded. Invisible slots are reusable, and changing
+  mip level or replacing a document discards the cache. Display mips are box
+  filtered in premultiplied alpha, with neighbor gutters; >=100% uses nearest.
+- Logical memory diagnostics count tile buffer capacities, active job buffers,
+  atlas textures and instance buffers. Hash maps/Arc headers, browser/driver
+  overhead and retained WASM allocator pages are not exact process memory.
+  Codec internals are conservatively reserved at admission, not directly measured.
+- Import tiling and PNG export yield between chunks and support cancellation.
+  The decoder call itself is synchronous; cancellation resumes after decode.
+  Failed/cancelled imports leave the previous document intact.
+- Transform round-trips use 1e-8 document-pixel tolerance as recorded in the review.
+  View changes (rotation/flip/zoom/pan) never alter exported samples.
+
 ## 2026-10-22 — P0 user choices
 
 - Product: CashGear FotoEditor; repository cashgear-fotoeditor; crate prefix fotoeditor-.
