@@ -17,6 +17,15 @@ browser regression tests passed on installed Chrome and Edge with WebGPU/WebGL2.
 Release WASM: 2,509,984 bytes; gzip level 9: 1,031,910 / 1,500,000 bytes.
 No painting or P2 acceptance/performance is claimed yet.
 
+Rust stroke engine implementation now adds procedural elliptical dabs, a per-stroke
+flow mask with a stroke opacity cap, exact straight-alpha source-over/erasure,
+kurbo path interpolation, pressure/tilt curves and both selected stabilizers.
+Input queues and pixel batches are bounded, preview/mask buffers are admitted
+against document/history residency, and a completed stroke yields one tile command.
+Cancellation drops scratch state. Native/WASM clippy and 16 Rust tests passed.
+kurbo and its reachable dependencies use approved licenses; inventory: 442 entries.
+Browser UI integration and full phase verification are in progress.
+
 ## P0 — Complete
 
 Completed on 2026-10-22. The implementation is verified by

@@ -1,6 +1,7 @@
 //! The only JavaScript-facing engine API.
 #[cfg(target_arch = "wasm32")]
 mod bridge {
+    use fotoeditor_brush::{BrushSettings, Sample, StrokeCommand};
     use fotoeditor_core::{Document, History, Residency, View};
     use fotoeditor_io::{ExportJob, ImportJob};
     use std::cell::RefCell;
@@ -23,6 +24,8 @@ mod bridge {
         renderer: fotoeditor_gpu::Renderer,
         document: Option<Document>,
         history: History,
+        stroke: Option<StrokeCommand>,
+        paint_time: f64,
         view: View,
         dpr: f64,
         import: Option<ImportJob>,
@@ -44,6 +47,8 @@ mod bridge {
                     self.view.fit();
                     self.document = Some(doc);
                     self.history.clear();
+                    self.stroke = None;
+                    self.paint_time = 0.0;
                     self.renderer.clear_tiles();
                 }
             }
@@ -53,7 +58,8 @@ mod bridge {
                 document: self.document.as_ref().map_or(0, |d| d.raster.bytes()),
                 history: self.document.as_ref().map_or(0, |d| self.history.bytes(d)),
                 temporary: self.import.as_ref().map_or(0, |j| j.temporary_bytes())
-                    + self.export.as_ref().map_or(0, |j| j.temporary_bytes()),
+                    + self.export.as_ref().map_or(0, |j| j.temporary_bytes())
+                    + self.stroke.as_ref().map_or(0, |s| s.temporary_bytes()),
                 gpu: self.renderer.gpu_bytes(),
             }
         }
@@ -77,6 +83,8 @@ mod bridge {
                 renderer,
                 document: None,
                 history: History::default(),
+                stroke: None,
+                paint_time: 0.0,
                 view: View::default(),
                 dpr: 1.0,
                 import: None,
@@ -106,11 +114,23 @@ mod bridge {
             self.view.height = self.renderer.height() as f64 / self.dpr;
         }
         pub fn frame(&mut self) -> Result<bool, JsValue> {
-            if let Some(doc) = self.document.as_mut() {
+            let document = self
+                .stroke
+                .as_mut()
+                .map(|s| &mut s.preview)
+                .or(self.document.as_mut());
+            if let Some(doc) = document {
                 self.renderer.invalidate_tiles(&doc.raster.drain_dirty());
             }
             self.renderer
-                .frame(self.document.as_ref(), &self.view, self.dpr)
+                .frame(
+                    self.stroke
+                        .as_ref()
+                        .map(|s| &s.preview)
+                        .or(self.document.as_ref()),
+                    &self.view,
+                    self.dpr,
+                )
                 .map_err(|error| JsValue::from_str(&error))
         }
         pub fn dispose(&self) {
@@ -134,6 +154,87 @@ mod bridge {
         }
         pub fn redo(&mut self) -> bool {
             self.document.as_mut().is_some_and(|d| self.history.redo(d))
+        }
+        pub fn stroke_begin(&mut self, settings: &str) -> Result<(), JsValue> {
+            if self.stroke.is_some() {
+                return Err(JsValue::from_str("Finish the current stroke first"));
+            }
+            let settings: BrushSettings =
+                serde_json::from_str(settings).map_err(|e| JsValue::from_str(&e.to_string()))?;
+            let doc = self
+                .document
+                .as_ref()
+                .ok_or_else(|| JsValue::from_str("Create or open a document first"))?;
+            let r = self.residency();
+            let available =
+                fotoeditor_core::CPU_BUDGET.saturating_sub(r.document + r.history + r.temporary);
+            self.stroke = Some(
+                StrokeCommand::new(doc, settings, available).map_err(|e| JsValue::from_str(&e))?,
+            );
+            Ok(())
+        }
+        pub fn stroke_sample(&mut self, sample: &[f64]) -> Result<(), JsValue> {
+            if sample.len() != 6 {
+                return Err(JsValue::from_str("Invalid pointer sample"));
+            }
+            let (x, y) = self.view.screen_to_document(sample[0], sample[1]);
+            self.stroke
+                .as_mut()
+                .ok_or_else(|| JsValue::from_str("No stroke in progress"))?
+                .push(Sample {
+                    x,
+                    y,
+                    pressure: sample[2],
+                    tilt_x: sample[3],
+                    tilt_y: sample[4],
+                    time: sample[5],
+                })
+                .map_err(|e| JsValue::from_str(&e))
+        }
+        pub fn stroke_end(&mut self) {
+            if let Some(s) = &mut self.stroke {
+                s.end();
+            }
+        }
+        pub fn painting(&self) -> bool {
+            self.stroke.is_some()
+        }
+        pub fn stroke_cancel(&mut self) {
+            if self.stroke.take().is_some() {
+                self.renderer.clear_tiles();
+            }
+        }
+        pub fn stroke_step(&mut self) -> Result<(), JsValue> {
+            if let Some(s) = &mut self.stroke {
+                s.step(262144).map_err(|e| JsValue::from_str(&e))?;
+                self.paint_time = self.paint_time.max(s.applied_time);
+            }
+            if self.stroke.as_ref().is_some_and(|s| s.done()) {
+                let command = self
+                    .stroke
+                    .take()
+                    .unwrap()
+                    .finish()
+                    .map_err(|e| JsValue::from_str(&e))?;
+                self.history
+                    .execute(self.document.as_mut().unwrap(), Box::new(command), 0)
+                    .map_err(|e| JsValue::from_str(&e))?;
+            }
+            Ok(())
+        }
+        pub fn sample_color(&self, x: f64, y: f64) -> Vec<u8> {
+            let p = self.view.screen_to_document(x, y);
+            self.document
+                .as_ref()
+                .filter(|d| {
+                    p.0 >= 0.0 && p.1 >= 0.0 && p.0 < d.width as f64 && p.1 < d.height as f64
+                })
+                .map_or_else(Vec::new, |d| {
+                    d.raster
+                        .sample(p.0.floor() as u32, p.1.floor() as u32)
+                        .0
+                        .to_vec()
+                })
         }
         pub fn begin_import(&mut self, bytes: &[u8]) -> Result<(), JsValue> {
             self.import = Some(
@@ -217,6 +318,8 @@ mod bridge {
                 "view":{"zoom":v.zoom,"rotation":v.rotation,"flipped":v.flipped,"panX":v.pan_x,"panY":v.pan_y},
                 "memory":{"document":r.document,"history":r.history,"temporary":r.temporary,"gpu":r.gpu},
                 "history":{"undo":self.history.depths().0,"redo":self.history.depths().1},
+                "painting":self.stroke.is_some(),"pendingSamples":self.stroke.as_ref().map_or(0,|s|s.pending()),
+                "paintTime":self.paint_time,
                 "visibleTiles":self.renderer.visible_tiles(),"refining":self.renderer.refining_tiles(),"uploadedBytes":self.renderer.uploaded_bytes()}).to_string()
         }
     }

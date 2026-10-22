@@ -86,7 +86,8 @@ correction moves general commands and basic undo ahead of painting.
 
 ## P2 product questions (answered 2026-10-22)
 
-1. No pen hardware available; physical Windows Ink acceptance remains unverified.
+1. No pen hardware available. User approved synthetic coverage for P2 completion;
+   physical Windows Ink validation is explicitly deferred and remains unverified.
 2. Photoshop shortcuts B/E/I/[ / ]/X and Alt eyedropper confirmed.
 3. Both pulled-string and weighted-average stabilizers.
 4. Image tips/textures in P9; P2 uses procedural tips.

@@ -60,6 +60,27 @@ impl<P: Pixel> TileSurface<P> {
     pub fn tiles(&self) -> &HashMap<TileCoord, Arc<Tile<P>>> {
         &self.tiles
     }
+    /// Scratch/command primitive; one COW check per tile row/dab.
+    pub fn edit_tile(&mut self, coord: TileCoord) -> &mut [P] {
+        assert!(coord.0 * TILE_SIZE < self.width && coord.1 * TILE_SIZE < self.height);
+        self.dirty.insert(coord);
+        let tile = self
+            .tiles
+            .entry(coord)
+            .or_insert_with(|| Arc::new(Tile::new(vec![P::default(); TILE_PIXELS])));
+        &mut Arc::make_mut(tile).pixels
+    }
+    pub fn compact_dirty(&mut self) {
+        for coord in &self.dirty {
+            if self
+                .tiles
+                .get(coord)
+                .is_some_and(|t| t.pixels.iter().all(|p| *p == P::default()))
+            {
+                self.tiles.remove(coord);
+            }
+        }
+    }
     pub fn bytes(&self) -> u64 {
         self.tiles.values().map(|t| t.bytes()).sum()
     }

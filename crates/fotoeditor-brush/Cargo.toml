@@ -4,3 +4,8 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+
+[dependencies]
+fotoeditor-core = { version = "0.1.0", path = "../fotoeditor-core" }
+kurbo = "0.13.1"
+serde = { version = "1", features = ["derive"] }

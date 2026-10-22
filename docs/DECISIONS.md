@@ -15,6 +15,8 @@
   and weighted-average stabilizers, and image tips/textures deferred to P9.
 - No pen hardware is available. Synthetic pressure/tilt tests cover the input and
   engine contracts; physical Windows Ink behavior cannot be claimed as verified.
+- The user explicitly approved deferring physical pen validation and completing
+  P2 with synthetic pressure/tilt coverage if every other acceptance check passes.
 
 ## 2026-10-22 — P1 choices and implementation
 

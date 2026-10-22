@@ -89,6 +89,7 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | embed-resource | 3.0.12 | MIT |
 | Cargo | equivalent | 1.0.3 | Apache-2.0 OR MIT |
 | Cargo | erased-serde | 0.4.10 | MIT OR Apache-2.0 |
+| Cargo | euclid | 0.22.14 | MIT OR Apache-2.0 |
 | Cargo | fastrand | 2.5.0 | Apache-2.0 OR MIT |
 | Cargo | fdeflate | 0.3.7 | MIT OR Apache-2.0 |
 | Cargo | find-msvc-tools | 0.1.15 | MIT OR Apache-2.0 |
@@ -139,6 +140,7 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | json-patch | 4.2.0 | MIT/Apache-2.0 |
 | Cargo | jsonptr | 0.7.1 | MIT OR Apache-2.0 |
 | Cargo | keyboard-types | 0.8.3 | MIT OR Apache-2.0 |
+| Cargo | kurbo | 0.13.1 | Apache-2.0 OR MIT |
 | Cargo | libc | 0.2.191 | MIT OR Apache-2.0 |
 | Cargo | libm | 0.2.16 | MIT |
 | Cargo | litemap | 0.8.3 | Unicode-3.0 |
@@ -171,6 +173,7 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | pin-project-lite | 0.2.17 | Apache-2.0 OR MIT |
 | Cargo | plist | 1.10.3 | MIT |
 | Cargo | png | 0.18.1 | MIT OR Apache-2.0 |
+| Cargo | polycool | 0.4.0 | MIT OR Apache-2.0 |
 | Cargo | potential_utf | 0.1.6 | Unicode-3.0 |
 | Cargo | powerfmt | 0.2.1 | MIT OR Apache-2.0 |
 | Cargo | precomputed-hash | 0.1.1 | MIT |
