@@ -7,12 +7,42 @@ pub const TILE_SIZE: u32 = 256;
 pub const TILE_PIXELS: usize = (TILE_SIZE * TILE_SIZE) as usize;
 pub type TileCoord = (u32, u32);
 pub type DirtySet = HashSet<TileCoord>;
+pub type DirtyRegions = HashMap<TileCoord, TileRect>;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TileRect {
+    pub x0: u32,
+    pub y0: u32,
+    pub x1: u32,
+    pub y1: u32,
+}
+impl TileRect {
+    pub const FULL: Self = Self {
+        x0: 0,
+        y0: 0,
+        x1: TILE_SIZE,
+        y1: TILE_SIZE,
+    };
+    pub fn union(&mut self, other: Self) {
+        self.x0 = self.x0.min(other.x0);
+        self.y0 = self.y0.min(other.y0);
+        self.x1 = self.x1.max(other.x1);
+        self.y1 = self.y1.max(other.y1);
+    }
+}
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
-pub trait Pixel: Copy + Default + PartialEq + Send + Sync + 'static {}
+pub trait Pixel: Copy + Default + PartialEq + Send + Sync + 'static {
+    fn is_opaque(self) -> bool {
+        false
+    }
+}
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[repr(C)]
 pub struct Rgba8(pub [u8; 4]);
-impl Pixel for Rgba8 {}
+impl Pixel for Rgba8 {
+    fn is_opaque(self) -> bool {
+        self.0[3] == 255
+    }
+}
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Gray8(pub u8);
 impl Pixel for Gray8 {}
@@ -20,12 +50,14 @@ impl Pixel for Gray8 {}
 pub struct Tile<P: Pixel> {
     pub id: u64,
     pub pixels: Vec<P>,
+    pub known_opaque: bool,
 }
 impl<P: Pixel> Clone for Tile<P> {
     fn clone(&self) -> Self {
         Self {
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
             pixels: self.pixels.clone(),
+            known_opaque: self.known_opaque,
         }
     }
 }
@@ -34,6 +66,7 @@ impl<P: Pixel> Tile<P> {
         assert_eq!(pixels.len(), TILE_PIXELS);
         Self {
             id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
+            known_opaque: pixels.iter().all(|p| p.is_opaque()),
             pixels,
         }
     }
@@ -47,6 +80,7 @@ pub struct TileSurface<P: Pixel> {
     pub height: u32,
     tiles: HashMap<TileCoord, Arc<Tile<P>>>,
     dirty: DirtySet,
+    regions: DirtyRegions,
 }
 impl<P: Pixel> TileSurface<P> {
     pub fn new(width: u32, height: u32) -> Self {
@@ -55,6 +89,7 @@ impl<P: Pixel> TileSurface<P> {
             height,
             tiles: HashMap::new(),
             dirty: DirtySet::new(),
+            regions: DirtyRegions::new(),
         }
     }
     pub fn tiles(&self) -> &HashMap<TileCoord, Arc<Tile<P>>> {
@@ -62,13 +97,24 @@ impl<P: Pixel> TileSurface<P> {
     }
     /// Scratch/command primitive; one COW check per tile row/dab.
     pub fn edit_tile(&mut self, coord: TileCoord) -> &mut [P] {
+        self.edit_region(coord, TileRect::FULL)
+    }
+    pub fn edit_region(&mut self, coord: TileCoord, region: TileRect) -> &mut [P] {
         assert!(coord.0 * TILE_SIZE < self.width && coord.1 * TILE_SIZE < self.height);
-        self.dirty.insert(coord);
+        assert!(
+            region.x0 < region.x1
+                && region.y0 < region.y1
+                && region.x1 <= TILE_SIZE
+                && region.y1 <= TILE_SIZE
+        );
+        self.mark_dirty(coord, region);
         let tile = self
             .tiles
             .entry(coord)
             .or_insert_with(|| Arc::new(Tile::new(vec![P::default(); TILE_PIXELS])));
-        &mut Arc::make_mut(tile).pixels
+        let tile = Arc::make_mut(tile);
+        tile.known_opaque = false;
+        &mut tile.pixels
     }
     pub fn compact_dirty(&mut self) {
         for coord in &self.dirty {
@@ -78,6 +124,9 @@ impl<P: Pixel> TileSurface<P> {
                 .is_some_and(|t| t.pixels.iter().all(|p| *p == P::default()))
             {
                 self.tiles.remove(coord);
+            } else if let Some(tile) = self.tiles.get_mut(coord) {
+                let tile = Arc::make_mut(tile);
+                tile.known_opaque = tile.pixels.iter().all(|p| p.is_opaque());
             }
         }
     }
@@ -85,7 +134,22 @@ impl<P: Pixel> TileSurface<P> {
         self.tiles.values().map(|t| t.bytes()).sum()
     }
     pub fn drain_dirty(&mut self) -> DirtySet {
+        self.regions.clear();
         std::mem::take(&mut self.dirty)
+    }
+    pub fn drain_regions(&mut self) -> DirtyRegions {
+        self.dirty.clear();
+        std::mem::take(&mut self.regions)
+    }
+    pub fn has_dirty(&self) -> bool {
+        !self.regions.is_empty()
+    }
+    fn mark_dirty(&mut self, coord: TileCoord, region: TileRect) {
+        self.dirty.insert(coord);
+        self.regions
+            .entry(coord)
+            .and_modify(|r| r.union(region))
+            .or_insert(region);
     }
     pub(crate) fn restore(&mut self, coord: TileCoord, tile: Option<Arc<Tile<P>>>) {
         if let Some(tile) = tile {
@@ -93,7 +157,7 @@ impl<P: Pixel> TileSurface<P> {
         } else {
             self.tiles.remove(&coord);
         }
-        self.dirty.insert(coord);
+        self.mark_dirty(coord, TileRect::FULL);
     }
     pub fn sample(&self, x: u32, y: u32) -> P {
         if x >= self.width || y >= self.height {
@@ -113,7 +177,7 @@ impl<P: Pixel> TileSurface<P> {
         } else {
             self.tiles.insert(coord, Arc::new(Tile::new(pixels)));
         }
-        self.dirty.insert(coord);
+        self.mark_dirty(coord, TileRect::FULL);
     }
     pub fn write(&mut self, x: u32, y: u32, pixel: P) {
         assert!(x < self.width && y < self.height);
@@ -125,13 +189,48 @@ impl<P: Pixel> TileSurface<P> {
             .tiles
             .entry(coord)
             .or_insert_with(|| Arc::new(Tile::new(vec![P::default(); TILE_PIXELS])));
-        Arc::make_mut(tile).pixels[((y % TILE_SIZE) * TILE_SIZE + x % TILE_SIZE) as usize] = pixel;
-        self.dirty.insert(coord);
+        let tile = Arc::make_mut(tile);
+        tile.known_opaque &= pixel.is_opaque();
+        tile.pixels[((y % TILE_SIZE) * TILE_SIZE + x % TILE_SIZE) as usize] = pixel;
+        self.mark_dirty(
+            coord,
+            TileRect {
+                x0: x % TILE_SIZE,
+                y0: y % TILE_SIZE,
+                x1: x % TILE_SIZE + 1,
+                y1: y % TILE_SIZE + 1,
+            },
+        );
     }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn dirty_regions_union_and_opacity_metadata_survive_cow() {
+        let mut surface = TileSurface::new(256, 256);
+        surface.insert((0, 0), vec![Rgba8([1, 2, 3, 255]); TILE_PIXELS]);
+        assert!(surface.tiles()[&(0, 0)].known_opaque);
+        surface.drain_regions();
+        let before = surface.clone();
+        surface.write(10, 20, Rgba8([99, 77, 33, 0]));
+        surface.write(30, 40, Rgba8([3, 4, 5, 1]));
+        assert_eq!(
+            surface.drain_regions()[&(0, 0)],
+            TileRect {
+                x0: 10,
+                y0: 20,
+                x1: 31,
+                y1: 41
+            }
+        );
+        assert!(surface.drain_dirty().is_empty());
+        assert!(before.tiles()[&(0, 0)].known_opaque);
+        assert!(!surface.tiles()[&(0, 0)].known_opaque);
+        surface.restore((0, 0), Some(before.tiles()[&(0, 0)].clone()));
+        assert_eq!(surface.drain_regions()[&(0, 0)], TileRect::FULL);
+        assert_eq!(surface.sample(10, 20), Rgba8([1, 2, 3, 255]));
+    }
     #[test]
     fn sparse_exact_alpha_cow_and_dirty() {
         let mut s = TileSurface::<Rgba8>::new(6000, 4000);

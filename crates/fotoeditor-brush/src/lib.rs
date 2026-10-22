@@ -165,21 +165,89 @@ struct Dab {
     p: Sample,
     radius: f64,
     influence: f64,
-    sin: f64,
-    cos: f64,
     x0: u32,
     x1: u32,
     y1: u32,
     x: u32,
     y: u32,
 }
+/// Procedural tip prepared once per stroke; bounded even for a 2048px brush.
+/// Dabs resample this 16-bit mask, including pressure scaling and subpixel motion.
+struct Tip {
+    pixels: Vec<u16>,
+    side: usize,
+    radius: f64,
+}
+impl Tip {
+    fn new(settings: &BrushSettings) -> Self {
+        let diameter = if settings.pencil {
+            1.0
+        } else {
+            settings.size.ceil().min(512.0)
+        };
+        let radius = diameter / 2.0;
+        let side = diameter as usize + 2;
+        let mut pixels = vec![0; side * side];
+        let (sin, cos) = settings.angle.to_radians().sin_cos();
+        for y in 0..side {
+            for x in 0..side {
+                let dx = x as f64 + 0.5 - radius - 1.0;
+                let dy = y as f64 + 0.5 - radius - 1.0;
+                let rx = (dx * cos + dy * sin) / radius;
+                let ry = (-dx * sin + dy * cos)
+                    / radius
+                    / if settings.pencil {
+                        1.0
+                    } else {
+                        settings.roundness
+                    };
+                let d2 = rx * rx + ry * ry;
+                if d2 > 1.0 {
+                    continue;
+                }
+                let amount = if settings.hardness == 1.0 || settings.pencil {
+                    1.0
+                } else {
+                    ((1.0 - d2.sqrt()) / (1.0 - settings.hardness)).min(1.0)
+                };
+                pixels[y * side + x] = (amount * settings.flow * 65535.0 + 0.5) as u16;
+            }
+        }
+        Self {
+            pixels,
+            side,
+            radius,
+        }
+    }
+    fn bytes(&self) -> u64 {
+        (self.pixels.capacity() * 2) as u64
+    }
+    #[inline(always)]
+    fn sample(&self, x: f64, y: f64) -> u32 {
+        if x < 0.0 || y < 0.0 || x >= self.side as f64 - 1.0 || y >= self.side as f64 - 1.0 {
+            return 0;
+        }
+        let ix = x as usize;
+        let iy = y as usize;
+        let fx = ((x - ix as f64) * 256.0) as u32;
+        let fy = ((y - iy as f64) * 256.0) as u32;
+        let i = iy * self.side + ix;
+        let a = self.pixels[i] as u32 * (256 - fx) + self.pixels[i + 1] as u32 * fx;
+        let b = self.pixels[i + self.side] as u32 * (256 - fx)
+            + self.pixels[i + self.side + 1] as u32 * fx;
+        (a * (256 - fy) + b * fy + 32768) >> 16
+    }
+}
 /// Scratch preview becomes one atomic TileCommand; work and input are bounded.
 pub struct StrokeCommand {
     pub preview: Document,
     pub applied_time: f64,
+    pub completed_time: f64,
     base: Document,
     settings: BrushSettings,
-    coverage: HashMap<TileCoord, Vec<f32>>,
+    tip: Tip,
+    // 16-bit fixed-point coverage in u32 buffers; document samples stay RGBA8.
+    coverage: HashMap<TileCoord, Vec<u32>>,
     queue: VecDeque<Sample>,
     previous: Option<Sample>,
     segment: Option<Segment>,
@@ -192,7 +260,12 @@ pub struct StrokeCommand {
 impl StrokeCommand {
     pub fn new(base: &Document, settings: BrushSettings, available: u64) -> Result<Self, String> {
         settings.validate()?;
-        if available < (QUEUE_LIMIT * size_of::<Sample>()) as u64 {
+        let tip_side = if settings.pencil {
+            3
+        } else {
+            settings.size.ceil().min(512.0) as u64 + 2
+        };
+        if available < (QUEUE_LIMIT * size_of::<Sample>()) as u64 + tip_side * tip_side * 2 {
             return Err("Not enough memory for a stroke".into());
         }
         let mut preview = base.clone();
@@ -200,7 +273,9 @@ impl StrokeCommand {
         Ok(Self {
             preview,
             applied_time: 0.0,
+            completed_time: 0.0,
             base: base.clone(),
+            tip: Tip::new(&settings),
             settings,
             coverage: HashMap::new(),
             queue: VecDeque::with_capacity(QUEUE_LIMIT),
@@ -216,6 +291,7 @@ impl StrokeCommand {
     pub fn temporary_bytes(&self) -> u64 {
         self.coverage.len() as u64 * TILE_BYTES * 2
             + (self.queue.capacity() * size_of::<Sample>()) as u64
+            + self.tip.bytes()
     }
     pub fn push(&mut self, sample: Sample) -> Result<(), String> {
         if !sample.valid() {
@@ -272,7 +348,12 @@ impl StrokeCommand {
         loop {
             if let Some(s) = &mut self.segment {
                 if s.next <= s.length {
-                    let p = s.from.lerp(s.to, s.next / s.length);
+                    // A dab depends on the newly received endpoint sample, even
+                    // when its geometric position lies earlier along the path.
+                    let p = Sample {
+                        time: s.to.time,
+                        ..s.from.lerp(s.to, s.next / s.length)
+                    };
                     s.next += s.spacing;
                     return Some(p);
                 }
@@ -339,13 +420,10 @@ impl StrokeCommand {
         if x0 >= x1 || y0 >= y1 {
             return;
         }
-        let (sin, cos) = self.settings.angle.to_radians().sin_cos();
         self.dab = Some(Dab {
             p,
             radius,
             influence,
-            sin,
-            cos,
             x0,
             x1,
             y1,
@@ -353,6 +431,7 @@ impl StrokeCommand {
             y: y0,
         });
     }
+    #[inline(never)]
     pub fn step(&mut self, mut pixels: usize) -> Result<(), String> {
         let mut dabs = 0;
         while pixels > 0 && dabs < 512 {
@@ -370,52 +449,40 @@ impl StrokeCommand {
             let coord = (dab.x / TILE_SIZE, dab.y / TILE_SIZE);
             if !self.coverage.contains_key(&coord) {
                 let required = (self.coverage.len() as u64 + 1) * TILE_BYTES * 2
-                    + (self.queue.capacity() * size_of::<Sample>()) as u64;
+                    + (self.queue.capacity() * size_of::<Sample>()) as u64
+                    + self.tip.bytes();
                 if required > self.available {
                     return Err("This stroke exceeds the 768 MiB document/history/temporary budget; stroke cancelled".into());
                 }
-                self.coverage.insert(coord, vec![0.0; TILE_PIXELS]);
+                self.coverage.insert(coord, vec![0; TILE_PIXELS]);
                 self.touched.push(coord);
             }
             let mask = self.coverage.get_mut(&coord).unwrap();
             let base = self.base.raster.tiles().get(&coord);
-            let output = self.preview.raster.edit_tile(coord);
             let end = dab
                 .x1
                 .min((coord.0 + 1) * TILE_SIZE)
                 .min(dab.x + pixels.min(TILE_SIZE as usize) as u32);
-            let inv_x = 1.0 / dab.radius;
-            let inv_y = inv_x
-                / if self.settings.pencil {
-                    1.0
-                } else {
-                    self.settings.roundness
-                };
-            for x in dab.x..end {
-                let dx = x as f64 + 0.5 - dab.p.x;
-                let dy = dab.y as f64 + 0.5 - dab.p.y;
-                let rx = (dx * dab.cos + dy * dab.sin) * inv_x;
-                let ry = (-dx * dab.sin + dy * dab.cos) * inv_y;
-                let distance2 = rx * rx + ry * ry;
-                if distance2 > 1.0 {
-                    continue;
-                }
-                let tip = if self.settings.hardness >= 1.0 || self.settings.pencil {
-                    1.0
-                } else {
-                    ((1.0 - distance2.sqrt()) / (1.0 - self.settings.hardness)).min(1.0)
-                };
-                let i = ((dab.y % TILE_SIZE) * TILE_SIZE + x % TILE_SIZE) as usize;
-                mask[i] = (1.0
-                    - (1.0 - mask[i] as f64) * (1.0 - tip * self.settings.flow * dab.influence))
-                    as f32;
-                let before = base.map_or(Rgba8::default(), |t| t.pixels[i]);
-                output[i] = composite(
-                    before,
-                    self.settings.color,
-                    self.settings.opacity * mask[i] as f64,
-                    self.settings.eraser,
-                );
+            let output = self.preview.raster.edit_region(
+                coord,
+                fotoeditor_core::TileRect {
+                    x0: dab.x % TILE_SIZE,
+                    y0: dab.y % TILE_SIZE,
+                    x1: end - coord.0 * TILE_SIZE,
+                    y1: dab.y % TILE_SIZE + 1,
+                },
+            );
+            let changed = stamp_row(
+                dab,
+                &self.tip,
+                &self.settings,
+                base.map(|t| t.as_ref()),
+                mask,
+                output,
+                end,
+            );
+            if changed {
+                self.applied_time = self.applied_time.max(dab.p.time);
             }
             pixels -= (end - dab.x) as usize;
             dab.x = end;
@@ -424,7 +491,7 @@ impl StrokeCommand {
                 dab.y += 1;
             }
             if dab.y == dab.y1 {
-                self.applied_time = self.applied_time.max(dab.p.time);
+                self.completed_time = self.completed_time.max(dab.p.time);
                 self.dab = None;
             }
         }
@@ -441,6 +508,128 @@ impl StrokeCommand {
         TileCommand::between(&self.base, &self.preview)
     }
 }
+// Keep the hot loop small and frequently called for browser WASM tiering.
+#[inline(never)]
+fn stamp_row(
+    dab: &Dab,
+    tip: &Tip,
+    settings: &BrushSettings,
+    base: Option<&fotoeditor_core::Tile<Rgba8>>,
+    mask: &mut [u32],
+    output: &mut [Rgba8],
+    end: u32,
+) -> bool {
+    let scale = tip.radius / dab.radius;
+    if scale == 1.0 && !settings.eraser && base.is_some_and(|tile| tile.known_opaque) {
+        return stamp_opaque_row(dab, tip, settings, base.unwrap(), mask, output, end);
+    }
+    let sy = (dab.y as f64 + 0.5 - dab.p.y) * scale + tip.radius + 0.5;
+    let influence = (dab.influence * 65535.0 + 0.5) as u32;
+    let opacity = (settings.opacity
+        * if settings.eraser {
+            1.0
+        } else {
+            settings.color[3] as f64 / 255.0
+        }
+        * 65535.0
+        + 0.5) as u32;
+    let mut changed = false;
+    for x in dab.x..end {
+        let sx = (x as f64 + 0.5 - dab.p.x) * scale + tip.radius + 0.5;
+        let value = tip.sample(sx, sy);
+        if value == 0 {
+            continue;
+        }
+        let i = ((dab.y % TILE_SIZE) * TILE_SIZE + x % TILE_SIZE) as usize;
+        let amount = divide_unorm16(value * influence + 32767);
+        mask[i] += divide_unorm16((65535 - mask[i]) * amount + 32767);
+        let before = base.map_or(Rgba8::default(), |t| t.pixels[i]);
+        let after = composite_fixed(
+            before,
+            settings.color,
+            divide_unorm16(opacity * mask[i] + 32767),
+            settings.eraser,
+        );
+        changed |= after != output[i];
+        output[i] = after;
+    }
+    changed
+}
+#[inline(never)]
+fn stamp_opaque_row(
+    dab: &Dab,
+    tip: &Tip,
+    settings: &BrushSettings,
+    base: &fotoeditor_core::Tile<Rgba8>,
+    mask: &mut [u32],
+    output: &mut [Rgba8],
+    end: u32,
+) -> bool {
+    let sx = dab.x as f64 - dab.p.x + tip.radius + 1.0;
+    let sy = dab.y as f64 - dab.p.y + tip.radius + 1.0;
+    let ix = sx as usize;
+    let iy = sy as usize;
+    let fx = ((sx - ix as f64) * 256.0) as u32;
+    let fy = ((sy - iy as f64) * 256.0) as u32;
+    let length = (end - dab.x) as usize;
+    let top = &tip.pixels[iy * tip.side + ix..][..length + 1];
+    let bottom = &tip.pixels[(iy + 1) * tip.side + ix..][..length + 1];
+    let start = ((dab.y % TILE_SIZE) * TILE_SIZE + dab.x % TILE_SIZE) as usize;
+    let masks = &mut mask[start..][..length];
+    let outputs = &mut output[start..][..length];
+    let original = &base.pixels[start..][..length];
+    let influence = (dab.influence * 65535.0 + 0.5) as u32;
+    let opacity = (settings.opacity * settings.color[3] as f64 / 255.0 * 65535.0 + 0.5) as u32;
+    let mut changed = false;
+    for i in 0..length {
+        let a = top[i] as u32 * (256 - fx) + top[i + 1] as u32 * fx;
+        let b = bottom[i] as u32 * (256 - fx) + bottom[i + 1] as u32 * fx;
+        let value = (a * (256 - fy) + b * fy + 32768) >> 16;
+        let amount = divide_unorm16(value * influence + 32767);
+        masks[i] += divide_unorm16((65535 - masks[i]) * amount + 32767);
+        let source = divide_unorm16(opacity * masks[i] + 32767);
+        let keep = 65535 - source;
+        let p = original[i].0;
+        let after = Rgba8([
+            divide_unorm16(settings.color[0] as u32 * source + p[0] as u32 * keep + 32767) as u8,
+            divide_unorm16(settings.color[1] as u32 * source + p[1] as u32 * keep + 32767) as u8,
+            divide_unorm16(settings.color[2] as u32 * source + p[2] as u32 * keep + 32767) as u8,
+            255,
+        ]);
+        changed |= after != outputs[i];
+        outputs[i] = after;
+    }
+    changed
+}
+#[inline(always)]
+fn divide_unorm16(value: u32) -> u32 {
+    // Exact /65535 for coverage products, without WASM integer division.
+    (value + 1 + (value >> 16)) >> 16
+}
+#[inline(always)]
+fn composite_fixed(base: Rgba8, mut color: [u8; 4], source: u32, eraser: bool) -> Rgba8 {
+    if source == 0 {
+        return base;
+    }
+    let keep = 65535 - source;
+    let mut out = base.0;
+    if eraser {
+        out[3] = divide_unorm16(base.0[3] as u32 * keep + 32767) as u8;
+    } else if base.0[3] == 0 {
+        out = color;
+        out[3] = divide_unorm16(source * 255 + 32767) as u8;
+    } else if base.0[3] == 255 {
+        for c in 0..3 {
+            out[c] =
+                divide_unorm16(color[c] as u32 * source + base.0[c] as u32 * keep + 32767) as u8;
+        }
+    } else {
+        color[3] = 255;
+        return composite(base, color, source as f64 / 65535.0, false);
+    }
+    Rgba8(out)
+}
+#[inline(never)]
 pub fn composite(base: Rgba8, color: [u8; 4], coverage: f64, eraser: bool) -> Rgba8 {
     let source = coverage.clamp(0.0, 1.0) * if eraser { 1.0 } else { color[3] as f64 / 255.0 };
     if source <= 0.0 {
@@ -448,14 +637,23 @@ pub fn composite(base: Rgba8, color: [u8; 4], coverage: f64, eraser: bool) -> Rg
     }
     let mut out = base.0;
     if eraser {
-        out[3] = (base.0[3] as f64 * (1.0 - source)).round() as u8;
+        out[3] = (base.0[3] as f64 * (1.0 - source) + 0.5) as u32 as u8;
+    } else if base.0[3] == 255 {
+        for c in 0..3 {
+            out[c] = (base.0[c] as f64 + (color[c] as f64 - base.0[c] as f64) * source + 0.5) as u32
+                as u8;
+        }
     } else {
         let d = base.0[3] as f64 / 255.0 * (1.0 - source);
         let alpha = source + d;
+        let inverse = 1.0 / alpha;
+        let source_weight = source * inverse;
+        let destination_weight = d * inverse;
         for c in 0..3 {
-            out[c] = ((color[c] as f64 * source + base.0[c] as f64 * d) / alpha).round() as u8;
+            out[c] = (color[c] as f64 * source_weight + base.0[c] as f64 * destination_weight + 0.5)
+                as u32 as u8;
         }
-        out[3] = (alpha * 255.0).round() as u8;
+        out[3] = (alpha * 255.0 + 0.5) as u32 as u8;
     }
     Rgba8(out)
 }
@@ -464,6 +662,97 @@ pub fn composite(base: Rgba8, color: [u8; 4], coverage: f64, eraser: bool) -> Rg
 mod tests {
     use super::*;
     use fotoeditor_core::{History, CPU_BUDGET};
+    #[test]
+    fn fixed_coverage_division_is_exact_over_its_product_domain() {
+        let limit = 65535_u32 * 65535 + 32767;
+        for n in [0, 1, 65534, 65535, 65536, limit - 1, limit] {
+            assert_eq!(divide_unorm16(n), n / 65535);
+        }
+        let mut random = 1_u32;
+        for _ in 0..100000 {
+            random = random.wrapping_mul(1664525).wrapping_add(1013904223);
+            let n = random.min(limit);
+            assert_eq!(divide_unorm16(n), n / 65535);
+        }
+    }
+    #[test]
+    fn opaque_row_optimization_matches_general_stamping() {
+        let mut doc = Document::blank(512, 256, 72.0).unwrap();
+        for coord in [(0, 0), (1, 0)] {
+            doc.raster
+                .insert(coord, vec![Rgba8([39, 79, 131, 255]); TILE_PIXELS]);
+        }
+        let mut general = doc.clone();
+        for coord in [(0, 0), (1, 0)] {
+            general.raster.edit_tile(coord);
+        }
+        let settings = BrushSettings {
+            size: 80.0,
+            hardness: 0.0,
+            opacity: 0.4,
+            flow: 0.2,
+            roundness: 0.7,
+            angle: 36.0,
+            color: [200, 33, 99, 127],
+            ..BrushSettings::default()
+        };
+        let mut a = StrokeCommand::new(&doc, settings.clone(), CPU_BUDGET).unwrap();
+        let mut b = StrokeCommand::new(&general, settings, CPU_BUDGET).unwrap();
+        for p in [
+            point(10.1, 120.2),
+            point(500.00390625, 123.00390625),
+            point(30.75, 140.25),
+        ] {
+            a.push(p).unwrap();
+            b.push(p).unwrap();
+        }
+        finish(&mut a);
+        finish(&mut b);
+        for coord in [(0, 0), (1, 0)] {
+            assert_eq!(
+                a.preview.raster.tiles()[&coord].pixels,
+                b.preview.raster.tiles()[&coord].pixels
+            );
+        }
+    }
+    #[test]
+    fn optimized_source_over_matches_reference_within_one_quantization_level() {
+        for a in [0, 1, 2, 127, 254, 255] {
+            for color_alpha in [0, 1, 128, 255] {
+                for coverage in [0.0, 0.001, 0.3, 0.5, 0.99, 1.0] {
+                    let base = Rgba8([217, 33, 97, a]);
+                    let color = [53, 177, 251, color_alpha];
+                    let actual = composite(base, color, coverage, false);
+                    let source = coverage * color_alpha as f64 / 255.0;
+                    let fixed_source = (source * 65535.0 + 0.5) as u32;
+                    let fixed = composite_fixed(base, color, fixed_source, false);
+                    if fixed_source == 0 {
+                        assert_eq!(fixed, base);
+                    } else {
+                        for c in 0..4 {
+                            assert!(actual.0[c].abs_diff(fixed.0[c]) <= 1);
+                        }
+                    }
+                    if source == 0.0 {
+                        assert_eq!(actual, base);
+                        continue;
+                    }
+                    let d = a as f64 / 255.0 * (1.0 - source);
+                    let alpha = source + d;
+                    for (c, channel) in color[..3].iter().enumerate() {
+                        let reference = ((*channel as f64 * source + base.0[c] as f64 * d) / alpha)
+                            .round() as u8;
+                        assert!(actual.0[c].abs_diff(reference) <= 1);
+                    }
+                    assert_eq!(actual.0[3], (alpha * 255.0).round() as u8);
+                }
+            }
+        }
+        assert_eq!(
+            composite(Rgba8([77, 99, 33, 255]), [0, 0, 0, 0], 1.0, true),
+            Rgba8([77, 99, 33, 0])
+        );
+    }
     fn point(x: f64, y: f64) -> Sample {
         Sample {
             x,
@@ -568,6 +857,26 @@ mod tests {
         limited.push(point(5.0, 5.0)).unwrap();
         assert!(limited.step(1000).is_err());
         assert_eq!(doc.raster.bytes(), 0);
+    }
+    #[test]
+    fn rotated_elliptical_tip_clips_at_canvas_edges() {
+        let doc = Document::blank(30, 30, 72.0).unwrap();
+        let mut stroke = StrokeCommand::new(
+            &doc,
+            BrushSettings {
+                size: 20.0,
+                roundness: 0.25,
+                angle: 90.0,
+                ..BrushSettings::default()
+            },
+            CPU_BUDGET,
+        )
+        .unwrap();
+        stroke.push(point(5.0, 5.0)).unwrap();
+        finish(&mut stroke);
+        assert_eq!(stroke.preview.raster.sample(5, 14).0[3], 255);
+        assert_eq!(stroke.preview.raster.sample(14, 5).0[3], 0);
+        assert_eq!(stroke.preview.raster.sample(5, 0).0[3], 255);
     }
     #[test]
     fn stabilizers_and_chunk_sizes_are_deterministic() {

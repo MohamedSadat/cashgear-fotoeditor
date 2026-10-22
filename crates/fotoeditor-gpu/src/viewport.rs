@@ -1,4 +1,7 @@
-use fotoeditor_core::{display_tile, DirtySet, Document, TileCoord, View, GPU_BUDGET, TILE_SIZE};
+use fotoeditor_core::{
+    display_region, display_tile, DirtyRegions, Document, Rgba8, TileCoord, TileRect, TileSurface,
+    View, GPU_BUDGET, TILE_SIZE,
+};
 use std::collections::{HashMap, HashSet};
 use wgpu::*;
 const ATLAS: u32 = 2048;
@@ -27,6 +30,8 @@ pub struct ViewportRenderer {
     pages: Vec<Page>,
     locations: HashMap<(u64, u32), (usize, usize)>,
     coordinates: HashMap<u64, TileCoord>,
+    gutter_dirty: HashSet<u64>,
+    pending_regions: HashMap<u64, TileRect>,
     tick: u64,
     pub refining: u32,
     pub uploaded: u64,
@@ -156,6 +161,8 @@ impl ViewportRenderer {
             pages: vec![],
             locations: HashMap::new(),
             coordinates: HashMap::new(),
+            gutter_dirty: HashSet::new(),
+            pending_regions: HashMap::new(),
             tick: 0,
             refining: 0,
             uploaded: 0,
@@ -166,8 +173,10 @@ impl ViewportRenderer {
         self.pages.clear();
         self.locations.clear();
         self.coordinates.clear();
+        self.gutter_dirty.clear();
+        self.pending_regions.clear();
     }
-    pub fn invalidate(&mut self, dirty: &DirtySet) {
+    pub fn invalidate(&mut self, dirty: &DirtyRegions, surface: &TileSurface<Rgba8>) {
         if dirty.is_empty() {
             return;
         }
@@ -177,18 +186,39 @@ impl ViewportRenderer {
             .iter()
             .filter(|(_, c)| {
                 dirty
-                    .iter()
+                    .keys()
                     .any(|d| c.0.abs_diff(d.0) <= 1 && c.1.abs_diff(d.1) <= 1)
             })
             .map(|(id, _)| *id)
             .collect();
         for id in stale {
+            let coord = self.coordinates[&id];
+            let neighbor_only = !dirty.contains_key(&coord);
+            let keep_base = !neighbor_only
+                && surface.tiles().get(&coord).is_some_and(|t| t.id == id)
+                && self.locations.contains_key(&(id, 0));
+            if keep_base {
+                let rect = dirty[&coord];
+                self.pending_regions
+                    .entry(id)
+                    .and_modify(|r| r.union(rect))
+                    .or_insert(rect);
+                self.gutter_dirty.insert(id);
+            }
             for lod in 0..=8 {
+                if lod == 0 && (neighbor_only || keep_base) {
+                    self.gutter_dirty.insert(id);
+                    continue;
+                }
                 if let Some((page, slot)) = self.locations.remove(&(id, lod)) {
                     self.pages[page].slots[slot] = None;
                 }
             }
-            self.coordinates.remove(&id);
+            if !neighbor_only && !keep_base {
+                self.coordinates.remove(&id);
+                self.gutter_dirty.remove(&id);
+                self.pending_regions.remove(&id);
+            }
         }
     }
     pub fn bytes(&self) -> u64 {
@@ -328,7 +358,45 @@ impl ViewportRenderer {
         let bulk = self.locations.is_empty();
         let start = js_sys::Date::now();
         for (coord, tile) in &visible {
-            if self.locations.contains_key(&(tile.id, lod)) {
+            if lod == 0 && view.zoom >= 1.0 {
+                if let (Some(rect), Some(&(page, slot))) = (
+                    self.pending_regions.get(&tile.id).copied(),
+                    self.locations.get(&(tile.id, 0)),
+                ) {
+                    let pixels = display_region(&doc.raster, **coord, rect);
+                    let width = rect.x1 - rect.x0;
+                    let height = rect.y1 - rect.y0;
+                    queue.write_texture(
+                        TexelCopyTextureInfo {
+                            texture: &self.pages[page].texture,
+                            mip_level: 0,
+                            origin: Origin3d {
+                                x: slot as u32 % cells * padded + 1 + rect.x0,
+                                y: slot as u32 / cells * padded + 1 + rect.y0,
+                                z: 0,
+                            },
+                            aspect: TextureAspect::All,
+                        },
+                        &pixels,
+                        TexelCopyBufferLayout {
+                            offset: 0,
+                            bytes_per_row: Some(width * 4),
+                            rows_per_image: Some(height),
+                        },
+                        Extent3d {
+                            width,
+                            height,
+                            depth_or_array_layers: 1,
+                        },
+                    );
+                    self.uploaded += pixels.len() as u64;
+                    self.pending_regions.remove(&tile.id);
+                    continue;
+                }
+            }
+            let refresh_gutter =
+                lod == 0 && view.zoom < 1.0 && self.gutter_dirty.contains(&tile.id);
+            if self.locations.contains_key(&(tile.id, lod)) && !refresh_gutter {
                 continue;
             }
             // Keep a cached overview visible while sharper mips arrive. Long
@@ -336,8 +404,11 @@ impl ViewportRenderer {
             if !bulk && js_sys::Date::now() - start >= 3.0 && self.cached(tile.id, lod).is_some() {
                 continue;
             }
-            let mut available = None;
+            let mut available = self.locations.get(&(tile.id, lod)).copied();
             for (p, page) in self.pages.iter().enumerate() {
+                if available.is_some() {
+                    break;
+                }
                 if page.lod != lod {
                     continue;
                 }
@@ -413,6 +484,10 @@ impl ViewportRenderer {
             page.slots[slot] = Some(tile.id);
             self.locations.insert((tile.id, lod), (p, slot));
             self.coordinates.insert(tile.id, **coord);
+            if lod == 0 {
+                self.gutter_dirty.remove(&tile.id);
+                self.pending_regions.remove(&tile.id);
+            }
         }
         let mut vertices = vec![Vec::<f32>::new(); self.pages.len()];
         for (coord, tile) in visible {
@@ -421,7 +496,11 @@ impl ViewportRenderer {
                 .ok_or("Visible tile has no display backing")?;
             let page = &mut self.pages[p];
             page.last_used = self.tick;
-            if page.lod != lod {
+            if page.lod != lod
+                || (page.lod == 0
+                    && (self.pending_regions.contains_key(&tile.id)
+                        || (view.zoom < 1.0 && self.gutter_dirty.contains(&tile.id))))
+            {
                 self.refining += 1;
             }
             let side = TILE_SIZE >> page.lod;

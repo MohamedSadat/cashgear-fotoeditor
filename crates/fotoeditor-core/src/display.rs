@@ -1,7 +1,28 @@
-use crate::{Rgba8, TileCoord, TileSurface, TILE_SIZE};
+use crate::{Rgba8, TileCoord, TileRect, TileSurface, TILE_SIZE};
+#[inline(never)]
+pub fn display_region(surface: &TileSurface<Rgba8>, coord: TileCoord, rect: TileRect) -> Vec<u8> {
+    let width = rect.x1 - rect.x0;
+    let height = rect.y1 - rect.y0;
+    let mut out = vec![0; (width * height * 4) as usize];
+    let tile = &surface.tiles()[&coord];
+    let valid_w = (surface.width - coord.0 * TILE_SIZE).min(TILE_SIZE);
+    let valid_h = (surface.height - coord.1 * TILE_SIZE).min(TILE_SIZE);
+    for y in 0..height {
+        for x in 0..width {
+            let p = tile.pixels[(((rect.y0 + y).min(valid_h - 1)) * TILE_SIZE
+                + (rect.x0 + x).min(valid_w - 1)) as usize];
+            out[((y * width + x) * 4) as usize..][..4].copy_from_slice(&premultiplied(p));
+        }
+    }
+    out
+}
 /// Box-filter straight samples into a temporary premultiplied display mip.
 /// One texel gutter samples adjacent tiles, preventing atlas/filter seams.
+#[inline(never)]
 pub fn display_tile(surface: &TileSurface<Rgba8>, coord: TileCoord, lod: u32) -> Vec<u8> {
+    if lod == 0 {
+        return display_base_tile(surface, coord);
+    }
     let scale = 1u32 << lod;
     let side = TILE_SIZE / scale;
     let padded = side + 2;
@@ -47,9 +68,130 @@ pub fn display_tile(surface: &TileSurface<Rgba8>, coord: TileCoord, lod: u32) ->
     }
     out
 }
+#[inline(always)]
+fn premultiplied(p: Rgba8) -> [u8; 4] {
+    let [r, g, b, a] = p.0;
+    if a == 255 {
+        return p.0;
+    }
+    let a32 = a as u32;
+    [
+        ((r as u32 * a32 + 127) / 255) as u8,
+        ((g as u32 * a32 + 127) / 255) as u8,
+        ((b as u32 * a32 + 127) / 255) as u8,
+        a,
+    ]
+}
+#[inline(never)]
+fn display_base_tile(surface: &TileSurface<Rgba8>, coord: TileCoord) -> Vec<u8> {
+    const PAD: usize = TILE_SIZE as usize + 2;
+    let mut out = vec![0; PAD * PAD * 4];
+    let tile = &surface.tiles()[&coord];
+    let w = (surface.width - coord.0 * TILE_SIZE).min(TILE_SIZE) as usize;
+    let h = (surface.height - coord.1 * TILE_SIZE).min(TILE_SIZE) as usize;
+    for y in 0..TILE_SIZE as usize {
+        let source = &tile.pixels[y.min(h - 1) * TILE_SIZE as usize..][..TILE_SIZE as usize];
+        let row = &mut out[((y + 1) * PAD + 1) * 4..][..TILE_SIZE as usize * 4];
+        if tile.known_opaque && w == TILE_SIZE as usize {
+            for (output, pixel) in row.as_chunks_mut::<4>().0.iter_mut().zip(source) {
+                *output = pixel.0;
+            }
+        } else {
+            for (x, output) in row.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+                *output = premultiplied(source[x.min(w - 1)]);
+            }
+        }
+    }
+    let sx = coord.0 as i64 * TILE_SIZE as i64;
+    let sy = coord.1 as i64 * TILE_SIZE as i64;
+    let sample = |x: i64, y: i64| {
+        premultiplied(surface.sample(
+            x.clamp(0, surface.width as i64 - 1) as u32,
+            y.clamp(0, surface.height as i64 - 1) as u32,
+        ))
+    };
+    for i in 0..PAD {
+        let x = sx + i as i64 - 1;
+        out[i * 4..][..4].copy_from_slice(&sample(x, sy - 1));
+        out[((PAD - 1) * PAD + i) * 4..][..4].copy_from_slice(&sample(x, sy + TILE_SIZE as i64));
+    }
+    for y in 1..PAD - 1 {
+        let py = sy + y as i64 - 1;
+        out[y * PAD * 4..][..4].copy_from_slice(&sample(sx - 1, py));
+        out[(y * PAD + PAD - 1) * 4..][..4].copy_from_slice(&sample(sx + TILE_SIZE as i64, py));
+    }
+    out
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn partial_display_matches_full_tile_including_clamped_edges() {
+        let mut surface = TileSurface::new(257, 1);
+        for x in 0..257 {
+            surface.write(x, 0, Rgba8([217, 33, 97, (x % 256) as u8]));
+        }
+        for coord in [(0, 0), (1, 0)] {
+            let rect = TileRect {
+                x0: 0,
+                y0: 0,
+                x1: 17,
+                y1: 13,
+            };
+            let partial = display_region(&surface, coord, rect);
+            let full = display_tile(&surface, coord, 0);
+            for y in 0..13 {
+                assert_eq!(
+                    &partial[y * 17 * 4..][..17 * 4],
+                    &full[((y + 1) * 258 + 1) * 4..][..17 * 4]
+                );
+            }
+        }
+    }
+    #[test]
+    fn base_fast_path_matches_reference_for_alpha_gutters_and_odd_edges() {
+        let mut surface = TileSurface::new(513, 259);
+        for coord in [(0, 0), (1, 0), (2, 1)] {
+            let pixels = (0..crate::TILE_PIXELS)
+                .map(|i| {
+                    Rgba8([
+                        (i % 256) as u8,
+                        ((i * 37) % 256) as u8,
+                        ((i * 71) % 256) as u8,
+                        ((i * 19) % 256) as u8,
+                    ])
+                })
+                .collect();
+            surface.insert(coord, pixels);
+        }
+        for coord in [(0, 0), (1, 0), (2, 1)] {
+            let actual = display_tile(&surface, coord, 0);
+            for y in 0..258 {
+                for x in 0..258 {
+                    let interior = x > 0 && x < 257 && y > 0 && y < 257;
+                    let sx = if interior {
+                        (coord.0 * 256 + (x - 1).min(surface.width - coord.0 * 256 - 1)) as i64
+                    } else {
+                        coord.0 as i64 * 256 + x as i64 - 1
+                    };
+                    let sy = if interior {
+                        (coord.1 * 256 + (y - 1).min(surface.height - coord.1 * 256 - 1)) as i64
+                    } else {
+                        coord.1 as i64 * 256 + y as i64 - 1
+                    };
+                    let Rgba8(p) = surface.sample(sx.clamp(0, 512) as u32, sy.clamp(0, 258) as u32);
+                    let a = p[3] as u32;
+                    let expected = [
+                        ((p[0] as u32 * a + 127) / 255) as u8,
+                        ((p[1] as u32 * a + 127) / 255) as u8,
+                        ((p[2] as u32 * a + 127) / 255) as u8,
+                        p[3],
+                    ];
+                    assert_eq!(&actual[((y * 258 + x) * 4) as usize..][..4], expected);
+                }
+            }
+        }
+    }
     #[test]
     fn mips_filter_premultiplied_and_do_not_change_samples() {
         let mut s = TileSurface::new(512, 256);

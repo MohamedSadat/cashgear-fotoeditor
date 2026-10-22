@@ -6,6 +6,7 @@ mod bridge {
     use fotoeditor_io::{ExportJob, ImportJob};
     use std::cell::RefCell;
     use wasm_bindgen::prelude::*;
+    const DISPLAY_SCRATCH: u64 = 1024 * 1024;
 
     thread_local! {
         static ERROR_CALLBACK: RefCell<Option<js_sys::Function>> = const { RefCell::new(None) };
@@ -26,6 +27,7 @@ mod bridge {
         history: History,
         stroke: Option<StrokeCommand>,
         paint_time: f64,
+        paint_complete_time: f64,
         view: View,
         dpr: f64,
         import: Option<ImportJob>,
@@ -49,6 +51,7 @@ mod bridge {
                     self.history.clear();
                     self.stroke = None;
                     self.paint_time = 0.0;
+                    self.paint_complete_time = 0.0;
                     self.renderer.clear_tiles();
                 }
             }
@@ -59,7 +62,10 @@ mod bridge {
                 history: self.document.as_ref().map_or(0, |d| self.history.bytes(d)),
                 temporary: self.import.as_ref().map_or(0, |j| j.temporary_bytes())
                     + self.export.as_ref().map_or(0, |j| j.temporary_bytes())
-                    + self.stroke.as_ref().map_or(0, |s| s.temporary_bytes()),
+                    + self
+                        .stroke
+                        .as_ref()
+                        .map_or(0, |s| s.temporary_bytes() + DISPLAY_SCRATCH),
                 gpu: self.renderer.gpu_bytes(),
             }
         }
@@ -85,6 +91,7 @@ mod bridge {
                 history: History::default(),
                 stroke: None,
                 paint_time: 0.0,
+                paint_complete_time: 0.0,
                 view: View::default(),
                 dpr: 1.0,
                 import: None,
@@ -120,7 +127,8 @@ mod bridge {
                 .map(|s| &mut s.preview)
                 .or(self.document.as_mut());
             if let Some(doc) = document {
-                self.renderer.invalidate_tiles(&doc.raster.drain_dirty());
+                let regions = doc.raster.drain_regions();
+                self.renderer.invalidate_tiles(&doc.raster, &regions);
             }
             self.renderer
                 .frame(
@@ -166,8 +174,8 @@ mod bridge {
                 .as_ref()
                 .ok_or_else(|| JsValue::from_str("Create or open a document first"))?;
             let r = self.residency();
-            let available =
-                fotoeditor_core::CPU_BUDGET.saturating_sub(r.document + r.history + r.temporary);
+            let available = fotoeditor_core::CPU_BUDGET
+                .saturating_sub(r.document + r.history + r.temporary + DISPLAY_SCRATCH);
             self.stroke = Some(
                 StrokeCommand::new(doc, settings, available).map_err(|e| JsValue::from_str(&e))?,
             );
@@ -199,6 +207,13 @@ mod bridge {
         pub fn painting(&self) -> bool {
             self.stroke.is_some()
         }
+        pub fn needs_render(&self) -> bool {
+            self.stroke
+                .as_ref()
+                .map(|s| &s.preview)
+                .or(self.document.as_ref())
+                .is_some_and(|d| d.raster.has_dirty())
+        }
         pub fn stroke_cancel(&mut self) {
             if self.stroke.take().is_some() {
                 self.renderer.clear_tiles();
@@ -208,6 +223,7 @@ mod bridge {
             if let Some(s) = &mut self.stroke {
                 s.step(262144).map_err(|e| JsValue::from_str(&e))?;
                 self.paint_time = self.paint_time.max(s.applied_time);
+                self.paint_complete_time = self.paint_complete_time.max(s.completed_time);
             }
             if self.stroke.as_ref().is_some_and(|s| s.done()) {
                 let command = self
@@ -320,6 +336,7 @@ mod bridge {
                 "history":{"undo":self.history.depths().0,"redo":self.history.depths().1},
                 "painting":self.stroke.is_some(),"pendingSamples":self.stroke.as_ref().map_or(0,|s|s.pending()),
                 "paintTime":self.paint_time,
+                "paintCompleteTime":self.paint_complete_time,
                 "visibleTiles":self.renderer.visible_tiles(),"refining":self.renderer.refining_tiles(),"uploadedBytes":self.renderer.uploaded_bytes()}).to_string()
         }
     }

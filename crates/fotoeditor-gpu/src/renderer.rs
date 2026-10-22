@@ -249,8 +249,12 @@ impl Renderer {
     pub fn clear_tiles(&mut self) {
         self.viewport.clear();
     }
-    pub fn invalidate_tiles(&mut self, dirty: &fotoeditor_core::DirtySet) {
-        self.viewport.invalidate(dirty);
+    pub fn invalidate_tiles(
+        &mut self,
+        surface: &fotoeditor_core::TileSurface<fotoeditor_core::Rgba8>,
+        dirty: &fotoeditor_core::DirtyRegions,
+    ) {
+        self.viewport.invalidate(dirty, surface);
     }
     pub fn gpu_bytes(&self) -> u64 {
         self.viewport.bytes()

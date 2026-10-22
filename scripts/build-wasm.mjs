@@ -39,8 +39,11 @@ if (release) {
   const path = join(output, 'fotoeditor_wasm_bg.wasm');
   const module = binaryen.readBinary(await readFile(path));
   module.setFeatures(binaryen.Features.All);
-  binaryen.setOptimizeLevel(2);
-  binaryen.setShrinkLevel(2);
+  binaryen.setOptimizeLevel(3);
+  binaryen.setShrinkLevel(0);
+  // Preserve explicit hot-loop boundaries; unrestricted single-caller inlining
+  // merges brush/display kernels into large exports that tier poorly in V8.
+  binaryen.setOneCallerInlineMaxSize(64);
   module.optimize();
   if (!module.validate()) throw new Error('Optimized WASM failed validation');
   const bytes = module.emitBinary();
