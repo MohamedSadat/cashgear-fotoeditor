@@ -27,6 +27,8 @@
 - Use recoverable snapshot generations, retain the previous valid snapshot, handle
   quota/persistence failures, and coordinate writers. A temp rename alone is not
   the full durability contract.
+- Request persistent browser storage on the main thread and pass its result to
+  the worker; StorageManager.persist() is unavailable in workers.
 - Chunk long CPU jobs, support cancellation, and commit completed jobs atomically
   before filters/large codecs can starve the rendering worker.
 - Verify PSD masks and 16-bit samples with a Photoshop fixture corpus. The proposed

@@ -25,7 +25,7 @@ export default defineConfig({
         ? [
             '--enable-unsafe-webgpu',
             '--enable-unsafe-swiftshader',
-            '--use-angle=d3d11',
+            '--use-angle=d3d11-warp',
             '--use-webgpu-adapter=swiftshader',
           ]
         : [],

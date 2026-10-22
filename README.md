@@ -48,7 +48,7 @@ bindings and the web distribution are intentionally untracked.
 
 Browser tests use installed Chrome and Edge by default. Windows CI sets
 GPU_TEST_SOFTWARE=1 and installs Playwright Chromium. One project selects the
-SwiftShader WebGPU adapter with a D3D11 compositor; a second forces SwiftShader
+SwiftShader WebGPU adapter with a WARP software compositor; a second forces SwiftShader
 for WebGL2. Tests verify the software adapter rather than silently accepting
 another backend. Software results demonstrate correctness, not hardware performance.
 

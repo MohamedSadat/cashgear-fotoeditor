@@ -23,7 +23,7 @@
 - Preserve exact straight-alpha document samples. Premultiply temporary display
   and compositing buffers as required.
 - Account for document, history, temporary, and GPU residency from the tile-store design.
-- Tauri v1 hosts the same WASM engine in WebView2; it is not a native wgpu engine.
+- The v1 desktop app uses Tauri 2 to host the same WASM engine in WebView2.
 - New dependencies must use approved free licenses and be recorded in docs/LICENSES.md.
   MPL-2.0 is explicitly allowed file-level copyleft, not a permissive license.
 

@@ -14,7 +14,7 @@ await new Promise((resolve) => listener.close(resolve));
 const profile = await mkdtemp(join(tmpdir(), 'fotoeditor-webview2-smoke-'));
 const softwareArgs =
   process.env.GPU_TEST_SOFTWARE === '1'
-    ? ' --enable-unsafe-webgpu --enable-unsafe-swiftshader --use-angle=d3d11 --use-webgpu-adapter=swiftshader'
+    ? ' --enable-unsafe-webgpu --enable-unsafe-swiftshader --use-angle=d3d11-warp --use-webgpu-adapter=swiftshader'
     : '';
 const child = spawn(join(root, 'target/release/fotoeditor-desktop.exe'), [], {
   cwd: root,
