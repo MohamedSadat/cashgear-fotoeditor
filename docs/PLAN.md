@@ -113,10 +113,9 @@ COW snapshots, exact stroke undo/redo and shortcuts already shipped in P2.
 - Full required checks, Chrome/Edge on WebGPU/WebGL2, appropriate Windows/WebView2
   verification, measured performance, and remote CI/deployment green before p3-history.
 
-## P3 product questions (pending)
+## P3 product questions (answered 2026-10-23)
 
-1. History memory cap and maximum steps within the shared 768 MiB total CPU budget.
-   Proposed: 256 MiB / 200 steps, configurable, with earlier eviction when needed.
-2. Autosave interval and tab-hide behavior. Proposed: 30 seconds plus best-effort hide.
-3. Startup restore behavior. Proposed: ask whether to restore the last session.
-4. Include history in project/recovery files? Proposed: document only, fresh history.
+1. 256 MiB history / 200 steps, configurable, within the shared 768 MiB CPU limit.
+2. Autosave every 30 seconds when changed, plus best-effort tab hide.
+3. Ask “Restore last session?” on startup.
+4. Document-only project/recovery files; reopen with fresh undo history.

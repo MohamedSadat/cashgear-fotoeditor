@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { transfer } from 'comlink';
 import { CanvasHost } from './CanvasHost';
 import { BrushPanel } from './BrushPanel';
+import { HistoryPanel } from './HistoryPanel';
 import { useBrush } from './brush-state';
 import { updateWorkspace, useWorkspace } from './state';
 import type { EngineApi, Interaction } from './engine/types';
@@ -26,6 +27,10 @@ export function App() {
   const diagnostic = new URLSearchParams(location.search).get('diagnostic') === '1';
   const fault = useRef<((kind: 'device-loss' | 'panic') => void) | undefined>(undefined);
   const api = useRef<EngineApi | undefined>(undefined);
+  const [engineApi, setEngineApi] = useState<EngineApi>();
+  const projectFile = useRef<HTMLInputElement>(null);
+  const recoveryDialog = useRef<HTMLDialogElement>(null);
+  const [recoveryDismissed, setRecoveryDismissed] = useState(false);
   const file = useRef<HTMLInputElement>(null);
   const newDialog = useRef<HTMLDialogElement>(null);
   const operation = useRef(0);
@@ -35,6 +40,8 @@ export function App() {
   }, []);
   const onApiReady = useCallback((engine: EngineApi | undefined) => {
     api.current = engine;
+    setEngineApi(() => engine);
+    setRecoveryDismissed(false);
     if (!engine) {
       ++operation.current;
       setBusy('');
@@ -44,6 +51,30 @@ export function App() {
   const doc = snapshot?.document;
   const tool = useBrush((state) => state.tool);
   const painting = !!snapshot?.painting;
+  const working = !!busy || !!snapshot?.operation;
+  const recovery = snapshot?.recovery;
+  const recoverable = recovery?.candidates[0];
+  useEffect(() => {
+    if (recoverable && !recoveryDismissed && status === 'ready')
+      recoveryDialog.current?.showModal();
+    else recoveryDialog.current?.close();
+  }, [recoverable, recoveryDismissed, status]);
+  useEffect(() => {
+    if (!engineApi) return;
+    const save = () => {
+      if (useWorkspace.getState().snapshot?.painting) return;
+      void engineApi.autosave().catch((e) => setNotice(String(e)));
+    };
+    const hidden = () => {
+      if (document.visibilityState === 'hidden') save();
+    };
+    const timer = setInterval(save, 30000);
+    document.addEventListener('visibilitychange', hidden);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', hidden);
+    };
+  }, [engineApi]);
   useEffect(() => {
     if (dialog) newDialog.current?.showModal();
     else newDialog.current?.close();
@@ -54,7 +85,7 @@ export function App() {
     );
   };
   const open = async (selected: File) => {
-    if (!api.current || busy) return;
+    if (!api.current || working || useWorkspace.getState().snapshot?.painting) return;
     const token = ++operation.current;
     workerJobStarted.current = false;
     setBusy('Opening ' + selected.name + '…');
@@ -65,7 +96,9 @@ export function App() {
       const bytes = await selected.arrayBuffer();
       if (token !== operation.current) return;
       workerJobStarted.current = true;
-      const next = await api.current.openImage(transfer(bytes, [bytes]), selected.name);
+      const next = await api.current[
+        /\.cgfoto$/i.test(selected.name) ? 'openProject' : 'openImage'
+      ](transfer(bytes, [bytes]), selected.name);
       if (token === operation.current) {
         updateWorkspace({ snapshot: next });
         setNotice('Opened in ' + ((performance.now() - start) / 1000).toFixed(2) + ' s');
@@ -76,8 +109,32 @@ export function App() {
       if (token === operation.current) setBusy('');
     }
   };
+  const saveProject = async () => {
+    if (!api.current || !doc || working) return;
+    const token = ++operation.current;
+    workerJobStarted.current = true;
+    setBusy('Saving project…');
+    setNotice('');
+    try {
+      const bytes = await api.current.saveProject();
+      if (token !== operation.current) return;
+      const url = URL.createObjectURL(
+        new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'application/octet-stream' }),
+      );
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = (snapshot?.name ?? 'Untitled').replace(/\.[^.]+$/, '') + '.cgfoto';
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      setNotice('Project saved · document only · ' + (bytes.length / 1048576).toFixed(1) + ' MiB');
+    } catch (e) {
+      if (token === operation.current) setNotice(String(e));
+    } finally {
+      if (token === operation.current) setBusy('');
+    }
+  };
   const exportPng = async () => {
-    if (!api.current || !doc || busy) return;
+    if (!api.current || !doc || working || useWorkspace.getState().snapshot?.painting) return;
     const token = ++operation.current;
     workerJobStarted.current = true;
     setBusy('Exporting PNG…');
@@ -101,6 +158,7 @@ export function App() {
     }
   };
   const create = async () => {
+    if (useWorkspace.getState().snapshot?.painting || working) return;
     try {
       const next = await api.current?.newDocument(width, height, dpi);
       if (next) updateWorkspace({ snapshot: next });
@@ -151,6 +209,18 @@ export function App() {
             Open image
           </button>
           <button
+            disabled={status !== 'ready' || working || painting}
+            onClick={() => projectFile.current?.click()}
+          >
+            Open project
+          </button>
+          <button
+            disabled={!doc || status !== 'ready' || working || painting}
+            onClick={() => void saveProject()}
+          >
+            Save project
+          </button>
+          <button
             className="primary"
             disabled={!doc || status !== 'ready' || !!busy}
             onClick={() => void exportPng()}
@@ -158,6 +228,18 @@ export function App() {
             Export PNG <span aria-hidden="true">↗</span>
           </button>
         </nav>
+        <input
+          ref={projectFile}
+          type="file"
+          data-testid="open-project"
+          accept=".cgfoto"
+          hidden
+          onChange={(e) => {
+            const selected = e.target.files?.[0];
+            e.target.value = '';
+            if (selected) void open(selected);
+          }}
+        />
         <input
           ref={file}
           type="file"
@@ -305,7 +387,10 @@ export function App() {
                 <span className="error-symbol">!</span>
                 <h1>Let’s restart the canvas</h1>
                 <p>{error}</p>
-                <p>The worker owns your document. Restarting clears the current session.</p>
+                <p>
+                  Restarting offers any completed autosave. Changes since that snapshot are
+                  unavailable.
+                </p>
                 <div className="error-actions">
                   <button onClick={() => setGeneration((v) => v + 1)}>Retry engine</button>
                   <a href={'?gpu=webgl2' + (diagnostic ? '&diagnostic=1' : '')}>Try WebGL2</a>
@@ -318,7 +403,66 @@ export function App() {
           className={'inspector' + (showBrush ? ' is-open' : '')}
           aria-label="Brush and document settings"
         >
+          <nav className="inspector-index" aria-label="Inspector sections">
+            <button
+              aria-label="Show brush section"
+              onClick={() =>
+                document.querySelector('.brush-panel')?.scrollIntoView({ block: 'start' })
+              }
+            >
+              Brush
+            </button>
+            <button
+              aria-label="Show history section"
+              onClick={() =>
+                document.querySelector('.history-panel')?.scrollIntoView({ block: 'start' })
+              }
+            >
+              History
+            </button>
+            <button
+              aria-label="Show recovery section"
+              onClick={() =>
+                document.querySelector('.recovery-status')?.scrollIntoView({ block: 'start' })
+              }
+            >
+              Recovery
+            </button>
+          </nav>
           <BrushPanel />
+          <div className="section-divider" />
+          <HistoryPanel api={engineApi} disabled={status !== 'ready' || working || painting} />
+          <div className="section-divider" />
+          <section className="recovery-status" aria-label="Autosave and recovery">
+            <span className="section-eyebrow">AUTOSAVE · EVERY 30 SECONDS + TAB HIDE</span>
+            <p data-testid="recovery-status">
+              {recovery?.state === 'saved'
+                ? 'Autosaved ' + new Date(recovery.lastSavedAt!).toLocaleTimeString()
+                : recovery?.state === 'error'
+                  ? 'Autosave failed'
+                  : recovery?.state === 'unavailable'
+                    ? 'Autosave unavailable'
+                    : recovery?.state === 'saving'
+                      ? 'Autosaving…'
+                      : 'Waiting for changes'}
+            </p>
+            <p className="history-note">
+              {recovery?.persistent === 'granted'
+                ? 'Persistent browser storage granted.'
+                : 'Browser storage is not persistent; save project files for a durable copy.'}{' '}
+              Tab-hide saves are best effort.
+            </p>
+            {recovery?.error && <p role="alert">{recovery.error}</p>}
+            <button
+              disabled={!doc || working || painting || recovery?.state === 'unavailable'}
+              onClick={() => void api.current?.autosave()}
+            >
+              Save recovery now
+            </button>
+            {recoverable && (
+              <button onClick={() => setRecoveryDismissed(false)}>Recover session</button>
+            )}
+          </section>
           <div className="section-divider" />
           <span className="section-eyebrow">{doc ? 'DOCUMENT' : 'WORKSPACE'}</span>
           <h2>{doc ? 'A closer look.' : 'Room for your ideas.'}</h2>
@@ -399,6 +543,7 @@ export function App() {
         <div className="operation-bar" role="status" data-testid="operation-status">
           <span className="operation-message" title={busy || notice}>
             {busy ||
+              snapshot?.operation ||
               snapshot?.editError ||
               notice ||
               (painting ? 'Painting…' : 'B brush · E eraser · Alt sample · Ctrl+Z undo')}
@@ -428,6 +573,11 @@ export function App() {
           <strong>GPU test scene</strong>
           <button onClick={() => fault.current?.('device-loss')}>Simulate device loss</button>
           <button onClick={() => fault.current?.('panic')}>Simulate Rust panic</button>
+          {(['quota', 'partial', 'after-flush', 'pause-after-chunk'] as const).map((kind) => (
+            <button key={kind} onClick={() => void api.current?.diagnosticRecoveryFault(kind)}>
+              Fail next autosave: {kind}
+            </button>
+          ))}
         </div>
       )}
       <footer className="statusbar">
@@ -456,6 +606,52 @@ export function App() {
           {memory(snapshot?.memory.history ?? 0)}
         </span>
       </footer>
+      <dialog
+        ref={recoveryDialog}
+        onCancel={() => setRecoveryDismissed(true)}
+        aria-labelledby="recovery-title"
+      >
+        <h2 id="recovery-title">Restore last session?</h2>
+        <p>
+          {recoverable?.name} · {recoverable ? new Date(recoverable.savedAt).toLocaleString() : ''}
+        </p>
+        <p className="dialog-note">
+          Restore the last completed autosave with fresh undo history. Unsaved changes after that
+          snapshot are unavailable.
+          {doc && ' Restoring replaces the current canvas; save a project first if you need it.'}
+        </p>
+        <div className="dialog-actions">
+          <button onClick={() => setRecoveryDismissed(true)}>Later</button>
+          <button
+            disabled={working}
+            onClick={() => {
+              if (recoverable)
+                void api.current
+                  ?.discardRecovery(recoverable.file)
+                  .catch((e) => setNotice(String(e)));
+            }}
+          >
+            Discard recovery
+          </button>
+          <button
+            className="primary"
+            disabled={working}
+            onClick={() => {
+              if (recoverable)
+                void api.current
+                  ?.restoreRecovery(recoverable.file)
+                  .then((next) => {
+                    updateWorkspace({ snapshot: next });
+                    setRecoveryDismissed(true);
+                    setNotice('Session restored · fresh undo history');
+                  })
+                  .catch((e) => setNotice(String(e)));
+            }}
+          >
+            Restore session
+          </button>
+        </div>
+      </dialog>
       <dialog
         ref={newDialog}
         onCancel={() => setDialog(false)}

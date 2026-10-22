@@ -2,8 +2,13 @@
 
 ## 2026-10-23 — P3 serialization foundation
 
-- P3 product defaults remain unresolved. The proposed history cap is part of the
-  existing 768 MiB total CPU admission model, never an independent extra allowance.
+- User selected 256 MiB history / 200 steps, configurable within the existing
+  768 MiB total CPU budget. Oldest applied steps are evicted first; if at the
+  baseline, farthest redo steps are dropped. An edit larger than the history cap
+  can complete without a retained undo step, with visible eviction reporting.
+- Autosave every 30 seconds while changed plus best-effort tab hide. Ask
+  “Restore last session?” at startup. Project/recovery files store the document
+  only, opening a fresh undo history. These choices were confirmed on 2026-10-23.
 - Version-1 project encoding is a browser-independent Rust job in fotoeditor-io.
   It stores sparse 256² RGBA8 tiles in coordinate order and exact f64 DPI, bounded
   by the existing 128 MiB file cap. A CRC32 covers header and every tile record.
@@ -14,6 +19,27 @@
 - Project save/read jobs handle one tile per step and reserve document, file and
   bridge copies against the total CPU budget. No document pixels are processed
   in TypeScript. crc32fast is already in the approved dependency inventory.
+- Save admission can evict old history to reserve serialized output and bridge
+  copies. Recovery also reserves its readback buffers before allocating them;
+  live worker file buffers appear in temporary residency. GPU stays separately
+  capped at 128 MiB. These logical capacities exclude allocator/driver overhead.
+- Consecutive resolution edits merge within one focus/pointer gesture; navigation,
+  save and budget configuration end a merge run. Brush strokes never merge.
+- OPFS uses unique immutable generation files. The worker flushes/closes the file,
+  validates its version/coordinates/CRC in Rust, then flushes a metadata commit
+  record and reads it back. Three validated generations remain. Failed writes
+  remove only their own new files; startup cleans uncommitted files of inactive
+  sessions. No rename or single mutable head file is the durability mechanism.
+- Web Locks hold each tab's session ownership for its worker lifetime and serialize
+  catalog access. Startup ignores active sessions. Restore/discard recheck ownership
+  and stored metadata under those locks. Restoring retains the source until discard.
+- Persistent storage is requested on the main thread and its outcome passed to
+  the worker. A denial/failure is visible and does not block editing or OPFS saves.
+  Quota/write failures retain completed snapshots and offer retry/project saving.
+  Browser site-data clearing/eviction and OS power-loss durability are not promised.
+- Autosave captures only a completed, changed document, every 30 seconds and on
+  tab hide when idle. Tab-hide completion is best effort; recovery restores the
+  last committed generation, with fresh undo history, after asking the user.
 
 ## 2026-10-22 — P2 command foundation
 
