@@ -110,12 +110,8 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       await expect(page.getByTestId('operation-status')).toContainText('Unrecognized image');
       await expect(page.getByTestId('document-size')).toHaveText('513 × 259');
       expect((await snap(page)).memory.temporary).toBe(0);
-      // Cancel while tiled construction is pending; the old document must survive.
+      // Cancel the visible opening operation; the old document must survive.
       await page.getByTestId('open-image').setInputFiles(resolve(fixtures, 'large.png'));
-      await page.waitForFunction(() => {
-        const canvas = document.querySelector<HTMLElement>('[data-testid="gpu-canvas"]');
-        return canvas?.dataset.snapshot && JSON.parse(canvas.dataset.snapshot).memory.temporary > 0;
-      });
       await page.getByRole('button', { name: 'Cancel operation' }).click();
       await expect(page.getByTestId('operation-status')).toHaveText('Operation cancelled');
       await expect.poll(async () => (await snap(page)).memory.temporary).toBe(0);

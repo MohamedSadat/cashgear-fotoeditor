@@ -26,6 +26,7 @@ export function App() {
   const file = useRef<HTMLInputElement>(null);
   const newDialog = useRef<HTMLDialogElement>(null);
   const operation = useRef(0);
+  const workerJobStarted = useRef(false);
   const onFaultReady = useCallback((handler: typeof fault.current) => {
     fault.current = handler;
   }, []);
@@ -50,6 +51,7 @@ export function App() {
   const open = async (selected: File) => {
     if (!api.current || busy) return;
     const token = ++operation.current;
+    workerJobStarted.current = false;
     setBusy('Opening ' + selected.name + '…');
     setNotice('');
     const start = performance.now();
@@ -57,6 +59,7 @@ export function App() {
       if (selected.size > 128 * 1048576) throw new Error('Image files must be at most 128 MiB');
       const bytes = await selected.arrayBuffer();
       if (token !== operation.current) return;
+      workerJobStarted.current = true;
       const next = await api.current.openImage(transfer(bytes, [bytes]), selected.name);
       if (token === operation.current) {
         updateWorkspace({ snapshot: next });
@@ -71,6 +74,7 @@ export function App() {
   const exportPng = async () => {
     if (!api.current || !doc || busy) return;
     const token = ++operation.current;
+    workerJobStarted.current = true;
     setBusy('Exporting PNG…');
     setNotice('');
     try {
@@ -354,9 +358,10 @@ export function App() {
           {busy && (
             <button
               onClick={() => {
-                void Promise.resolve(api.current?.cancelJob())
+                const token = operation.current;
+                void Promise.resolve(!workerJobStarted.current || api.current?.cancelJob())
                   .then((cancelled) => {
-                    if (cancelled) {
+                    if (cancelled && token === operation.current) {
                       ++operation.current;
                       setBusy('');
                       setNotice('Operation cancelled');
