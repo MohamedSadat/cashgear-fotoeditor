@@ -1,10 +1,12 @@
 //! Straight-alpha CPU document samples. No browser or GPU types.
 mod commands;
 mod display;
+mod paging;
 mod tiles;
 mod view;
 pub use commands::*;
 pub use display::*;
+pub use paging::*;
 pub use tiles::*;
 pub use view::*;
 pub const MAX_SIDE: u32 = 16_384;
@@ -51,7 +53,13 @@ pub struct Residency {
 }
 impl Residency {
     pub fn check_cpu(&self, additional: u64) -> Result<(), String> {
-        if self.document + self.history + self.temporary + additional > CPU_BUDGET {
+        if self
+            .document
+            .saturating_add(self.history)
+            .saturating_add(self.temporary)
+            .saturating_add(additional)
+            > CPU_BUDGET
+        {
             return Err(
                 "This operation exceeds the 768 MiB document and temporary memory budget".into(),
             );
