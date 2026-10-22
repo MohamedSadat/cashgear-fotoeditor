@@ -1,6 +1,11 @@
 # Progress
 
-## P0 — Local acceptance passed; awaiting remote CI
+## P0 — Complete
+
+Completed on 2026-10-22. The implementation is verified by
+[GitHub Actions run 39778490846](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/runs/39778490846)
+at commit `5f8bc0ddab6080b806da7fb66e03e3eab3ad8ed6`. The completion report is a
+documentation-only follow-up; the `p0-scaffold` tag includes it.
 
 Shipped:
 
@@ -28,14 +33,30 @@ Local verification on 2026-10-22:
 
 Hardware browser and desktop checks used Windows 10 with NVIDIA GeForce GTX 1650
 (driver 27.21.14.5751). WebGL2 identifies the NVIDIA adapter; WebGPU intentionally
-does not expose a descriptive adapter name through wgpu on this browser. Software
-tests separately verify Google's SwiftShader WebGPU vendor and the WebGL2 driver.
+does not expose a descriptive adapter name through wgpu on this browser. A separate
+browser probe confirms vendor `nvidia`, architecture `turing`, and
+`isFallbackAdapter: false` in both installed browsers.
+
+Remote verification passed every configured check, all 14 software browser tests,
+the Windows desktop build, and WebView2 launch/rendering on both backends with
+cross-origin isolation. Browser coverage includes rendered pixels from Rust texture
+uploads, fallback after adapter/device failure, DPR changes, resizing, zero-size
+pause/resume, disposal, initialization failure, device loss, panic, and retry.
+Software browser tests assert SwiftShader; the desktop test uses SwiftShader for
+WebGPU and the Microsoft WARP driver for WebGL2. These are functional results,
+not hardware performance measurements.
+
+CI's optimized WASM measured 1,913,528 bytes, or 782,698 bytes with gzip level 9,
+also below the 1,500,000-byte limit. Both local and CI builds enforce the limit.
+CI artifacts retain the size report, browser report, desktop metadata, and desktop
+screenshot. The runner-specific WebView2 argument policy is restored after testing.
 
 Known limitations: P0 opens no image and has no editing tools. Installer/updater and
 native file integration remain P10 work. Windows 11 and other hardware are not
 claimed as tested. Static hosting is prepared; no public deployment was requested.
 
-The p0-scaffold completion tag will be created only after GitHub Actions passes.
+The `p0-scaffold` tag marks the validated foundation. There are no known outstanding
+P0 acceptance failures.
 
 No later editing phase has started.
 
