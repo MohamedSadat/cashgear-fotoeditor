@@ -13,7 +13,11 @@ for (const backend of ['WebGPU', 'WebGL2']) {
   const query = backend === 'WebGL2' ? '?gpu=webgl2' : '';
   test(
     backend + ' opens exact PNG samples, navigates and exports unchanged pixels',
-    async ({ page }) => {
+    async ({ page }, testInfo) => {
+      // Shared CI CPUs run both SwiftShader and the compositor in software.
+      // This combined I/O/navigation flow is functional coverage; hardware timing
+      // is measured separately by bench:viewport, with unchanged assertions.
+      if (testInfo.project.name.startsWith('software-')) test.setTimeout(180_000);
       await page.goto('/' + query);
       await expect(page.getByTestId('gpu-backend')).toHaveText(backend);
       await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');
