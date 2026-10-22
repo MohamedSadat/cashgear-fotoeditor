@@ -1,0 +1,52 @@
+name: P0 checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  foundation:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      GPU_TEST_SOFTWARE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.11.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.1
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm setup:wasm
+      - run: cargo fmt --all --check
+      - run: pnpm build
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy -p fotoeditor-wasm --target wasm32-unknown-unknown -- -D warnings
+      - run: cargo test --workspace
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm test
+      - run: pnpm licenses:check
+      - run: pnpm exec playwright install chromium
+      - run: pnpm test:e2e
+      - run: pnpm desktop:build
+      - run: pnpm desktop:smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p0-verification
+          path: |
+            bench/results/
+            playwright-report/
+            test-results/

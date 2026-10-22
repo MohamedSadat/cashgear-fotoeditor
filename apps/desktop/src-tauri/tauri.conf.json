@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "CashGear FotoEditor",
+  "version": "0.1.0",
+  "identifier": "com.cashgear.fotoeditor",
+  "build": {
+    "beforeDevCommand": "pnpm --dir ../.. dev",
+    "devUrl": "http://127.0.0.1:5173",
+    "frontendDist": "../../web/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "CashGear FotoEditor",
+        "width": 1280,
+        "height": 850,
+        "minWidth": 640,
+        "minHeight": 480
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; worker-src 'self'; connect-src 'self' ipc: http://ipc.localhost",
+      "headers": {
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Embedder-Policy": "require-corp",
+        "Cross-Origin-Resource-Policy": "same-origin"
+      }
+    }
+  },
+  "bundle": {
+    "active": false
+  }
+}

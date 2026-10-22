@@ -1,0 +1,14 @@
+node_modules/
+target/
+dist/
+pkg/
+test-results/
+playwright-report/
+.vite/
+.tools/
+bench/results/
+apps/desktop/src-tauri/gen/
+*.log
+.env
+.env.*
+!.env.example

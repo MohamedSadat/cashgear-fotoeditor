@@ -1,0 +1,15 @@
+[package]
+name = "fotoeditor-gpu"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dev-dependencies]
+naga = { version = "=30.0.1", features = ["wgsl-in"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wgpu.workspace = true
+wasm-bindgen.workspace = true
+js-sys.workspace = true
+web-sys = { workspace = true, features = ["OffscreenCanvas"] }

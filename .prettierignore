@@ -1,0 +1,11 @@
+pnpm-lock.yaml
+Cargo.lock
+target/
+**/dist/
+**/pkg/
+.tools/
+bench/results/
+test-results/
+playwright-report/
+docs/LICENSES.md
+apps/desktop/src-tauri/gen/
