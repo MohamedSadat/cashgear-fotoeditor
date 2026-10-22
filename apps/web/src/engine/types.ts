@@ -23,13 +23,23 @@ export interface FrameResult extends PhysicalSize {
   snapshot?: DocumentSnapshot;
 }
 export interface DocumentSnapshot {
+  revision: number;
+  operation?: string;
+  recovery?: RecoveryStatus;
   document: { width: number; height: number; dpi: number; tiles: number } | null;
   view: { zoom: number; rotation: number; flipped: boolean; panX: number; panY: number };
   memory: { document: number; history: number; temporary: number; gpu: number };
   visibleTiles: number;
   refining: number;
   uploadedBytes: number;
-  history: { undo: number; redo: number };
+  history: {
+    undo: number;
+    redo: number;
+    labels: string[];
+    bytesLimit: number;
+    stepsLimit: number;
+    evicted: number;
+  };
   painting: boolean;
   pendingSamples: number;
   paintTime: number;
@@ -64,6 +74,18 @@ export interface Interaction {
   sample?: [number, number, number, number, number, number];
 }
 export interface EngineApi {
+  configureHistory(bytes: number, steps: number): Promise<void>;
+  historyJump(target: number): Promise<void>;
+  resolution(dpi: number, gesture: number): Promise<void>;
+  openProject(bytes: ArrayBuffer, name: string): Promise<DocumentSnapshot>;
+  saveProject(): Promise<Uint8Array>;
+  startRecovery(persistent: RecoveryStatus['persistent']): Promise<void>;
+  autosave(): Promise<void>;
+  restoreRecovery(file: string): Promise<DocumentSnapshot>;
+  discardRecovery(file: string): Promise<void>;
+  diagnosticRecoveryFault(
+    fault: 'quota' | 'partial' | 'after-flush' | 'pause-after-chunk',
+  ): Promise<void>;
   init(canvas: OffscreenCanvas, options: InitOptions): Promise<EngineInfo>;
   resize(size: PhysicalSize): void | Promise<void>;
   frame(
@@ -82,6 +104,20 @@ export interface EngineApi {
   openImage(bytes: ArrayBuffer, name: string): Promise<DocumentSnapshot>;
   exportPng(): Promise<Uint8Array>;
   cancelJob(): boolean | Promise<boolean>;
+}
+export interface RecoveryCandidate {
+  session: string;
+  file: string;
+  name: string;
+  savedAt: number;
+  size: number;
+}
+export interface RecoveryStatus {
+  state: 'starting' | 'idle' | 'saving' | 'saved' | 'error' | 'unavailable';
+  persistent: 'granted' | 'denied' | 'unavailable';
+  candidates: RecoveryCandidate[];
+  lastSavedAt?: number;
+  error?: string;
 }
 export interface EngineFatalEvent {
   type: 'engine-fatal';

@@ -2,6 +2,9 @@ import { expose, transfer } from 'comlink';
 import type { EngineApi, EngineInfo, InitOptions, PhysicalSize, Interaction } from './types';
 import initWasm, { Engine } from './pkg/fotoeditor_wasm';
 import type { DocumentSnapshot } from './types';
+import type { RecoveryStatus } from './types';
+import { RecoveryStore } from './recovery';
+import type { RecoveryFault } from './recovery';
 
 let engine: Engine | undefined;
 let initializing = false;
@@ -19,12 +22,24 @@ let sampledColor: DocumentSnapshot['sampledColor'];
 let inputsWaiting: Interaction[] = [];
 let dirty = true;
 let refining = false;
+let operation: string | undefined;
+let recovery: RecoveryStatus = { state: 'starting', persistent: 'unavailable', candidates: [] };
+let store: RecoveryStore | undefined;
+let savedRevision = -1;
+let recoveryFault: RecoveryFault | undefined;
+let externalBytes = 0;
+function external(bytes: number) {
+  requireEngine().external_bytes(bytes);
+  externalBytes = bytes;
+}
 const yieldTask = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 function snapshot(): DocumentSnapshot {
   const p = cursorScreen ? engine!.cursor(...cursorScreen) : undefined;
   const state = JSON.parse(engine!.snapshot()) as DocumentSnapshot;
   return {
     ...state,
+    operation,
+    recovery,
     // A completed stroke can have the next stroke waiting behind it. Keep the
     // entire queued edit busy so open/export cannot interleave in that gap.
     painting: state.painting || inputsWaiting.some((input) => input.kind.startsWith('stroke-')),
@@ -42,7 +57,203 @@ function requireEngine() {
 function fatal(message: string) {
   self.postMessage({ type: 'engine-fatal', message });
 }
+function requireIdle() {
+  const e = requireEngine();
+  if (busy || snapshot().painting) throw new Error('Finish or cancel the current operation first');
+  return e;
+}
+async function readProject(bytes: Uint8Array, commit: boolean, token = job) {
+  const e = requireEngine();
+  const priorExternal = externalBytes;
+  try {
+    external(priorExternal + bytes.length);
+    if (commit) e.begin_project_read(bytes);
+    else e.begin_project_validation(bytes);
+    let done = false;
+    while (!done) {
+      for (let i = 0; i < 8 && !done; i++) done = e.project_read_step();
+      await yieldTask();
+      if (disposed || token !== job) throw new Error('Operation cancelled');
+    }
+    if (commit) e.finish_project_read(true);
+  } finally {
+    if (!disposed) {
+      e.cancel_job();
+      external(priorExternal);
+    }
+  }
+}
+async function writeProject(token = job, recovery = false) {
+  const e = requireEngine();
+  e.begin_project_write(recovery);
+  let done = false;
+  while (!done) {
+    for (let i = 0; i < 8 && !done; i++) done = e.project_write_step();
+    await yieldTask();
+    if (disposed || token !== job) throw new Error('Operation cancelled');
+  }
+  const bytes = e.finish_project_write();
+  external(bytes.length);
+  return bytes;
+}
+function replaced(fileName: string) {
+  name = fileName;
+  inputsWaiting = [];
+  dirty = true;
+  cursorScreen = undefined;
+  editError = undefined;
+  sampledColor = undefined;
+}
 const api: EngineApi = {
+  async configureHistory(bytes, steps) {
+    requireIdle().history_limits(bytes, steps);
+  },
+  async historyJump(target) {
+    requireIdle().history_jump(target);
+    dirty = true;
+  },
+  async resolution(dpi, gesture) {
+    requireIdle().resolution(dpi, gesture);
+  },
+  async openProject(buffer, fileName) {
+    const e = requireIdle();
+    busy = true;
+    operation = 'Opening project…';
+    const token = ++job;
+    try {
+      await readProject(new Uint8Array(buffer), true, token);
+      buffer = new ArrayBuffer(0);
+      replaced(fileName);
+      return snapshot();
+    } finally {
+      if (token === job) {
+        e.cancel_job();
+        busy = false;
+        operation = undefined;
+      }
+    }
+  },
+  async saveProject() {
+    const e = requireIdle();
+    busy = true;
+    operation = 'Saving project…';
+    const token = ++job;
+    try {
+      const bytes = await writeProject(token);
+      return transfer(bytes, [bytes.buffer]);
+    } finally {
+      if (token === job) {
+        e.cancel_job();
+        external(0);
+        busy = false;
+        operation = undefined;
+      }
+    }
+  },
+  async startRecovery(persistent) {
+    requireIdle();
+    busy = true;
+    recovery = { state: 'starting', persistent, candidates: [] };
+    try {
+      store = new RecoveryStore(
+        (bytes) => readProject(bytes, false),
+        (size) => requireEngine().admit_project_buffer(size),
+      );
+      await store.init();
+      const scan = await store.scan();
+      recovery = {
+        ...recovery,
+        state: 'idle',
+        candidates: scan.candidates,
+        error: scan.invalid
+          ? 'A damaged recovery generation was ignored; prior valid snapshots were checked.'
+          : undefined,
+      };
+    } catch (error) {
+      recovery = { ...recovery, state: 'unavailable', error: String(error) };
+    } finally {
+      busy = false;
+    }
+  },
+  async autosave() {
+    if (
+      !store ||
+      recovery.state === 'starting' ||
+      recovery.state === 'unavailable' ||
+      busy ||
+      snapshot().painting
+    )
+      return;
+    const state = snapshot();
+    if (!state.document || state.revision === savedRevision) return;
+    const e = requireEngine();
+    busy = true;
+    operation = 'Autosaving…';
+    const token = ++job;
+    recovery = { ...recovery, state: 'saving', error: undefined };
+    try {
+      const bytes = await writeProject(token, true);
+      const fault = recoveryFault;
+      recoveryFault = undefined;
+      const result = await store.save(bytes, name, fault);
+      if (disposed || token !== job) return;
+      savedRevision = state.revision;
+      recovery = { ...recovery, state: 'saved', lastSavedAt: result.savedAt };
+    } catch (error) {
+      if (!disposed && token === job)
+        recovery = {
+          ...recovery,
+          state: 'error',
+          error:
+            String(error) +
+            ' · Previous completed snapshots are retained. Retry autosave or save a project.',
+        };
+    } finally {
+      if (!disposed && token === job) {
+        e.cancel_job();
+        external(0);
+        busy = false;
+        operation = undefined;
+      }
+    }
+  },
+  async restoreRecovery(file) {
+    const e = requireIdle();
+    const candidate = recovery.candidates.find((c) => c.file === file);
+    if (!store || !candidate) throw new Error('Recovery snapshot is unavailable');
+    busy = true;
+    operation = 'Restoring session…';
+    const token = ++job;
+    try {
+      await store.restore(candidate, (bytes) => readProject(bytes, true, token));
+      replaced(candidate.name);
+      // Source generations survive until the user explicitly discards them.
+      recovery = { ...recovery, candidates: recovery.candidates.filter((c) => c.file !== file) };
+      return snapshot();
+    } finally {
+      if (token === job) {
+        e.cancel_job();
+        busy = false;
+        operation = undefined;
+      }
+    }
+  },
+  async discardRecovery(file) {
+    requireIdle();
+    const candidate = recovery.candidates.find((c) => c.file === file);
+    if (!store || !candidate) throw new Error('Recovery snapshot is unavailable');
+    busy = true;
+    try {
+      await store.discard(candidate);
+      recovery = { ...recovery, candidates: recovery.candidates.filter((c) => c.file !== file) };
+    } finally {
+      busy = false;
+    }
+  },
+  async diagnosticRecoveryFault(fault) {
+    if (!diagnostic) throw new Error('Diagnostics are disabled');
+    recoveryFault = fault;
+  },
   async init(canvas: OffscreenCanvas, options: InitOptions): Promise<EngineInfo> {
     if (engine || initializing || disposed)
       throw new Error('Engine worker cannot be initialized twice');
@@ -137,6 +348,7 @@ const api: EngineApi = {
     presentation?.reject(new Error('Engine disposed'));
     presentation = undefined;
     disposed = true;
+    store?.dispose();
     engine?.dispose();
     engine?.free();
     engine = undefined;
@@ -281,9 +493,11 @@ const api: EngineApi = {
   cancelJob() {
     // A completed document replacement is atomic and cannot be cancelled after
     // commit while it waits for its first normal viewport frame.
-    if (!busy) return false;
+    if (!busy || operation === 'Autosaving…' || operation === 'Restoring session…') return false;
     ++job;
     requireEngine().cancel_job();
+    external(0);
+    operation = undefined;
     busy = false;
     return true;
   },

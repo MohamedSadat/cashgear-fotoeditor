@@ -2,8 +2,8 @@
 #[cfg(target_arch = "wasm32")]
 mod bridge {
     use fotoeditor_brush::{BrushSettings, Sample, StrokeCommand};
-    use fotoeditor_core::{Document, History, Residency, View};
-    use fotoeditor_io::{ExportJob, ImportJob};
+    use fotoeditor_core::{Document, History, HistoryLimits, Residency, ResolutionCommand, View};
+    use fotoeditor_io::{ExportJob, ImportJob, ProjectReader, ProjectWriter};
     use std::cell::RefCell;
     use wasm_bindgen::prelude::*;
     const DISPLAY_SCRATCH: u64 = 1024 * 1024;
@@ -32,6 +32,10 @@ mod bridge {
         dpr: f64,
         import: Option<ImportJob>,
         export: Option<ExportJob>,
+        project_read: Option<ProjectReader>,
+        project_write: Option<ProjectWriter>,
+        revision: u32,
+        external_bytes: u64,
     }
 
     // Lifecycle replacement starts a new editing session and releases its history.
@@ -53,6 +57,7 @@ mod bridge {
                     self.paint_time = 0.0;
                     self.paint_complete_time = 0.0;
                     self.renderer.clear_tiles();
+                    self.revision = self.revision.wrapping_add(1);
                 }
             }
         }
@@ -61,7 +66,16 @@ mod bridge {
                 document: self.document.as_ref().map_or(0, |d| d.raster.bytes()),
                 history: self.document.as_ref().map_or(0, |d| self.history.bytes(d)),
                 temporary: self.import.as_ref().map_or(0, |j| j.temporary_bytes())
+                    + self.external_bytes
                     + self.export.as_ref().map_or(0, |j| j.temporary_bytes())
+                    + self
+                        .project_read
+                        .as_ref()
+                        .map_or(0, |j| j.temporary_bytes())
+                    + self
+                        .project_write
+                        .as_ref()
+                        .map_or(0, |j| j.temporary_bytes())
                     + self
                         .stroke
                         .as_ref()
@@ -96,6 +110,10 @@ mod bridge {
                 dpr: 1.0,
                 import: None,
                 export: None,
+                project_read: None,
+                project_write: None,
+                revision: 0,
+                external_bytes: 0,
             })
         }
         pub fn backend(&self) -> String {
@@ -158,10 +176,66 @@ mod bridge {
             Ok(())
         }
         pub fn undo(&mut self) -> bool {
-            self.document.as_mut().is_some_and(|d| self.history.undo(d))
+            let changed = self.document.as_mut().is_some_and(|d| self.history.undo(d));
+            self.revision = self.revision.wrapping_add(u32::from(changed));
+            changed
         }
         pub fn redo(&mut self) -> bool {
-            self.document.as_mut().is_some_and(|d| self.history.redo(d))
+            let changed = self.document.as_mut().is_some_and(|d| self.history.redo(d));
+            self.revision = self.revision.wrapping_add(u32::from(changed));
+            changed
+        }
+        pub fn history_limits(&mut self, bytes: u32, steps: u32) -> Result<(), JsValue> {
+            if let Some(doc) = &self.document {
+                self.history
+                    .configure(
+                        doc,
+                        HistoryLimits {
+                            bytes: bytes as u64,
+                            steps: steps as usize,
+                        },
+                    )
+                    .map_err(|e| JsValue::from_str(&e))?;
+            } else if bytes as u64 <= fotoeditor_core::CPU_BUDGET && steps <= 2000 {
+                self.history.limits = HistoryLimits {
+                    bytes: bytes as u64,
+                    steps: steps as usize,
+                };
+            } else {
+                return Err(JsValue::from_str("Invalid history limits"));
+            }
+            Ok(())
+        }
+        pub fn history_jump(&mut self, target: u32) -> Result<(), JsValue> {
+            let doc = self
+                .document
+                .as_mut()
+                .ok_or_else(|| JsValue::from_str("No document"))?;
+            let changed = self
+                .history
+                .jump(doc, target as usize)
+                .map_err(|e| JsValue::from_str(&e))?;
+            self.revision = self.revision.wrapping_add(u32::from(changed));
+            Ok(())
+        }
+        pub fn resolution(&mut self, dpi: f64, gesture: u32) -> Result<(), JsValue> {
+            let doc = self
+                .document
+                .as_mut()
+                .ok_or_else(|| JsValue::from_str("No document"))?;
+            fotoeditor_core::validate_size(doc.width, doc.height, dpi)
+                .map_err(|e| JsValue::from_str(&e))?;
+            let command = ResolutionCommand {
+                before: doc.dpi,
+                after: dpi,
+                gesture,
+            };
+            let changed = self
+                .history
+                .execute(doc, Box::new(command), 0)
+                .map_err(|e| JsValue::from_str(&e))?;
+            self.revision = self.revision.wrapping_add(u32::from(changed));
+            Ok(())
         }
         pub fn stroke_begin(&mut self, settings: &str) -> Result<(), JsValue> {
             if self.stroke.is_some() {
@@ -232,9 +306,11 @@ mod bridge {
                     .unwrap()
                     .finish()
                     .map_err(|e| JsValue::from_str(&e))?;
-                self.history
+                let changed = self
+                    .history
                     .execute(self.document.as_mut().unwrap(), Box::new(command), 0)
                     .map_err(|e| JsValue::from_str(&e))?;
+                self.revision = self.revision.wrapping_add(u32::from(changed));
             }
             Ok(())
         }
@@ -299,6 +375,92 @@ mod bridge {
         pub fn cancel_job(&mut self) {
             self.import = None;
             self.export = None;
+            self.project_read = None;
+            self.project_write = None;
+        }
+        pub fn begin_project_read(&mut self, bytes: &[u8]) -> Result<(), JsValue> {
+            self.project_read = Some(
+                ProjectReader::new(bytes, self.residency()).map_err(|e| JsValue::from_str(&e))?,
+            );
+            Ok(())
+        }
+        pub fn external_bytes(&mut self, bytes: u32) -> Result<(), JsValue> {
+            let mut r = self.residency();
+            r.temporary = r.temporary.saturating_sub(self.external_bytes);
+            r.check_cpu(bytes as u64)
+                .map_err(|e| JsValue::from_str(&e))?;
+            self.external_bytes = bytes as u64;
+            Ok(())
+        }
+        pub fn admit_project_buffer(&self, size: u32) -> Result<(), JsValue> {
+            self.residency()
+                .check_cpu(3 * size as u64 + 262144)
+                .map_err(|e| JsValue::from_str(&e))
+        }
+        pub fn begin_project_validation(&mut self, bytes: &[u8]) -> Result<(), JsValue> {
+            self.project_read = Some(
+                ProjectReader::validator(bytes, self.residency())
+                    .map_err(|e| JsValue::from_str(&e))?,
+            );
+            Ok(())
+        }
+        pub fn project_read_step(&mut self) -> Result<bool, JsValue> {
+            self.project_read
+                .as_mut()
+                .ok_or_else(|| JsValue::from_str("No project read"))?
+                .step()
+                .map_err(|e| JsValue::from_str(&e))
+        }
+        pub fn finish_project_read(&mut self, commit: bool) -> Result<(), JsValue> {
+            let doc = self
+                .project_read
+                .take()
+                .ok_or_else(|| JsValue::from_str("No project read"))?
+                .finish()
+                .map_err(|e| JsValue::from_str(&e))?;
+            if commit {
+                self.execute(SessionCommand::ReplaceDocument(doc));
+            }
+            Ok(())
+        }
+        pub fn begin_project_write(&mut self, recovery: bool) -> Result<(), JsValue> {
+            let doc = self
+                .document
+                .as_ref()
+                .ok_or_else(|| JsValue::from_str("No document"))?;
+            let size = 40 + doc.raster.tiles().len() as u64 * (262144 + 8);
+            if size > fotoeditor_io::MAX_FILE_BYTES {
+                return Err(JsValue::from_str("Project exceeds the 128 MiB file limit"));
+            }
+            // Recovery also holds serialized output while readback validation uses
+            // JS input, bridge input and parser bytes. Evict before allocating them.
+            self.history
+                .reserve(doc, size * if recovery { 4 } else { 2 } + 262144)
+                .map_err(|e| JsValue::from_str(&e))?;
+            self.project_write = Some(
+                ProjectWriter::new(
+                    self.document
+                        .as_ref()
+                        .ok_or_else(|| JsValue::from_str("No document"))?,
+                    self.residency(),
+                )
+                .map_err(|e| JsValue::from_str(&e))?,
+            );
+            Ok(())
+        }
+        pub fn project_write_step(&mut self) -> Result<bool, JsValue> {
+            Ok(self
+                .project_write
+                .as_mut()
+                .ok_or_else(|| JsValue::from_str("No project save"))?
+                .step())
+        }
+        pub fn finish_project_write(&mut self) -> Result<Vec<u8>, JsValue> {
+            self.project_write
+                .take()
+                .ok_or_else(|| JsValue::from_str("No project save"))?
+                .finish()
+                .map_err(|e| JsValue::from_str(&e))
         }
         pub fn navigate(&mut self, kind: &str, x: f64, y: f64, amount: f64) {
             if !x.is_finite() || !y.is_finite() || !amount.is_finite() {
@@ -333,7 +495,8 @@ mod bridge {
             serde_json::json!({"document":self.document.as_ref().map(|d|serde_json::json!({"width":d.width,"height":d.height,"dpi":d.dpi,"tiles":d.raster.tiles().len()})),
                 "view":{"zoom":v.zoom,"rotation":v.rotation,"flipped":v.flipped,"panX":v.pan_x,"panY":v.pan_y},
                 "memory":{"document":r.document,"history":r.history,"temporary":r.temporary,"gpu":r.gpu},
-                "history":{"undo":self.history.depths().0,"redo":self.history.depths().1},
+                "history":{"undo":self.history.depths().0,"redo":self.history.depths().1,"labels":self.history.labels(),"bytesLimit":self.history.limits.bytes,"stepsLimit":self.history.limits.steps,"evicted":self.history.evicted},
+                "revision":self.revision,
                 "painting":self.stroke.is_some(),"pendingSamples":self.stroke.as_ref().map_or(0,|s|s.pending()),
                 "paintTime":self.paint_time,
                 "paintCompleteTime":self.paint_complete_time,

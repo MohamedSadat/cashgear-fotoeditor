@@ -78,12 +78,19 @@ pub struct ProjectReader {
     next: usize,
     seen: HashSet<TileCoord>,
     checksum: crc32fast::Hasher,
+    materialize: bool,
 }
 fn u32_at(bytes: &[u8], offset: usize) -> u32 {
     u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap())
 }
 impl ProjectReader {
     pub fn new(bytes: &[u8], residency: Residency) -> Result<Self, String> {
+        Self::read(bytes, residency, true)
+    }
+    pub fn validator(bytes: &[u8], residency: Residency) -> Result<Self, String> {
+        Self::read(bytes, residency, false)
+    }
+    fn read(bytes: &[u8], residency: Residency, materialize: bool) -> Result<Self, String> {
         if bytes.len() < HEADER + 4 || bytes.len() as u64 > MAX_FILE_BYTES || &bytes[..8] != MAGIC {
             return Err("Invalid CashGear project (or file exceeds 128 MiB)".into());
         }
@@ -104,9 +111,17 @@ impl ProjectReader {
         {
             return Err("Invalid or truncated project tile directory".into());
         }
-        // JS input, bridge input and retained parser bytes plus pending tile samples.
-        residency
-            .check_cpu(3 * bytes.len() as u64 + count as u64 * TILE_BYTES as u64 + RECORD as u64)?;
+        // Bridge input and retained parser bytes plus pending tile samples.
+        // The worker accounts for its JS input in external residency before calling.
+        residency.check_cpu(
+            2 * bytes.len() as u64
+                + if materialize {
+                    count as u64 * TILE_BYTES as u64
+                } else {
+                    0
+                }
+                + RECORD as u64,
+        )?;
         let mut checksum = crc32fast::Hasher::new();
         checksum.update(&bytes[..HEADER]);
         Ok(Self {
@@ -116,6 +131,7 @@ impl ProjectReader {
             next: 0,
             seen: HashSet::new(),
             checksum,
+            materialize,
         })
     }
     pub fn temporary_bytes(&self) -> u64 {
@@ -132,13 +148,15 @@ impl ProjectReader {
             {
                 return Err("Invalid or duplicate project tile coordinate".into());
             }
-            let pixels = record[8..]
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .map(|p| Rgba8(*p))
-                .collect();
-            self.document.raster.insert(coord, pixels);
+            if self.materialize {
+                let pixels = record[8..]
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|p| Rgba8(*p))
+                    .collect();
+                self.document.raster.insert(coord, pixels);
+            }
             self.checksum.update(record);
             self.next += 1;
         }
@@ -150,7 +168,8 @@ impl ProjectReader {
         Ok(self.next == self.count)
     }
     pub fn finish(self) -> Result<Document, String> {
-        if self.next != self.count
+        if !self.materialize
+            || self.next != self.count
             || self.checksum.finalize() != u32_at(&self.bytes, self.bytes.len() - 4)
         {
             return Err("Project load is incomplete or corrupt".into());

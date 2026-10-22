@@ -180,7 +180,8 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
         canvas.setPointerCapture(event.pointerId);
       } else if (
         (event.button === 0 || event.button === 5) &&
-        useWorkspace.getState().snapshot?.document
+        useWorkspace.getState().snapshot?.document &&
+        !useWorkspace.getState().snapshot?.operation
       ) {
         event.preventDefault();
         const brush = useBrush.getState();
@@ -192,6 +193,9 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
           return;
         }
         if (strokePointer !== undefined) return;
+        updateWorkspace((state) => ({
+          snapshot: state.snapshot ? { ...state.snapshot, painting: true } : undefined,
+        }));
         strokePointer = event.pointerId;
         strokeSettings = brush.settings;
         canvas.setPointerCapture(event.pointerId);
@@ -348,8 +352,19 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
             ? (params.get('fault') as 'adapter' | 'device')
             : undefined,
       })
-      .then((info) => {
+      .then(async (info) => {
         clearTimeout(timeout);
+        if (disposed || failed) return;
+        let persistent: 'granted' | 'denied' | 'unavailable' = 'unavailable';
+        try {
+          // StorageManager.persist() belongs to Window, never the engine worker.
+          if (navigator.storage?.persist)
+            persistent = (await navigator.storage.persist()) ? 'granted' : 'denied';
+        } catch {
+          /* Storage denial must not prevent editing. */
+        }
+        if (disposed || failed) return;
+        await client.api.startRecovery(persistent);
         if (disposed || failed) return;
         canvas.dataset.backend = info.backend;
         updateWorkspace({ ...info, status: 'ready' });
