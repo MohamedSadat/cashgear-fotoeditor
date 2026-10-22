@@ -10,6 +10,16 @@
 * {
   box-sizing: border-box;
 }
+[hidden] {
+  display: none !important;
+}
+.brand,
+.file-actions {
+  flex-shrink: 0;
+}
+.file-actions button {
+  white-space: nowrap;
+}
 body {
   margin: 0;
 }
@@ -170,6 +180,17 @@ button {
   display: block;
   width: 100%;
   height: 100%;
+}
+.preview-refining {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  pointer-events: none;
+  background: #161b23c9;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: #d5dce6;
 }
 .canvas-welcome {
   pointer-events: none;
@@ -425,5 +446,193 @@ dd {
 @media (prefers-reduced-motion: reduce) {
   .spinner {
     animation: none;
+  }
+}
+button,
+input,
+select {
+  font: inherit;
+}
+button {
+  color: #d5dce6;
+  background: #292f39;
+  border: 1px solid #404956;
+  border-radius: 6px;
+  padding: 9px 14px;
+  font-size: 12px;
+}
+button:hover:enabled {
+  background: #353e4b;
+  border-color: #7f8997;
+}
+button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+button.primary {
+  background: #f7a976;
+  border-color: #f7a976;
+  color: #231d18;
+}
+button.primary:hover:enabled {
+  background: #ffbc93;
+}
+.file-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+}
+.file-actions span {
+  margin-left: 14px;
+}
+.rail {
+  gap: 12px;
+}
+.rail button {
+  padding: 0;
+  width: 40px;
+  height: 40px;
+  font-size: 18px;
+}
+.rail button:first-child {
+  color: #f7a976;
+  background: #332921;
+  border-color: #57402f;
+}
+.canvas-host canvas {
+  touch-action: none;
+  outline-offset: -3px;
+}
+.canvas-welcome {
+  pointer-events: none;
+}
+.welcome-actions {
+  pointer-events: auto;
+  display: flex;
+  gap: 10px;
+  margin-top: 24px;
+}
+.inspector {
+  padding-top: 28px;
+  overflow-y: auto;
+}
+.inspector h2 {
+  margin: 14px 0 10px;
+}
+.section-divider {
+  margin: 12px 0 18px;
+  flex-shrink: 0;
+}
+dl {
+  margin-bottom: 0;
+}
+dl > div {
+  margin-bottom: 14px;
+}
+.workspace-note {
+  margin-top: auto;
+}
+.operation-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  gap: 12px;
+  padding: 7px 24px;
+  background: #252c36;
+  font-size: 12px;
+}
+.operation-message {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.operation-bar button {
+  flex-shrink: 0;
+  padding: 5px 10px;
+}
+.cursor-position {
+  margin-left: 20px;
+  font-variant-numeric: tabular-nums;
+}
+dialog {
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  border: 1px solid #4b5665;
+  border-radius: 12px;
+  color: #e9ecf0;
+  background: #20252e;
+  padding: 30px;
+  box-shadow: 0 24px 100px #0008;
+}
+dialog::backdrop {
+  background: #080c12aa;
+}
+dialog h2 {
+  font-size: 26px;
+  font-weight: 500;
+  margin: 12px 0 24px;
+}
+dialog label {
+  display: block;
+  font-size: 12px;
+  color: #b8c2d0;
+  margin-bottom: 18px;
+}
+dialog label span {
+  float: right;
+  color: #788699;
+}
+input,
+select {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid #465263;
+  border-radius: 5px;
+  background: #161b23;
+  color: #e9ecf0;
+}
+.dimensions {
+  display: flex;
+  gap: 16px;
+}
+.dimensions label {
+  width: 50%;
+}
+.dialog-note {
+  font-size: 11px;
+  color: #8594a8;
+  line-height: 1.7;
+  margin-bottom: 24px;
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+@media (max-width: 760px) {
+  .brand strong {
+    font-size: 13px;
+  }
+  .brand-mark {
+    display: none;
+  }
+  .file-actions {
+    gap: 5px;
+  }
+  .file-actions button {
+    padding: 8px;
+    font-size: 10px;
+  }
+  .file-actions span {
+    display: none;
+  }
+  .welcome-actions {
+    flex-direction: column;
   }
 }

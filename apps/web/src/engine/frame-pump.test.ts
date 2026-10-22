@@ -7,6 +7,33 @@ const settle = async () => {
 };
 
 describe('FramePump ownership and backpressure', () => {
+  it('batches ordered navigation before the next frame and retains the latest cursor', async () => {
+    const calls: string[] = [];
+    const api = {
+      resize: vi.fn(),
+      interact: vi.fn((inputs) => {
+        calls.push('input');
+        expect(inputs).toEqual([
+          { kind: 'pan', x: 3, y: 4, amount: 0 },
+          { kind: 'zoom', x: 10, y: 20, amount: 2 },
+          { kind: 'cursor', x: 11, y: 21, amount: 0 },
+        ]);
+      }),
+      frame: vi.fn(() => {
+        calls.push('frame');
+        return frame;
+      }),
+    };
+    const pump = new FramePump(api, vi.fn(), vi.fn());
+    pump.resize({ width: 100, height: 100 });
+    pump.input({ kind: 'cursor', x: 1, y: 2, amount: 0 });
+    pump.input({ kind: 'pan', x: 3, y: 4, amount: 0 });
+    pump.input({ kind: 'zoom', x: 10, y: 20, amount: 2 });
+    pump.input({ kind: 'cursor', x: 11, y: 21, amount: 0 });
+    pump.tick(1);
+    await settle();
+    expect(calls).toEqual(['input', 'frame']);
+  });
   it('never overlaps RPC transactions and applies only the latest pending resize', async () => {
     let complete!: (result: FrameResult) => void;
     const api = {

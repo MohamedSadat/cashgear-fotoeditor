@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Backend } from './engine/types';
+import type { DocumentSnapshot } from './engine/types';
 interface WorkspaceState {
   status: 'starting' | 'ready' | 'error';
   backend?: Backend;
@@ -7,6 +8,7 @@ interface WorkspaceState {
   error?: string;
   size: { width: number; height: number };
   frames: number;
+  snapshot?: DocumentSnapshot;
 }
 export const useWorkspace = create<WorkspaceState>(() => ({
   status: 'starting',
