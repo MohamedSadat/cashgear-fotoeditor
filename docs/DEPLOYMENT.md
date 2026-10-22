@@ -48,6 +48,12 @@ confirm crossOriginIsolated, and verify worker and WASM asset responses. See
 [Azure's build settings](https://learn.microsoft.com/en-us/azure/static-web-apps/build-configuration#skip-building-front-end-app)
 and [host configuration](https://learn.microsoft.com/en-us/azure/static-web-apps/configuration).
 
+Set E2E_BASE_URL to the deployed HTTPS origin to run Playwright against production
+without starting a local preview. P1 viewport tests open deterministic fixtures,
+verify rendered samples and export pixel equality on both installed browsers and
+GPU backends. These files are processed locally in the browser worker; no image
+upload service is used. Clear E2E_BASE_URL to return to the local preview tests.
+
 ## Desktop
 
 Tauri loads the same static files and sets the isolation headers through its

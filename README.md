@@ -1,7 +1,16 @@
 # CashGear FotoEditor
 
-A focused photo editing and painting workspace. P0 establishes a Rust/WASM worker
-and wgpu display pipeline with WebGPU and WebGL2. Image editing starts in P1.
+A focused photo editing and painting workspace. P1 opens PNG, JPEG and WebP images,
+creates transparent canvases, and exports lossless RGBA8 PNG. The worker-owned Rust
+engine displays sparse tiles through WebGPU or WebGL2. Painting starts in P2.
+
+Use New canvas or Open image, or drop an image into the viewport. Wheel/two-finger
+gestures scroll; Ctrl/Cmd+wheel or trackpad pinch zooms around the pointer.
+Space+drag or middle mouse pans; R+drag rotates. The left rail fits, resets to
+100%, rotates, flips and resets rotation. View changes never modify export pixels.
+The document limit is 16,384 pixels per side; dense images also have a memory
+admission limit. PNG/JPEG/WebP files and PNG exports are capped at 128 MiB.
+16-bit input and color-profile conversion remain later-phase work.
 
 ## Prerequisites
 
@@ -46,6 +55,7 @@ Installers, native file integration, and updating are P10 work.
     pnpm licenses:check
     pnpm test
     pnpm test:e2e
+    pnpm bench:viewport
 
 Build before typechecking, E2E, or compiling the desktop shell: generated WASM
 bindings and the web distribution are intentionally untracked.
@@ -55,6 +65,14 @@ GPU_TEST_SOFTWARE=1 and installs Playwright Chromium. One project selects the
 SwiftShader WebGPU adapter with a WARP software compositor; a second forces SwiftShader
 for WebGL2. Tests verify the software adapter rather than silently accepting
 another backend. Software results demonstrate correctness, not hardware performance.
+
+E2E generates deterministic alpha, JPEG/WebP and 6000×4000 PNG fixtures with a
+native Rust example in bench/results/fixtures. The hardware viewport benchmark
+starts a local preview, checks the adapter, and measures three image opens plus
+four-second pan, zoom and cross-mip zoom sessions on both installed browsers and
+both backends. JSON and screenshots go to bench/results. It requires a built web
+distribution and refuses a software adapter. Refinement keeps a cached preview
+visible while sharpening after cold mip transitions; exact export uses CPU samples.
 
 The desktop smoke test uses a temporary profile and a loopback debugging port.
 On disposable GitHub-hosted runners only, it temporarily sets an executable-scoped

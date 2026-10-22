@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { chromium, expect } from '@playwright/test';
+import { PNG } from 'pngjs';
 import { root } from './lib.mjs';
 
 if (process.platform !== 'win32') throw new Error('Desktop smoke currently targets Windows.');
@@ -148,16 +149,38 @@ try {
     if (process.env.GPU_TEST_SOFTWARE === '1' && backend === 'WebGPU') {
       if (webgpuVendor !== 'google') throw new Error('Expected the SwiftShader WebGPU adapter');
     }
-    results.push({
+    const result = {
       backend,
       webgpuVendor,
       adapter: await page.getByTestId('gpu-backend').getAttribute('title'),
       browser: browser.version(),
       origin,
-    });
+    };
+    await page.goto(origin + (backend === 'WebGL2' ? '/?gpu=webgl2' : '/'));
+    await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');
+    await page
+      .getByTestId('open-image')
+      .setInputFiles(join(root, 'bench/results/fixtures/alpha.png'));
+    await expect(page.getByTestId('operation-status')).toHaveText(/Opened in/);
+    await page.getByRole('button', { name: 'Actual pixels', exact: true }).click();
+    await expect(page.getByTestId('zoom')).toHaveText('100.0%');
+    await page.waitForFunction(
+      () =>
+        JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot)
+          .refining === 0,
+    );
+    const pixels = PNG.sync.read(await page.getByTestId('gpu-canvas').screenshot());
+    const sample =
+      (Math.floor(pixels.height / 2 - 50) * pixels.width + Math.floor(pixels.width / 2 - 50)) * 4;
+    expect([...pixels.data.subarray(sample, sample + 4)]).toEqual([255, 0, 0, 255]);
+    result.document = JSON.parse(
+      await page.getByTestId('gpu-canvas').getAttribute('data-snapshot'),
+    ).document;
+    result.software = process.env.GPU_TEST_SOFTWARE === '1';
+    await mkdir(join(root, 'bench/results'), { recursive: true });
+    await page.screenshot({ path: join(root, 'bench/results/desktop-p1-' + backend + '.png') });
+    results.push(result);
   }
-  await page.goto(origin);
-  await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');
   await mkdir(join(root, 'bench/results'), { recursive: true });
   await page.screenshot({ path: join(root, 'bench/results/desktop.png') });
   await writeFile(

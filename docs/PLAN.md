@@ -38,7 +38,24 @@ not permission to implement all phases during P0. Record answers in DECISIONS.md
 - Dependency inventory, reproducible setup, CI, decisions and progress records.
 - Commit to main; tag p0-scaffold only after remote CI and all P0 acceptance pass.
 
-## P1 questions for the next phase
+## P1 acceptance
+
+User choices are recorded in DECISIONS.md; all four phase questions are answered.
+
+- Generic Pixel/Rgba8/Gray8, sparse COW tiles, dirty tracking and exact straight alpha.
+- One raster document, selected new-canvas presets, 16,384 maximum side validation.
+- Worker Rust PNG/JPEG/WebP opening including drag/drop and lossless RGBA8 PNG export.
+- Early CPU/GPU/history/temporary accounting, bounded allocations and evictable mirrors.
+- Visible atlas tiles, minified filtered mips, nearest at >=100%, grid at >=800%.
+- Zoom 1%–3200%, pointer anchoring, pan, rotate, flip, fit and actual pixels.
+- Status reports zoom, cursor document pixel, dimensions and GPU backend.
+- Transform round-trips within 1e-8 document pixels, at all tested zooms/rotations/flips.
+- Measure 6000×4000 PNG opening (<1.5 seconds) and 60 Hz pan/zoom on specified
+  hardware/browser/dataset with cold/warm state and frame percentiles.
+- Full required Rust/JS checks, production size, Chrome/Edge tests on WebGPU/WebGL2,
+  and remote CI green before pushing p1-viewport. Software results prove function only.
+
+## P1 product questions (answered 2026-10-22)
 
 1. Largest required canvas and whether 6000x4000 / 16384 maximum side are appropriate?
 2. New-document size and DPI presets?

@@ -17,14 +17,16 @@
     "lint": "eslint . --max-warnings 0",
     "typecheck": "pnpm --filter @fotoeditor/web typecheck",
     "test": "vitest run",
-    "test:e2e": "playwright test",
+    "test:fixtures": "cargo run --release -p fotoeditor-io --example fixtures",
+    "test:e2e": "pnpm test:fixtures && playwright test",
+    "bench:viewport": "pnpm test:fixtures && node scripts/viewport-bench.mjs",
     "desktop:dev": "pnpm --filter @fotoeditor/desktop dev",
     "desktop:build": "pnpm build && pnpm --filter @fotoeditor/desktop build",
     "licenses:update": "node scripts/licenses.mjs",
     "licenses:check": "node scripts/licenses.mjs --check",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "desktop:smoke": "node scripts/desktop-smoke.mjs"
+    "desktop:smoke": "pnpm test:fixtures && node scripts/desktop-smoke.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

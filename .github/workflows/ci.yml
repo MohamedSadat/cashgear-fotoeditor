@@ -1,4 +1,4 @@
-name: P0 checks
+name: FotoEditor checks
 on:
   push:
     branches: [main]
@@ -49,7 +49,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: p0-verification
+          name: phase-verification
           path: |
             bench/results/
             playwright-report/

@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
 const software = process.env.GPU_TEST_SOFTWARE === '1';
+const deployedUrl = process.env.E2E_BASE_URL;
 export default defineConfig({
   testDir: './tests/e2e',
   timeout: 60000,
@@ -16,7 +17,7 @@ export default defineConfig({
       ]
     : [['list'], ['json', { outputFile: 'bench/results/browser-tests.json' }]],
   use: {
-    baseURL: 'http://127.0.0.1:4173',
+    baseURL: deployedUrl ?? 'http://127.0.0.1:4173',
     viewport: { width: 1280, height: 850 },
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
@@ -53,10 +54,12 @@ export default defineConfig({
         { name: 'chrome', use: { channel: 'chrome' } },
         { name: 'edge', use: { channel: 'msedge' } },
       ],
-  webServer: {
-    command: 'pnpm preview',
-    url: 'http://127.0.0.1:4173',
-    reuseExistingServer: !process.env.CI,
-    timeout: 30000,
-  },
+  webServer: deployedUrl
+    ? undefined
+    : {
+        command: 'pnpm preview',
+        url: 'http://127.0.0.1:4173',
+        reuseExistingServer: !process.env.CI,
+        timeout: 30000,
+      },
 });
