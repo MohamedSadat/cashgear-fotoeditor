@@ -1,8 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { createEngineClient } from './engine/client';
 import { FramePump } from './engine/frame-pump';
+import { pointerSamples } from './engine/pointer-input';
 import type { BackendPreference, EngineApi, Interaction } from './engine/types';
-import { updateWorkspace } from './state';
+import { updateWorkspace, useWorkspace } from './state';
+import { evaluateCurve, setBrush, useBrush } from './brush-state';
+import type { BrushSettings } from './brush-state';
 
 interface Props {
   generation: number;
@@ -20,7 +23,14 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
     canvas.setAttribute('aria-label', 'GPU canvas');
     canvas.dataset.testid = 'gpu-canvas';
     canvas.tabIndex = 0;
+    const rawInput = 'onpointerrawupdate' in window;
+    canvas.dataset.pointerInput = rawInput ? 'raw' : 'coalesced-move';
     container.appendChild(canvas);
+    const outline = document.createElement('div');
+    outline.className = 'brush-outline';
+    outline.hidden = true;
+    outline.setAttribute('aria-hidden', 'true');
+    container.appendChild(outline);
     let disposed = false;
     let animation = 0;
     let pump: FramePump | undefined;
@@ -30,10 +40,57 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
     let space = false;
     let rotate = false;
     let drag: { x: number; y: number; rotation: boolean } | undefined;
+    let strokePointer: number | undefined;
+    let strokeSettings: BrushSettings | undefined;
+    let lastSample: Interaction['sample'];
+    let lastSampleTime = -1;
+    let lastScreen: [number, number] | undefined;
+    let spray: ReturnType<typeof setInterval> | undefined;
+    const send = (value: Interaction) => pump?.input(value);
+    const endSpray = () => {
+      clearInterval(spray);
+      spray = undefined;
+    };
+    function cancelStroke() {
+      endSpray();
+      if (strokePointer !== undefined) send({ kind: 'stroke-cancel', x: 0, y: 0, amount: 0 });
+      strokePointer = undefined;
+      strokeSettings = undefined;
+    }
+    function refreshOutline() {
+      const brush = useBrush.getState();
+      const settings = strokeSettings ?? brush.settings;
+      const snapshot = useWorkspace.getState().snapshot;
+      outline.hidden =
+        !lastScreen || !snapshot?.document || space || rotate || brush.tool === 'eyedropper';
+      canvas.style.cursor = outline.hidden ? 'crosshair' : 'none';
+      if (!lastScreen || !snapshot) return;
+      const pressure = strokePointer !== undefined ? (lastSample?.[2] ?? 1) : 1;
+      const tilt =
+        strokePointer !== undefined
+          ? Math.min(1, Math.hypot(lastSample?.[3] ?? 0, lastSample?.[4] ?? 0) / 90)
+          : 0;
+      const scale =
+        (settings.pressureSize ? evaluateCurve(settings.sizePressure, pressure) : 1) *
+        (settings.tiltSize ? evaluateCurve(settings.sizeTilt, tilt) : 1);
+      const diameter = (settings.pencil ? 1 : settings.size * scale) * snapshot.view.zoom;
+      outline.style.left = lastScreen[0] + 'px';
+      outline.style.top = lastScreen[1] + 'px';
+      outline.style.width = Math.max(1, diameter) + 'px';
+      outline.style.height =
+        Math.max(1, diameter * (settings.pencil ? 1 : settings.roundness)) + 'px';
+      outline.style.transform =
+        'translate(-50%,-50%) rotate(' +
+        ((snapshot.view.rotation * 180) / Math.PI +
+          (snapshot.view.flipped ? -1 : 1) * settings.angle) +
+        'deg)';
+    }
+    const unsubscribeBrush = useBrush.subscribe(refreshOutline);
     function key(event: KeyboardEvent) {
       if (event.type === 'keyup') {
         if (event.code === 'Space') space = false;
         if (event.code === 'KeyR') rotate = false;
+        refreshOutline();
         return;
       }
       if (
@@ -48,11 +105,44 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
         event.preventDefault();
       }
       if (event.code === 'KeyR') rotate = event.type === 'keydown';
+      const modifier = event.ctrlKey || event.metaKey;
+      if (modifier && ['KeyZ', 'KeyY'].includes(event.code)) {
+        event.preventDefault();
+        if (strokePointer !== undefined) cancelStroke();
+        else
+          send({
+            kind: event.code === 'KeyY' || event.shiftKey ? 'redo' : 'undo',
+            x: 0,
+            y: 0,
+            amount: 0,
+          });
+      } else if (!modifier) {
+        const tool = ({ KeyB: 'brush', KeyE: 'eraser', KeyI: 'eyedropper' } as const)[
+          event.code as 'KeyB' | 'KeyE' | 'KeyI'
+        ];
+        if (tool) useBrush.setState({ tool });
+        if (event.code === 'KeyX') useBrush.getState().swap();
+        if (event.code === 'BracketLeft' || event.code === 'BracketRight') {
+          event.preventDefault();
+          const size = useBrush.getState().settings.size;
+          setBrush({
+            pencil: false,
+            size: Math.max(
+              1,
+              Math.min(2048, Math.round(size * (event.code === 'BracketLeft' ? 0.8 : 1.25))),
+            ),
+          });
+        }
+        if (event.code === 'Escape') cancelStroke();
+      }
+      refreshOutline();
     }
     function resetKeys() {
       space = false;
       rotate = false;
       drag = undefined;
+      cancelStroke();
+      refreshOutline();
     }
     window.addEventListener('keydown', key);
     window.addEventListener('keyup', key);
@@ -63,6 +153,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       'wheel',
       (event) => {
         event.preventDefault();
+        if (strokePointer !== undefined) return;
         const rect = canvas.getBoundingClientRect();
         const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rect.height : 1;
         if (event.ctrlKey || event.metaKey)
@@ -87,9 +178,73 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
         event.preventDefault();
         drag = { x: event.clientX, y: event.clientY, rotation: rotate };
         canvas.setPointerCapture(event.pointerId);
+      } else if (
+        (event.button === 0 || event.button === 5) &&
+        useWorkspace.getState().snapshot?.document
+      ) {
+        event.preventDefault();
+        const brush = useBrush.getState();
+        const rect = canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left,
+          y = event.clientY - rect.top;
+        if (event.altKey || brush.tool === 'eyedropper') {
+          send({ kind: 'sample-color', x, y, amount: 0 });
+          return;
+        }
+        if (strokePointer !== undefined) return;
+        strokePointer = event.pointerId;
+        strokeSettings = brush.settings;
+        canvas.setPointerCapture(event.pointerId);
+        lastSample = [
+          x,
+          y,
+          event.pointerType === 'pen' ? event.pressure : 1,
+          event.tiltX,
+          event.tiltY,
+          event.timeStamp,
+        ];
+        lastSampleTime = event.timeStamp;
+        send({
+          kind: 'stroke-begin',
+          x,
+          y,
+          amount: 0,
+          sample: lastSample,
+          brush: {
+            ...brush.settings,
+            color: brush.primary,
+            eraser: brush.tool === 'eraser' || event.button === 5,
+          },
+        });
+        if (brush.settings.flow < 1 && !brush.settings.pencil)
+          spray = setInterval(() => {
+            if (lastSample) {
+              lastSample = [...lastSample];
+              lastSample[5] = performance.now();
+              send({ kind: 'stroke-sample', x: 0, y: 0, amount: 0, sample: lastSample });
+            }
+          }, 33);
       }
     });
+    function strokeSamples(event: PointerEvent) {
+      if (strokePointer !== event.pointerId) return;
+      const rect = canvas.getBoundingClientRect();
+      for (const p of pointerSamples(event, rect, lastSampleTime)) {
+        lastSample = p;
+        lastSampleTime = p[5];
+        send({ kind: 'stroke-sample', x: 0, y: 0, amount: 0, sample: lastSample });
+      }
+      lastScreen = [event.clientX - rect.left, event.clientY - rect.top];
+      refreshOutline();
+    }
+    if (rawInput)
+      canvas.addEventListener('pointerrawupdate', (event) => {
+        if (event instanceof PointerEvent) strokeSamples(event);
+      });
     canvas.addEventListener('pointermove', (event) => {
+      const rect = canvas.getBoundingClientRect();
+      lastScreen = [event.clientX - rect.left, event.clientY - rect.top];
+      refreshOutline();
       if (drag) {
         const dx = event.clientX - drag.x;
         const dy = event.clientY - drag.y;
@@ -97,17 +252,38 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
         drag.x = event.clientX;
         drag.y = event.clientY;
       }
-      const rect = canvas.getBoundingClientRect();
+      strokeSamples(event);
       input('cursor', event.clientX - rect.left, event.clientY - rect.top);
     });
-    canvas.addEventListener('pointerup', () => {
+    canvas.addEventListener('pointerup', (event) => {
       drag = undefined;
+      if (strokePointer === event.pointerId) {
+        const rect = canvas.getBoundingClientRect();
+        endSpray();
+        const sample: Interaction['sample'] = [
+          event.clientX - rect.left,
+          event.clientY - rect.top,
+          lastSample?.[2] ?? 1,
+          event.tiltX,
+          event.tiltY,
+          event.timeStamp,
+        ];
+        send({ kind: 'stroke-end', x: 0, y: 0, amount: 0, sample });
+        strokePointer = undefined;
+        strokeSettings = undefined;
+      }
     });
     canvas.addEventListener('pointercancel', () => {
       drag = undefined;
+      cancelStroke();
     });
     canvas.addEventListener('lostpointercapture', () => {
       drag = undefined;
+      cancelStroke();
+    });
+    canvas.addEventListener('pointerleave', () => {
+      lastScreen = undefined;
+      refreshOutline();
     });
     const fail = (message: string) => {
       if (disposed || failed) return;
@@ -181,14 +357,25 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
           client.api,
           (frame) => {
             canvas.dataset.frames = String(frame.frames);
-            canvas.dataset.presented = String(frame.presented);
+            // This attribute records whether the canvas has presented pixels;
+            // idle worker polls do not submit duplicate GPU frames.
+            if (frame.presented) canvas.dataset.presented = 'true';
             canvas.dataset.renderWidth = String(frame.width);
             canvas.dataset.renderHeight = String(frame.height);
-            const key = JSON.stringify(frame.snapshot);
+            canvas.dataset.timing = JSON.stringify(frame.snapshot?.timing);
+            const key = JSON.stringify({ ...frame.snapshot, timing: undefined });
             if (key !== snapshotKey) {
               snapshotKey = key;
               canvas.dataset.snapshot = key;
               updateWorkspace({ snapshot: frame.snapshot });
+              const picked = frame.snapshot?.sampledColor;
+              if (!picked && useBrush.getState().sampledSerial !== 0)
+                useBrush.setState({ sampledSerial: 0 });
+              if (picked && picked.serial !== useBrush.getState().sampledSerial) {
+                useBrush.getState().setColor(picked.rgba);
+                useBrush.setState({ sampledSerial: picked.serial });
+              }
+              refreshOutline();
             }
             updateWorkspace((state) =>
               state.size.width === frame.width && state.size.height === frame.height
@@ -216,6 +403,8 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       clearTimeout(timeout);
       cancelAnimationFrame(animation);
       pump?.stop();
+      endSpray();
+      unsubscribeBrush();
       observer.disconnect();
       dprQuery?.removeEventListener('change', onDprChange);
       window.removeEventListener('resize', measure);
@@ -226,6 +415,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       window.removeEventListener('blur', resetKeys);
       client.dispose();
       canvas.remove();
+      outline.remove();
     };
   }, [generation, diagnostic, onFaultReady, onApiReady]);
   return <div className="canvas-host" ref={host} />;

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { transfer } from 'comlink';
 import { CanvasHost } from './CanvasHost';
+import { BrushPanel } from './BrushPanel';
+import { useBrush } from './brush-state';
 import { updateWorkspace, useWorkspace } from './state';
 import type { EngineApi, Interaction } from './engine/types';
 
@@ -14,6 +16,7 @@ const memory = (n: number) => (n / 1048576).toFixed(1) + ' MiB';
 export function App() {
   const [generation, setGeneration] = useState(0);
   const [dialog, setDialog] = useState(false);
+  const [showBrush, setShowBrush] = useState(false);
   const [preset, setPreset] = useState('Full HD');
   const [width, setWidth] = useState(1920);
   const [height, setHeight] = useState(1080);
@@ -39,6 +42,8 @@ export function App() {
   }, []);
   const { status, backend, adapter, error, size, snapshot } = useWorkspace();
   const doc = snapshot?.document;
+  const tool = useBrush((state) => state.tool);
+  const painting = !!snapshot?.painting;
   useEffect(() => {
     if (dialog) newDialog.current?.showModal();
     else newDialog.current?.close();
@@ -127,6 +132,13 @@ export function App() {
         </div>
         <nav className="file-actions" aria-label="File">
           <button
+            className="brush-toggle"
+            aria-expanded={showBrush}
+            onClick={() => setShowBrush((v) => !v)}
+          >
+            Brush settings
+          </button>
+          <button
             disabled={status !== 'ready' || !!busy}
             onClick={() => {
               setNotice('');
@@ -160,7 +172,35 @@ export function App() {
         />
       </header>
       <main className="workspace">
-        <aside className="rail" aria-label="View tools">
+        <aside className="rail" aria-label="Tools">
+          {(['brush', 'eraser', 'eyedropper'] as const).map((t, i) => (
+            <button
+              key={t}
+              aria-label={t[0].toUpperCase() + t.slice(1)}
+              aria-pressed={tool === t}
+              title={`${t} · ${['B', 'E', 'I'][i]}`}
+              onClick={() => useBrush.setState({ tool: t })}
+            >
+              {['B', 'E', 'I'][i]}
+            </button>
+          ))}
+          <span className="rail-line" />
+          <button
+            aria-label="Undo"
+            title="Undo · Ctrl+Z"
+            disabled={!snapshot?.history.undo || painting || !!busy}
+            onClick={() => navigate('undo')}
+          >
+            ↶
+          </button>
+          <button
+            aria-label="Redo"
+            title="Redo · Ctrl+Shift+Z"
+            disabled={!snapshot?.history.redo || painting || !!busy}
+            onClick={() => navigate('redo')}
+          >
+            ↷
+          </button>
           <button
             title="Fit canvas"
             aria-label="Fit canvas"
@@ -274,12 +314,17 @@ export function App() {
             )}
           </div>
         </section>
-        <aside className="inspector">
+        <aside
+          className={'inspector' + (showBrush ? ' is-open' : '')}
+          aria-label="Brush and document settings"
+        >
+          <BrushPanel />
+          <div className="section-divider" />
           <span className="section-eyebrow">{doc ? 'DOCUMENT' : 'WORKSPACE'}</span>
           <h2>{doc ? 'A closer look.' : 'Room for your ideas.'}</h2>
           <p className="inspector-copy">
             {doc
-              ? 'Navigate every detail. Your original image samples stay intact.'
+              ? 'Paint, explore, and undo each stroke.'
               : 'Open an image or start with a transparent canvas.'}
           </p>
           <dl>
@@ -350,10 +395,13 @@ export function App() {
           </div>
         </aside>
       </main>
-      {(busy || notice) && (
+      {
         <div className="operation-bar" role="status" data-testid="operation-status">
           <span className="operation-message" title={busy || notice}>
-            {busy || notice}
+            {busy ||
+              snapshot?.editError ||
+              notice ||
+              (painting ? 'Painting…' : 'B brush · E eraser · Alt sample · Ctrl+Z undo')}
           </span>
           {busy && (
             <button
@@ -374,7 +422,7 @@ export function App() {
             </button>
           )}
         </div>
-      )}
+      }
       {diagnostic && (
         <div className="diagnostic-bar">
           <strong>GPU test scene</strong>
@@ -402,6 +450,10 @@ export function App() {
           {doc
             ? doc.width + ' × ' + doc.height + ' · ' + (snapshot!.view.zoom * 100).toFixed(1) + '%'
             : 'READY WHEN YOU ARE'}
+        </span>
+        <span data-testid="status-memory" title="Logical CPU tile buffers">
+          Doc {memory(snapshot?.memory.document ?? 0)} · Undo{' '}
+          {memory(snapshot?.memory.history ?? 0)}
         </span>
       </footer>
       <dialog
