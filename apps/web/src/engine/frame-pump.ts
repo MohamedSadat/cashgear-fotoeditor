@@ -91,6 +91,8 @@ export class FramePump {
       const frame = await (preview
         ? this.api.frame(timestamp, inputs, true)
         : this.api.frame(timestamp, inputs));
+      if (frame.snapshot && this.inputs.some((input) => input.kind.startsWith('stroke-')))
+        frame.snapshot = { ...frame.snapshot, painting: true };
       this.painting = frame.snapshot?.painting ?? false;
       if (frame.presented)
         this.presentedEpoch =

@@ -229,13 +229,18 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       await range(page, 'Brush spacing', 0.01);
       const boundary = await page.evaluateHandle(() => {
         const canvas = document.querySelector<HTMLCanvasElement>('[data-testid="gpu-canvas"]')!;
-        const states: { undo: number; painting: boolean }[] = [];
+        const states: { undo: number; painting: boolean; queued: boolean }[] = [];
+        let starts = 0;
+        const started = () => {
+          starts++;
+        };
+        canvas.addEventListener('pointerdown', started);
         const observer = new MutationObserver(() => {
           const s = JSON.parse(canvas.dataset.snapshot!);
-          states.push({ undo: s.history.undo, painting: s.painting });
+          states.push({ undo: s.history.undo, painting: s.painting, queued: starts >= 2 });
         });
         observer.observe(canvas, { attributes: true, attributeFilter: ['data-snapshot'] });
-        return { states, observer };
+        return { states, observer, started };
       });
       await page.mouse.move(cx - 220, cy);
       await page.mouse.down();
@@ -244,9 +249,12 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       await page.getByRole('textbox', { name: 'Color hex' }).fill('#00ff00');
       await page.mouse.click(cx, cy);
       await idle(page, 5);
-      const intermediate = await boundary.evaluate(({ states, observer }) => {
+      const intermediate = await boundary.evaluate(({ states, observer, started }) => {
         observer.disconnect();
-        return states.filter((s) => s.undo === 4);
+        document
+          .querySelector('[data-testid="gpu-canvas"]')!
+          .removeEventListener('pointerdown', started);
+        return states.filter((s) => s.undo === 4 && s.queued);
       });
       await boundary.dispose();
       expect(intermediate.length).toBeGreaterThan(0);

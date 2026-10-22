@@ -7,6 +7,28 @@ const settle = async () => {
 };
 
 describe('FramePump ownership and backpressure', () => {
+  it('reports queued main-thread edits as busy across an older idle worker reply', async () => {
+    let complete!: (value: FrameResult) => void;
+    const onFrame = vi.fn();
+    const api = {
+      resize: vi.fn(),
+      frame: vi.fn().mockImplementation(
+        () =>
+          new Promise<FrameResult>((resolve) => {
+            complete = resolve;
+          }),
+      ),
+    };
+    const pump = new FramePump(api, onFrame, vi.fn());
+    pump.resize({ width: 100, height: 100 });
+    pump.tick(0);
+    await settle();
+    pump.input({ kind: 'stroke-begin', x: 0, y: 0, amount: 0 });
+    complete({ ...frame, snapshot: { painting: false } as DocumentSnapshot });
+    await settle();
+    expect(onFrame.mock.calls[0][0].snapshot.painting).toBe(true);
+    pump.stop();
+  });
   it('presents an active preview later in an unused frame slot and stops its timer', async () => {
     vi.useFakeTimers();
     const active = { ...frame, snapshot: { painting: true } as DocumentSnapshot };

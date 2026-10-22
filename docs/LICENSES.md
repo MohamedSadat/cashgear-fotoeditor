@@ -55,10 +55,13 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | cfb | 0.14.0 | MIT |
 | Cargo | cfg_aliases | 0.2.2 | MIT |
 | Cargo | cfg-if | 1.0.5 | MIT OR Apache-2.0 |
+| Cargo | chacha20 | 0.10.2 | MIT OR Apache-2.0 |
 | Cargo | chrono | 0.4.45 | MIT OR Apache-2.0 |
 | Cargo | codespan-reporting | 0.13.1 | Apache-2.0 |
 | Cargo | cookie | 0.18.2 | MIT OR Apache-2.0 |
+| Cargo | core_detect | 1.0.0 | MIT/Apache-2.0 |
 | Cargo | cpufeatures | 0.2.17 | MIT OR Apache-2.0 |
+| Cargo | cpufeatures | 0.3.1 | MIT OR Apache-2.0 |
 | Cargo | crc32fast | 1.5.3 | MIT OR Apache-2.0 |
 | Cargo | crossbeam-channel | 0.5.17 | MIT OR Apache-2.0 |
 | Cargo | crossbeam-utils | 0.8.23 | MIT OR Apache-2.0 |
@@ -179,10 +182,14 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | precomputed-hash | 0.1.1 | MIT |
 | Cargo | proc-macro2 | 1.0.107 | MIT OR Apache-2.0 |
 | Cargo | profiling | 1.0.18 | MIT OR Apache-2.0 |
+| Cargo | proptest | 1.12.0 | MIT OR Apache-2.0 |
 | Cargo | pxfm | 0.1.30 | BSD-3-Clause OR Apache-2.0 |
 | Cargo | quick-error | 2.0.1 | MIT/Apache-2.0 |
 | Cargo | quick-xml | 0.42.0 | MIT |
 | Cargo | quote | 1.0.47 | MIT OR Apache-2.0 |
+| Cargo | rand_core | 0.10.1 | MIT OR Apache-2.0 |
+| Cargo | rand_xorshift | 0.5.0 | MIT OR Apache-2.0 |
+| Cargo | rand | 0.10.3 | MIT OR Apache-2.0 |
 | Cargo | raw-window-handle | 0.6.2 | MIT OR Apache-2.0 OR Zlib |
 | Cargo | ref-cast-impl | 1.0.27 | MIT OR Apache-2.0 |
 | Cargo | ref-cast | 1.0.27 | MIT OR Apache-2.0 |
@@ -260,6 +267,7 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | tray-icon | 0.25.1 | MIT OR Apache-2.0 |
 | Cargo | typeid | 1.0.3 | MIT OR Apache-2.0 |
 | Cargo | typenum | 1.20.1 | MIT OR Apache-2.0 |
+| Cargo | unarray | 0.1.4 | MIT OR Apache-2.0 |
 | Cargo | unicode-ident | 1.0.27 | (MIT OR Apache-2.0) AND Unicode-3.0 |
 | Cargo | unicode-segmentation | 1.13.3 | MIT OR Apache-2.0 |
 | Cargo | unicode-width | 0.2.2 | MIT OR Apache-2.0 |

@@ -790,6 +790,43 @@ mod tests {
         assert_eq!(doc.raster.sample(600, 100).0[3], 255);
     }
     #[test]
+    fn two_hundred_soft_strokes_obey_history_and_total_cpu_limits() {
+        let mut doc = Document::blank(6000, 4000, 300.0).unwrap();
+        let mut history = History::default();
+        for i in 0..200 {
+            let available = CPU_BUDGET - doc.raster.bytes() - history.bytes(&doc) - 1048576;
+            let mut stroke = StrokeCommand::new(
+                &doc,
+                BrushSettings {
+                    size: 300.0,
+                    hardness: 0.0,
+                    opacity: 0.5,
+                    color: [(i % 256) as u8, 33, 99, 255],
+                    ..BrushSettings::default()
+                },
+                available,
+            )
+            .unwrap();
+            stroke
+                .push(point(
+                    200.0 + (i % 20) as f64 * 280.0,
+                    200.0 + (i / 20) as f64 * 280.0,
+                ))
+                .unwrap();
+            finish(&mut stroke);
+            assert!(
+                doc.raster.bytes() + history.bytes(&doc) + stroke.temporary_bytes() + 1048576
+                    <= CPU_BUDGET
+            );
+            history
+                .execute(&mut doc, Box::new(stroke.finish().unwrap()), 0)
+                .unwrap();
+            assert!(history.bytes(&doc) <= history.limits.bytes);
+            assert!(history.depths().0 <= 200);
+            assert!(doc.raster.bytes() + history.bytes(&doc) <= CPU_BUDGET);
+        }
+    }
+    #[test]
     fn flow_builds_under_stroke_opacity_and_eraser_preserves_rgb() {
         let doc = Document::blank(100, 100, 72.0).unwrap();
         let mut s = StrokeCommand::new(

@@ -5,7 +5,13 @@ use std::sync::Arc;
 
 /// Commands must apply/revert exactly, including transparent RGB and sparse tiles.
 /// Retained allocations are enumerated so shared COW generations count once.
-pub trait Command {
+pub trait Command: std::any::Any {
+    fn label(&self) -> &str {
+        "Brush stroke"
+    }
+    fn merged(&self, _next: &dyn Command) -> Option<Box<dyn Command>> {
+        None
+    }
     fn apply(&self, document: &mut Document);
     fn revert(&self, document: &mut Document);
     fn visit_tiles(&self, visitor: &mut dyn FnMut(&Arc<Tile<Rgba8>>));
@@ -77,25 +83,112 @@ impl Command for TileCommand {
     }
 }
 
-/// P2 never silently evicts history. P3 adds user budgets/eviction and a panel.
+/// A document property command. Gesture IDs prevent merges across focus changes.
+pub struct ResolutionCommand {
+    pub before: f64,
+    pub after: f64,
+    pub gesture: u32,
+}
+impl Command for ResolutionCommand {
+    fn label(&self) -> &str {
+        "Resolution"
+    }
+    fn apply(&self, document: &mut Document) {
+        document.dpi = self.after;
+    }
+    fn revert(&self, document: &mut Document) {
+        document.dpi = self.before;
+    }
+    fn visit_tiles(&self, _: &mut dyn FnMut(&Arc<Tile<Rgba8>>)) {}
+    fn is_empty(&self) -> bool {
+        self.before == self.after
+    }
+    fn merged(&self, next: &dyn Command) -> Option<Box<dyn Command>> {
+        let next = (next as &dyn std::any::Any).downcast_ref::<Self>()?;
+        (self.gesture == next.gesture && self.after == next.before).then(|| {
+            Box::new(Self {
+                before: self.before,
+                after: next.after,
+                gesture: self.gesture,
+            }) as Box<dyn Command>
+        })
+    }
+}
+#[derive(Clone, Copy)]
+pub struct HistoryLimits {
+    pub bytes: u64,
+    pub steps: usize,
+}
+impl Default for HistoryLimits {
+    fn default() -> Self {
+        Self {
+            bytes: 256 * 1024 * 1024,
+            steps: 200,
+        }
+    }
+}
+/// Chronological commands with a cursor; dropped prefixes become the new baseline.
 #[derive(Default)]
 pub struct History {
-    undo: Vec<Box<dyn Command>>,
-    redo: Vec<Box<dyn Command>>,
+    entries: Vec<Box<dyn Command>>,
+    cursor: usize,
+    pub limits: HistoryLimits,
+    pub evicted: usize,
+    merge_allowed: bool,
 }
 impl History {
     pub fn depths(&self) -> (usize, usize) {
-        (self.undo.len(), self.redo.len())
+        (self.cursor, self.entries.len() - self.cursor)
+    }
+    pub fn labels(&self) -> Vec<&str> {
+        self.entries.iter().map(|c| c.label()).collect()
     }
     pub fn clear(&mut self) {
-        self.undo.clear();
-        self.redo.clear();
+        self.entries.clear();
+        self.cursor = 0;
+        self.evicted = 0;
+        self.merge_allowed = false;
     }
     pub fn bytes(&self, document: &Document) -> u64 {
-        retained_bytes(
-            document,
-            self.undo.iter().chain(&self.redo).map(|c| c.as_ref()),
-        )
+        retained_bytes(document, self.entries.iter().map(|c| c.as_ref()))
+    }
+    pub fn configure(&mut self, document: &Document, limits: HistoryLimits) -> Result<(), String> {
+        if limits.bytes > CPU_BUDGET || limits.steps > 2000 {
+            return Err("History limits must be 0–768 MiB and 0–2000 steps".into());
+        }
+        self.limits = limits;
+        self.trim(document, 0);
+        self.merge_allowed = false;
+        Ok(())
+    }
+    pub fn reserve(&mut self, document: &Document, temporary: u64) -> Result<(), String> {
+        if document.raster.bytes().saturating_add(temporary) > CPU_BUDGET {
+            return Err("The document and this operation exceed the 768 MiB CPU budget".into());
+        }
+        self.trim(document, temporary);
+        self.merge_allowed = false;
+        Ok(())
+    }
+    fn trim(&mut self, document: &Document, temporary: u64) {
+        while !self.entries.is_empty()
+            && (self.limits.bytes == 0
+                || self.entries.len() > self.limits.steps
+                || self.bytes(document) > self.limits.bytes
+                || document
+                    .raster
+                    .bytes()
+                    .saturating_add(self.bytes(document))
+                    .saturating_add(temporary)
+                    > CPU_BUDGET)
+        {
+            if self.cursor > 0 {
+                self.entries.remove(0);
+                self.cursor -= 1;
+            } else {
+                self.entries.pop();
+            }
+            self.evicted += 1;
+        }
     }
     pub fn execute(
         &mut self,
@@ -108,42 +201,53 @@ impl History {
         }
         let mut candidate = document.clone();
         command.apply(&mut candidate);
-        let history = retained_bytes(
-            &candidate,
-            self.undo
-                .iter()
-                .map(|c| c.as_ref())
-                .chain(std::iter::once(command.as_ref())),
-        );
-        if candidate
-            .raster
-            .bytes()
-            .saturating_add(history)
-            .saturating_add(temporary)
-            > CPU_BUDGET
-        {
-            return Err("Undo history and this edit exceed the 768 MiB CPU budget; undo an edit or create/open a document".into());
+        if candidate.raster.bytes().saturating_add(temporary) > CPU_BUDGET {
+            return Err("This edit and temporary buffers exceed the 768 MiB CPU budget".into());
+        }
+        let merged = if self.merge_allowed && self.cursor == self.entries.len() {
+            self.entries.last().and_then(|c| c.merged(command.as_ref()))
+        } else {
+            None
+        };
+        self.entries.truncate(self.cursor);
+        if let Some(merged) = merged {
+            self.entries.pop();
+            self.cursor -= 1;
+            if !merged.is_empty() {
+                self.entries.push(merged);
+                self.cursor += 1;
+            }
+        } else {
+            self.entries.push(command);
+            self.cursor += 1;
         }
         *document = candidate;
-        self.redo.clear();
-        self.undo.push(command);
+        self.trim(document, temporary);
+        self.merge_allowed = true;
         Ok(true)
     }
+    pub fn jump(&mut self, document: &mut Document, target: usize) -> Result<bool, String> {
+        if target > self.entries.len() {
+            return Err("That history state is no longer available".into());
+        }
+        let changed = target != self.cursor;
+        while self.cursor > target {
+            self.cursor -= 1;
+            self.entries[self.cursor].revert(document);
+        }
+        while self.cursor < target {
+            self.entries[self.cursor].apply(document);
+            self.cursor += 1;
+        }
+        self.merge_allowed = false;
+        self.trim(document, 0);
+        Ok(changed)
+    }
     pub fn undo(&mut self, document: &mut Document) -> bool {
-        let Some(command) = self.undo.pop() else {
-            return false;
-        };
-        command.revert(document);
-        self.redo.push(command);
-        true
+        self.cursor > 0 && self.jump(document, self.cursor - 1).unwrap_or(false)
     }
     pub fn redo(&mut self, document: &mut Document) -> bool {
-        let Some(command) = self.redo.pop() else {
-            return false;
-        };
-        command.apply(document);
-        self.undo.push(command);
-        true
+        self.cursor < self.entries.len() && self.jump(document, self.cursor + 1).unwrap_or(false)
     }
 }
 fn retained_bytes<'a>(document: &Document, commands: impl Iterator<Item = &'a dyn Command>) -> u64 {
@@ -162,6 +266,116 @@ fn retained_bytes<'a>(document: &Document, commands: impl Iterator<Item = &'a dy
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
+    use std::hash::{Hash, Hasher};
+    fn hash(d: &Document) -> u64 {
+        let mut hash = std::collections::hash_map::DefaultHasher::new();
+        d.dpi.to_bits().hash(&mut hash);
+        for x in 0..d.width {
+            d.raster.sample(x, 0).0.hash(&mut hash);
+        }
+        hash.finish()
+    }
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(500))]
+        #[test]
+        fn mixed_sequences_restore_exact_hash(actions in prop::collection::vec((0u8..6,0u32..513,any::<[u8;4]>()),1..80)) {
+            let mut doc = Document::blank(513,1,72.0).unwrap();
+            doc.raster.write(255,0,Rgba8([87,33,19,0]));
+            let initial = hash(&doc);
+            let mut history = History::default();
+            for (kind,x,p) in actions {
+                match kind {
+                    0 => { history.undo(&mut doc); }
+                    1 => { history.redo(&mut doc); }
+                    2 => {
+                        let c = ResolutionCommand { before: doc.dpi, after: x as f64 + 1.0, gesture: x };
+                        history.execute(&mut doc,Box::new(c),0).unwrap();
+                    }
+                    _ => { let c = edit(&doc,x,p); history.execute(&mut doc,c,0).unwrap(); }
+                }
+            }
+            let last = hash(&doc);
+            let cursor = history.depths().0;
+            while history.undo(&mut doc) {}
+            prop_assert_eq!(hash(&doc),initial);
+            history.jump(&mut doc,cursor).unwrap();
+            prop_assert_eq!(hash(&doc),last);
+        }
+    }
+    #[test]
+    fn limits_evict_applied_prefix_and_farthest_redo_and_preserve_branch() {
+        let mut doc = Document::blank(513, 1, 72.0).unwrap();
+        let mut h = History::default();
+        h.configure(
+            &doc,
+            HistoryLimits {
+                bytes: 262144,
+                steps: 2,
+            },
+        )
+        .unwrap();
+        for n in 1..=6 {
+            let c = edit(&doc, 0, [n, 0, 0, 255]);
+            h.execute(&mut doc, c, 0).unwrap();
+        }
+        assert!(h.bytes(&doc) <= 262144);
+        assert_eq!(h.depths(), (1, 0));
+        assert_eq!(h.evicted, 5);
+        h.undo(&mut doc);
+        assert_eq!(doc.raster.sample(0, 0).0[0], 5);
+        h.configure(&doc, HistoryLimits { bytes: 0, steps: 0 })
+            .unwrap();
+        assert_eq!(h.depths(), (0, 0));
+        assert_eq!(h.bytes(&doc), 0);
+        let c = edit(&doc, 256, [9, 8, 7, 1]);
+        h.execute(&mut doc, c, 0).unwrap();
+        assert_eq!(doc.raster.sample(256, 0), Rgba8([9, 8, 7, 1]));
+        assert_eq!(h.depths(), (0, 0));
+    }
+    #[test]
+    fn resolution_merges_only_within_a_gesture_and_never_after_navigation() {
+        let mut doc = Document::blank(1, 1, 72.0).unwrap();
+        let mut h = History::default();
+        for (dpi, gesture) in [(100., 1), (200., 1), (300., 1), (400., 2)] {
+            let c = ResolutionCommand {
+                before: doc.dpi,
+                after: dpi,
+                gesture,
+            };
+            h.execute(&mut doc, Box::new(c), 0).unwrap();
+        }
+        assert_eq!(h.depths(), (2, 0));
+        h.jump(&mut doc, 0).unwrap();
+        assert_eq!(doc.dpi, 72.);
+        h.redo(&mut doc);
+        assert_eq!(doc.dpi, 300.);
+        h.redo(&mut doc);
+        let c = ResolutionCommand {
+            before: doc.dpi,
+            after: 500.,
+            gesture: 2,
+        };
+        h.execute(&mut doc, Box::new(c), 0).unwrap();
+        assert_eq!(h.depths(), (3, 0));
+    }
+    #[test]
+    fn operation_reservation_evicts_before_allocation_and_rejection_preserves_history() {
+        let mut doc = Document::blank(513, 1, 72.0).unwrap();
+        let mut h = History::default();
+        for n in 1..=4 {
+            let c = edit(&doc, 0, [n, 33, 19, 0]);
+            h.execute(&mut doc, c, 0).unwrap();
+        }
+        let before = hash(&doc);
+        let depth = h.depths();
+        assert!(h.reserve(&doc, CPU_BUDGET).is_err());
+        assert_eq!(h.depths(), depth);
+        h.reserve(&doc, CPU_BUDGET - doc.raster.bytes()).unwrap();
+        assert_eq!(h.bytes(&doc), 0);
+        assert_eq!(hash(&doc), before);
+        assert!(h.evicted > 0);
+    }
     fn edit(doc: &Document, x: u32, pixel: [u8; 4]) -> Box<dyn Command> {
         let mut after = doc.clone();
         after.raster.write(x, 0, Rgba8(pixel));
