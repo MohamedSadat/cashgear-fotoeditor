@@ -1,14 +1,14 @@
 # Progress
 
-## P3 — In progress: acceptance verification
+## P3 — Complete
 
-Started on 2026-10-23 on clean main at `9a0d577`, the accepted P2 handoff.
+Completed on 2026-10-23, starting on clean main at `9a0d577`, the accepted P2 handoff.
 Read AGENTS.md, the phase documents, and original roadmap printed pages 12–13.
 All four user choices are confirmed in DECISIONS.md: 256 MiB / 200 history steps
 within the shared 768 MiB CPU model, 30-second plus best-effort tab-hide autosave,
 ask before restoring, and document-only files with fresh undo history on reopen.
 
-Implemented:
+Shipped:
 
 - History panel with click-to-jump, branching, persistent configurable limits and
   visible eviction counts. Oldest applied commands and then farthest redo states
@@ -23,8 +23,8 @@ Implemented:
   The existing 128 MiB file cap also applies to these uncompressed project files.
 - Worker-owned OPFS recovery with unique generation files, explicit flush/close,
   Rust readback validation and a separately flushed metadata commit record.
-  Three validated generations are retained. Inactive uncommitted files are cleaned
-  up. A failed write removes only its own new files and preserves completed saves.
+  Three validated generations per session are retained. Inactive uncommitted files
+  are cleaned up. A failed write removes only its own new files and preserves completed saves.
 - Session ownership and catalog Web Locks coordinate tabs, exclude active sessions
   from restore prompts and recheck restore/discard operations. Persistent storage
   is requested on the main thread. Quota, write and persistence failures are visible.
@@ -32,17 +32,30 @@ Implemented:
   New files are validated once, then two prior valid generations are checked before
   pruning. This removed duplicated whole-file reads and nested timer clamping.
 
-Local checks so far: formatting, native/WASM clippy, TypeScript, ESLint, 14 Vitest
+Local acceptance checks: formatting, native/WASM clippy, TypeScript, ESLint, 14 Vitest
 tests, all 450 dependency license expressions and production build passed. All
-30 Rust tests passed. Rust
-coverage includes 500 proptest mixed command sequences with exact undo-all hashes,
+30 Rust tests passed. Coverage includes 500 proptest mixed command sequences with exact undo-all hashes,
 200 soft strokes under the budgets, branching/merging/eviction and malformed files.
 All 92 installed Chrome/Edge cases passed after the bounded job optimization,
 without retries or skips. Windows/WebView2 155.0.4283.62 release build, exact
 project roundtrip and autosave/restore checks passed on both hardware backends.
 All 65 local software Chromium cases also passed without retries or skips. These
-are functional evidence only. Remote CI, deployment and live-site acceptance remain.
+are functional evidence only.
 Release WASM: 2,714,673 bytes; gzip level 9: 1,035,102 / 1,500,000 bytes.
+
+[FotoEditor checks run 39870622824](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/runs/39870622824)
+passed for implementation/verification commit `64a36a4bc6a0700450800c7e318b5c1a80708ee5`.
+Every configured Rust/JavaScript/license/build check passed. The artifact confirms
+all 65 software browser cases passed on their first attempt: zero skips, retries,
+flaky cases, unexpected failures or global errors. P2's earlier software cold-start
+retries remain documented in its own report below.
+
+CI also built and launched Windows/WebView2 154.0.4258.62 on both software backends,
+verifying painting, exact undo/redo presentation, byte-identical project roundtrip
+and autosave restoration after reload. WebGPU used SwiftShader (vendor google);
+WebGL2 reported Microsoft Basic Render Driver/WARP. These prove function only.
+CI release WASM: 2,715,921 bytes; gzip level 9: 1,035,287 / 1,500,000 bytes.
+Its phase-verification artifact is retained locally in bench/results/p3-ci.
 
 Hardware measurements used the same Windows 10 Pro / Xeon E5-2680 v3 / approximately
 32 GB RAM / GTX 1650 / driver 27.21.14.5751 machine as P2. Installed headless Chrome
@@ -95,10 +108,29 @@ p3-machine.json and p3-*.png. Reproduce with pnpm bench:history. For regression
 measurements set $env:PERF_PHASE = 'p3' in PowerShell, then run pnpm bench:brush
 and pnpm bench:viewport.
 
-Remaining: push verification commits, confirm remote CI/deployment, test the live
-site, then create p3-history.
-No P3 completion claim or tag yet. Physical pen validation remains the approved
-P2 deferral. Layers, masks and compositing remain P4 and have not started.
+[Azure deployment run 39870622875](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/runs/39870622875)
+passed for implementation/verification commit `64a36a4bc6a0700450800c7e318b5c1a80708ee5`.
+The public [CashGear FotoEditor](https://proud-pebble-07b8b4f10.2.azurestaticapps.net)
+then passed all 92 installed Chrome/Edge cases on WebGPU and WebGL2, without
+retries or skips. This includes actual renderer kills during an uncommitted write,
+fallback from a damaged snapshot, byte-identical projects, writer coordination,
+storage failures, isolation headers and WASM delivery. Evidence is in
+bench/results/p3-live-browser-tests.json. Local hardware/software and desktop
+evidence is in p3-hardware-browser-tests.json, p3-software-browser-tests.json and
+p3-desktop-smoke.json.
+
+No P3 acceptance items are deferred. Intentional v1 limits are document-only
+uncompressed projects capped at 128 MiB, local browser/profile recovery, and the
+bounded editing pause during save/recovery work. Restored source archives remain
+until Discard recovery; browser storage clearing/eviction and OS power-loss
+durability are outside the tested renderer-crash contract. Physical pen validation
+remains the explicitly approved P2 deferral; image tips/textures remain P9.
+
+The p3-history tag includes this documentation-only completion report after the
+verified implementation. All required acceptance checks, remote CI and deployment
+are green. Proposed next phase: P4 — layers, groups, masks and compositing, extending
+the project format for layer data within the residency model. Stop at this boundary;
+P4 has not started.
 
 ## P2 — Complete
 

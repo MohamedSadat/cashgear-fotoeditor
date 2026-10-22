@@ -40,7 +40,8 @@ Recovery saves changed, completed documents every 30 seconds and on tab hide whe
 idle. Tab-hide saves are best effort: startup asks to restore the last completed
 snapshot. Recovery storage is local to this browser/profile/origin; tabs own
 independent sessions and do not restore or overwrite active sessions. Up to three
-validated generations remain. Storage denial/quota/write failures are visible in
+validated generations remain per session; restored source archives remain until
+Discard recovery removes them. Storage denial/quota/write failures are visible in
 the Recovery section; Save recovery now retries a failed save. Keep project files
 as independent copies because browser data can be cleared or evicted. Save/recovery
 operations briefly pause editing and report their current operation.
