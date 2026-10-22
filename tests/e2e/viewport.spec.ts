@@ -29,17 +29,24 @@ for (const backend of ['WebGPU', 'WebGL2']) {
         observer.observe(canvas, { attributes: true, attributeFilter: ['data-height'] });
         return { heights, observer };
       });
-      await page.getByTestId('open-image').setInputFiles(resolve(fixtures, 'alpha.png'));
-      await expect(page.getByTestId('operation-status')).toHaveText(/Opened in/);
+      // Repeated commits exercise the single-presenter/resize boundary as well
+      // as the initial open, including when idle GPU submissions are suppressed.
+      for (let repeat = 0; repeat < 10; repeat++) {
+        const frames = Number(await page.getByTestId('gpu-canvas').getAttribute('data-frames'));
+        await page.getByTestId('open-image').setInputFiles(resolve(fixtures, 'alpha.png'));
+        await expect(page.getByTestId('operation-status')).toHaveText(/Opened in/);
+        await expect
+          .poll(async () =>
+            Number(await page.getByTestId('gpu-canvas').getAttribute('data-frames')),
+          )
+          .toBeGreaterThan(frames);
+      }
       await expect(page.getByTestId('document-size')).toHaveText('513 × 259');
       const canvas = page.getByTestId('gpu-canvas');
       await page.getByRole('button', { name: 'Actual pixels', exact: true }).click();
       await expect(page.getByTestId('zoom')).toHaveText('100.0%');
       await expect.poll(async () => (await snap(page)).refining).toBe(0);
-      const frameCount = Number(await canvas.getAttribute('data-frames'));
-      await expect
-        .poll(async () => Number(await canvas.getAttribute('data-frames')))
-        .toBeGreaterThan(frameCount + 2);
+      await expect(canvas).toHaveAttribute('data-presented', 'true');
       expect(
         await sizes.evaluate(({ heights, observer }) => {
           observer.disconnect();
@@ -128,7 +135,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
     await page.getByRole('button', { name: 'New canvas', exact: true }).click();
     await expect(page.getByRole('spinbutton', { name: 'Width', exact: true })).toHaveValue('1920');
     await expect(page.getByRole('spinbutton', { name: 'Resolution DPI' })).toHaveValue('72');
-    await page.getByRole('combobox').selectOption('A4 · Print');
+    await page.getByRole('combobox', { name: 'Preset', exact: true }).selectOption('A4 · Print');
     await expect(page.getByRole('spinbutton', { name: 'Width', exact: true })).toHaveValue('2480');
     await page.getByRole('spinbutton', { name: 'Width', exact: true }).fill('16385');
     await page.getByRole('button', { name: 'Create document' }).click();
@@ -156,7 +163,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
     await data.dispose();
     await expect(page.getByTestId('document-name')).toHaveText('dropped.webp');
     await page.getByRole('button', { name: 'New canvas', exact: true }).click();
-    await page.getByRole('combobox').selectOption('Photo · 24 MP');
+    await page.getByRole('combobox', { name: 'Preset', exact: true }).selectOption('Photo · 24 MP');
     await page.getByRole('button', { name: 'Create document' }).click();
     await expect(page.getByTestId('document-size')).toHaveText('6000 × 4000');
     await page.getByRole('button', { name: 'Export PNG' }).click();

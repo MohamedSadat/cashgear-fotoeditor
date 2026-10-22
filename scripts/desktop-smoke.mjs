@@ -176,9 +176,49 @@ try {
     result.document = JSON.parse(
       await page.getByTestId('gpu-canvas').getAttribute('data-snapshot'),
     ).document;
+    await page.getByRole('button', { name: 'Brush', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Color hex' }).fill('#ff00ff');
+    const canvasBox = await page.getByTestId('gpu-canvas').boundingBox();
+    await page.mouse.move(
+      canvasBox.x + canvasBox.width / 2 - 20,
+      canvasBox.y + canvasBox.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      canvasBox.x + canvasBox.width / 2 + 20,
+      canvasBox.y + canvasBox.height / 2,
+    );
+    await page.mouse.up();
+    await page.waitForFunction(() => {
+      const s = JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot);
+      return s.history.undo === 1 && !s.painting;
+    });
+    // Compare document presentation without the pointer's brush-outline overlay.
+    await page.mouse.move(20, 20);
+    const painted = PNG.sync.read(await page.getByTestId('gpu-canvas').screenshot());
+    const middle =
+      (Math.floor(painted.height / 2) * painted.width + Math.floor(painted.width / 2)) * 4;
+    expect([...painted.data.subarray(middle, middle + 4)]).toEqual([255, 0, 255, 255]);
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await page.waitForFunction(
+      () =>
+        JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot).history
+          .undo === 0,
+    );
+    const undone = PNG.sync.read(await page.getByTestId('gpu-canvas').screenshot());
+    expect(undone.data.equals(pixels.data)).toBe(true);
+    await page.getByRole('button', { name: 'Redo', exact: true }).click();
+    await page.waitForFunction(
+      () =>
+        JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot).history
+          .undo === 1,
+    );
+    const redone = PNG.sync.read(await page.getByTestId('gpu-canvas').screenshot());
+    expect(redone.data.equals(painted.data)).toBe(true);
+    result.brushUndoRedo = true;
     result.software = process.env.GPU_TEST_SOFTWARE === '1';
     await mkdir(join(root, 'bench/results'), { recursive: true });
-    await page.screenshot({ path: join(root, 'bench/results/desktop-p1-' + backend + '.png') });
+    await page.screenshot({ path: join(root, 'bench/results/desktop-p2-' + backend + '.png') });
     results.push(result);
   }
   await mkdir(join(root, 'bench/results'), { recursive: true });

@@ -20,6 +20,7 @@
     "test:fixtures": "cargo run --release -p fotoeditor-io --example fixtures",
     "test:e2e": "pnpm test:fixtures && playwright test",
     "bench:viewport": "pnpm test:fixtures && node scripts/viewport-bench.mjs",
+    "bench:brush": "pnpm test:fixtures && node scripts/brush-bench.mjs",
     "desktop:dev": "pnpm --filter @fotoeditor/desktop dev",
     "desktop:build": "pnpm build && pnpm --filter @fotoeditor/desktop build",
     "licenses:update": "node scripts/licenses.mjs",
