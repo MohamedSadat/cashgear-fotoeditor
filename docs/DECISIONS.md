@@ -23,8 +23,11 @@
   Input/output files are capped at 128 MiB. Dense images may hit this memory limit
   before the maximum side limit. Blank maximum-size canvases remain sparse.
 - GPU display atlas pages are 2048² RGBA8, with a 128 MiB residency ceiling.
-  Visible tiles alone are uploaded. Invisible slots are reusable, and changing
-  mip level or replacing a document discards the cache. Display mips are box
+  Visible tiles alone are uploaded. Invisible slots are reusable; old mip pages
+  are evicted by recency within the budget. Replacing a document discards the cache.
+  The initial fit overview stays resident. Navigation uses cached mips while finer
+  tiles upload in approximately 3 ms CPU batches; a refining indicator reports this.
+  Initial opening uploads the fit view before reporting completion. Display mips are box
   filtered in premultiplied alpha, with neighbor gutters; >=100% uses nearest.
 - Logical memory diagnostics count tile buffer capacities, active job buffers,
   atlas textures and instance buffers. Hash maps/Arc headers, browser/driver

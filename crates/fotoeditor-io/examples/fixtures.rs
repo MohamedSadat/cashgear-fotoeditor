@@ -22,7 +22,7 @@ fn main() {
                         }
                     }
                 } else {
-                    // Smooth color field with deterministic texture: roughly 17 MiB PNG.
+                    // Smooth color field with deterministic texture: roughly 64 MiB PNG.
                     let noise = ((x.wrapping_mul(374761393) ^ y.wrapping_mul(668265263))
                         .wrapping_mul(1274126177)
                         >> 27) as u8;

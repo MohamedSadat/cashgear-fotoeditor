@@ -7,14 +7,17 @@ pub fn display_tile(surface: &TileSurface<Rgba8>, coord: TileCoord, lod: u32) ->
     let padded = side + 2;
     let mut out = vec![0; (padded * padded * 4) as usize];
     let tile = &surface.tiles()[&coord];
+    let valid_w = (surface.width - coord.0 * TILE_SIZE).min(TILE_SIZE);
+    let valid_h = (surface.height - coord.1 * TILE_SIZE).min(TILE_SIZE);
     for y in 0..padded {
         for x in 0..padded {
             let mut sum = [0u32; 4];
             for by in 0..scale {
                 for bx in 0..scale {
                     let p = if x > 0 && x <= side && y > 0 && y <= side {
-                        tile.pixels
-                            [(((y - 1) * scale + by) * TILE_SIZE + (x - 1) * scale + bx) as usize]
+                        tile.pixels[(((y - 1) * scale + by).min(valid_h - 1) * TILE_SIZE
+                            + ((x - 1) * scale + bx).min(valid_w - 1))
+                            as usize]
                     } else {
                         let sx = coord.0 as i64 * TILE_SIZE as i64
                             + (x as i64 - 1) * scale as i64
@@ -22,11 +25,10 @@ pub fn display_tile(surface: &TileSurface<Rgba8>, coord: TileCoord, lod: u32) ->
                         let sy = coord.1 as i64 * TILE_SIZE as i64
                             + (y as i64 - 1) * scale as i64
                             + by as i64;
-                        if sx < 0 || sy < 0 {
-                            Rgba8::default()
-                        } else {
-                            surface.sample(sx as u32, sy as u32)
-                        }
+                        surface.sample(
+                            sx.clamp(0, surface.width as i64 - 1) as u32,
+                            sy.clamp(0, surface.height as i64 - 1) as u32,
+                        )
                     };
                     let a = p.0[3] as u32;
                     for (s, c) in sum[..3].iter_mut().zip(p.0) {
@@ -61,5 +63,15 @@ mod tests {
         let base = display_tile(&s, (0, 0), 0);
         let gutter = (258 + 257) * 4;
         assert_eq!(&base[gutter..gutter + 4], &[0, 255, 0, 255]);
+    }
+    #[test]
+    fn odd_document_edges_do_not_fade_into_padding() {
+        let mut s = TileSurface::new(257, 1);
+        for x in 0..257 {
+            s.write(x, 0, Rgba8([255, 255, 255, 255]));
+        }
+        for lod in [0, 1, 4, 8] {
+            assert!(display_tile(&s, (1, 0), lod).iter().all(|c| *c == 255));
+        }
     }
 }

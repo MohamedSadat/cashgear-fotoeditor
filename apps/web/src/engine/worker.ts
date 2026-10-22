@@ -1,6 +1,7 @@
-import { expose } from 'comlink';
+import { expose, transfer } from 'comlink';
 import type { EngineApi, EngineInfo, InitOptions, PhysicalSize } from './types';
 import initWasm, { Engine } from './pkg/fotoeditor_wasm';
+import type { DocumentSnapshot } from './types';
 
 let engine: Engine | undefined;
 let initializing = false;
@@ -8,6 +9,23 @@ let disposed = false;
 let diagnostic = false;
 let size: PhysicalSize = { width: 0, height: 0 };
 let frames = 0;
+let job = 0;
+let busy = false;
+let name = 'Untitled';
+let cursorScreen: [number, number] | undefined;
+const yieldTask = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+function snapshot(): DocumentSnapshot {
+  const p = cursorScreen ? engine!.cursor(...cursorScreen) : undefined;
+  return {
+    ...(JSON.parse(engine!.snapshot()) as DocumentSnapshot),
+    name,
+    cursor: p ? [p[0], p[1]] : undefined,
+  };
+}
+function requireEngine() {
+  if (!engine || disposed) throw new Error('Engine is unavailable');
+  return engine;
+}
 
 function fatal(message: string) {
   self.postMessage({ type: 'engine-fatal', message });
@@ -48,7 +66,7 @@ const api: EngineApi = {
     }
     engine = created;
     size = { width: options.width, height: options.height };
-    engine.resize(size.width, size.height);
+    engine.resize(size.width, size.height, options.dpr ?? 1);
     const backend = engine.backend();
     if (backend !== 'WebGPU' && backend !== 'WebGL2')
       throw new Error('Unexpected GPU backend: ' + backend);
@@ -57,13 +75,19 @@ const api: EngineApi = {
   resize(nextSize) {
     if (disposed) return;
     size = nextSize;
-    engine?.resize(size.width, size.height);
+    engine?.resize(size.width, size.height, size.dpr ?? 1);
   },
   frame() {
     if (disposed || !engine) throw new Error('Engine is unavailable');
     const presented = engine.frame();
     if (presented) frames++;
-    return { presented, frames, width: engine.width(), height: engine.height() };
+    return {
+      presented,
+      frames,
+      width: engine.width(),
+      height: engine.height(),
+      snapshot: snapshot(),
+    };
   },
   dispose() {
     disposed = true;
@@ -75,6 +99,71 @@ const api: EngineApi = {
     if (!diagnostic || !engine) throw new Error('Diagnostics are disabled');
     if (kind === 'device-loss') engine.diagnostic_device_loss();
     else engine.diagnostic_panic();
+  },
+  interact(inputs) {
+    const e = requireEngine();
+    for (const input of inputs) {
+      if (input.kind === 'cursor') {
+        cursorScreen = [input.x, input.y];
+      } else e.navigate(input.kind, input.x, input.y, input.amount);
+    }
+  },
+  newDocument(width, height, dpi) {
+    if (busy) throw new Error('Finish or cancel the current operation first');
+    requireEngine().new_document(width, height, dpi);
+    name = 'Untitled';
+    cursorScreen = undefined;
+    return snapshot();
+  },
+  async openImage(bytes, fileName) {
+    if (busy) throw new Error('Finish or cancel the current operation first');
+    busy = true;
+    const token = ++job;
+    const e = requireEngine();
+    try {
+      e.begin_import(new Uint8Array(bytes));
+      bytes = new ArrayBuffer(0);
+      while (true) {
+        await yieldTask();
+        if (token !== job || disposed) throw new Error('Operation cancelled');
+        if (e.import_step()) break;
+      }
+      name = fileName;
+      cursorScreen = undefined;
+      e.frame(); // Include first visible atlas upload in the opening operation.
+      return snapshot();
+    } finally {
+      if (token === job) {
+        e.cancel_job();
+        busy = false;
+      }
+    }
+  },
+  async exportPng() {
+    if (busy) throw new Error('Finish or cancel the current operation first');
+    busy = true;
+    const token = ++job;
+    const e = requireEngine();
+    try {
+      e.begin_export();
+      while (true) {
+        await yieldTask();
+        if (token !== job || disposed) throw new Error('Operation cancelled');
+        if (e.export_step()) break;
+      }
+      const bytes = e.finish_export();
+      return transfer(bytes, [bytes.buffer]);
+    } finally {
+      if (token === job) {
+        e.cancel_job();
+        busy = false;
+      }
+    }
+  },
+  cancelJob() {
+    ++job;
+    requireEngine().cancel_job();
+    busy = false;
   },
 };
 expose(api);

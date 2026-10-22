@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use crate::viewport::ViewportRenderer;
+use fotoeditor_core::{Document, View};
 use web_sys::OffscreenCanvas;
 use wgpu::*;
 
@@ -15,6 +17,7 @@ pub struct Renderer {
     adapter_name: String,
     diagnostic: bool,
     paused: bool,
+    viewport: ViewportRenderer,
 }
 
 async fn device_for(adapter: &Adapter) -> Result<(Device, Queue), String> {
@@ -180,6 +183,7 @@ impl Renderer {
                 },
             ],
         });
+        let viewport = ViewportRenderer::new(&device, config.format);
         let mut renderer = Self {
             surface,
             device,
@@ -192,6 +196,7 @@ impl Renderer {
             adapter_name: info.name,
             diagnostic,
             paused: true,
+            viewport,
         };
         renderer.resize(renderer.canvas.width(), renderer.canvas.height());
         Ok(renderer)
@@ -234,9 +239,31 @@ impl Renderer {
         self.surface.configure(&self.device, &self.config);
     }
 
-    pub fn frame(&mut self) -> Result<bool, String> {
+    pub fn clear_tiles(&mut self) {
+        self.viewport.clear();
+    }
+    pub fn invalidate_tiles(&mut self, dirty: &fotoeditor_core::DirtySet) {
+        self.viewport.invalidate(dirty);
+    }
+    pub fn gpu_bytes(&self) -> u64 {
+        self.viewport.bytes()
+    }
+    pub fn visible_tiles(&self) -> u32 {
+        self.viewport.visible
+    }
+    pub fn refining_tiles(&self) -> u32 {
+        self.viewport.refining
+    }
+    pub fn uploaded_bytes(&self) -> u64 {
+        self.viewport.uploaded
+    }
+    pub fn frame(&mut self, doc: Option<&Document>, view: &View, dpr: f64) -> Result<bool, String> {
         if self.paused {
             return Ok(false);
+        }
+        if !self.diagnostic {
+            self.viewport
+                .prepare(&self.device, &self.queue, doc, view, dpr)?;
         }
         let output = match self.surface.get_current_texture() {
             CurrentSurfaceTexture::Success(frame) | CurrentSurfaceTexture::Suboptimal(frame) => {
@@ -249,7 +276,7 @@ impl Renderer {
             CurrentSurfaceTexture::Timeout | CurrentSurfaceTexture::Occluded => return Ok(false),
             CurrentSurfaceTexture::Validation => return Err("GPU surface validation failed".into()),
         };
-        let view = output
+        let output_view = output
             .texture
             .create_view(&TextureViewDescriptor::default());
         let mut encoder = self
@@ -259,7 +286,7 @@ impl Renderer {
             let mut pass = encoder.begin_render_pass(&RenderPassDescriptor {
                 label: Some("FotoEditor canvas"),
                 color_attachments: &[Some(RenderPassColorAttachment {
-                    view: &view,
+                    view: &output_view,
                     depth_slice: None,
                     resolve_target: None,
                     ops: Operations {
@@ -278,6 +305,8 @@ impl Renderer {
                 pass.set_pipeline(&self.pipeline);
                 pass.set_bind_group(0, &self.bind_group, &[]);
                 pass.draw(0..3, 0..1);
+            } else {
+                self.viewport.draw(&mut pass, view);
             }
         }
         self.queue.submit([encoder.finish()]);

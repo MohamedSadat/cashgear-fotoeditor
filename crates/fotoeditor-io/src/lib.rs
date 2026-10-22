@@ -225,4 +225,34 @@ mod tests {
         .check_cpu(1)
         .is_err());
     }
+    #[test]
+    fn rejects_16_bit_and_oversized_headers_before_decoding_pixels() {
+        for (width, depth, size) in [
+            (1, png::BitDepth::Sixteen, 8),
+            (16385, png::BitDepth::Eight, 16385 * 4),
+        ] {
+            let mut bytes = Vec::new();
+            {
+                let mut encoder = png::Encoder::new(&mut bytes, width, 1);
+                encoder.set_color(png::ColorType::Rgba);
+                encoder.set_depth(depth);
+                encoder
+                    .write_header()
+                    .unwrap()
+                    .write_image_data(&vec![0; size])
+                    .unwrap();
+            }
+            let error = ImportJob::decode(&bytes, Residency::default())
+                .err()
+                .unwrap();
+            if width == 1 {
+                assert!(error.contains("16-bit"));
+            } else {
+                assert!(
+                    error.contains("limit") || error.contains("16384"),
+                    "{error}"
+                );
+            }
+        }
+    }
 }

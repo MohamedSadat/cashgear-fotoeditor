@@ -3,6 +3,8 @@
 mod renderer;
 #[cfg(target_arch = "wasm32")]
 pub use renderer::Renderer;
+#[cfg(target_arch = "wasm32")]
+mod viewport;
 
 #[cfg(test)]
 mod tests {
@@ -16,5 +18,16 @@ mod tests {
         )
         .validate(&module)
         .expect("diagnostic shader must validate without optional GPU capabilities");
+    }
+    #[test]
+    fn viewport_shader_is_valid_wgsl() {
+        let module =
+            naga::front::wgsl::parse_str(include_str!("viewport.wgsl")).expect("viewport WGSL");
+        naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::empty(),
+        )
+        .validate(&module)
+        .expect("portable viewport shader");
     }
 }
