@@ -47,6 +47,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       // Opaque samples straddle tile boundaries; half-alpha green shows the checker.
       for (const [x, y, rgb] of [
         [-50, -50, [255, 0, 0]],
+        [50, -50, [99, 227, 99]],
         [-50, 50, [0, 0, 255]],
         [50, 50, [255, 255, 255]],
       ] as const) {
