@@ -1,7 +1,9 @@
 //! Straight-alpha CPU document samples. No browser or GPU types.
+mod commands;
 mod display;
 mod tiles;
 mod view;
+pub use commands::*;
 pub use display::*;
 pub use tiles::*;
 pub use view::*;
@@ -19,7 +21,7 @@ pub fn validate_size(width: u32, height: u32, dpi: f64) -> Result<(), String> {
     }
     Ok(())
 }
-/// P1 has one immutable raster layer. Pixel editing commands/undo begin in P2.
+/// One straight-alpha raster layer. Session mutations go through commands.
 #[derive(Clone)]
 pub struct Document {
     pub width: u32,

@@ -1,5 +1,21 @@
 # Decisions
 
+## 2026-10-22 — P2 command foundation
+
+- General commands implement apply/revert and enumerate retained tile allocations.
+  Tile commands store before/after Arc generations only for changed coordinates.
+  Undo restores sparse absence and exact straight-alpha samples, including hidden RGB.
+- History admission applies to a candidate document and checks unique retained
+  document/history buffers plus temporary bytes before changing the live document
+  or clearing redo. Empty and rejected commands preserve redo.
+- P2 does not silently evict history. It rejects an edit that cannot fit the existing
+  768 MiB CPU budget; P3 adds configurable budgets, eviction and the history panel.
+  New/open document lifecycle commands start a fresh history session.
+- User confirmed Photoshop B/E/I/[ / ]/X and Alt eyedropper, both pulled-string
+  and weighted-average stabilizers, and image tips/textures deferred to P9.
+- No pen hardware is available. Synthetic pressure/tilt tests cover the input and
+  engine contracts; physical Windows Ink behavior cannot be claimed as verified.
+
 ## 2026-10-22 — P1 choices and implementation
 
 - User confirmed 6000×4000 as the measured workload and 16,384 pixels maximum per side.

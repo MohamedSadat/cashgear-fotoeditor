@@ -1,5 +1,22 @@
 # Progress
 
+## P2 — In progress
+
+Started on 2026-10-22 from the accepted p1-viewport tag, directly on main.
+Read the original roadmap's detailed P2 requirements (printed pages 11–12) and
+the approved corrections. Product questions are answered in DECISIONS.md. Work begins
+with the general command/basic undo foundation before any brush implementation.
+
+The first foundation adds reversible tile snapshots, exact sparse/hidden-RGB
+restoration, unique COW history accounting and atomic memory admission. Lifecycle
+replacement resets history. P3 retains the history panel, eviction, serialization
+and recovery. Foundation verification: 12 Rust tests (including 500 deterministic
+command sequences), native/WASM clippy, Rust/Prettier formatting, TypeScript,
+ESLint, 5 Vitest tests, license inventory and production build passed. All 40
+browser regression tests passed on installed Chrome and Edge with WebGPU/WebGL2.
+Release WASM: 2,509,984 bytes; gzip level 9: 1,031,910 / 1,500,000 bytes.
+No painting or P2 acceptance/performance is claimed yet.
+
 ## P0 — Complete
 
 Completed on 2026-10-22. The implementation is verified by

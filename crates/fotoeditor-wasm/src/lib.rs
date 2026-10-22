@@ -1,7 +1,7 @@
 //! The only JavaScript-facing engine API.
 #[cfg(target_arch = "wasm32")]
 mod bridge {
-    use fotoeditor_core::{Document, Residency, View};
+    use fotoeditor_core::{Document, History, Residency, View};
     use fotoeditor_io::{ExportJob, ImportJob};
     use std::cell::RefCell;
     use wasm_bindgen::prelude::*;
@@ -22,13 +22,14 @@ mod bridge {
     pub struct Engine {
         renderer: fotoeditor_gpu::Renderer,
         document: Option<Document>,
+        history: History,
         view: View,
         dpr: f64,
         import: Option<ImportJob>,
         export: Option<ExportJob>,
     }
 
-    // P1 commands replace the session atomically; no pixel edits/history yet.
+    // Lifecycle replacement starts a new editing session and releases its history.
     enum SessionCommand {
         ReplaceDocument(Document),
     }
@@ -42,6 +43,7 @@ mod bridge {
                     self.view.flipped = false;
                     self.view.fit();
                     self.document = Some(doc);
+                    self.history.clear();
                     self.renderer.clear_tiles();
                 }
             }
@@ -49,7 +51,7 @@ mod bridge {
         fn residency(&self) -> Residency {
             Residency {
                 document: self.document.as_ref().map_or(0, |d| d.raster.bytes()),
-                history: 0,
+                history: self.document.as_ref().map_or(0, |d| self.history.bytes(d)),
                 temporary: self.import.as_ref().map_or(0, |j| j.temporary_bytes())
                     + self.export.as_ref().map_or(0, |j| j.temporary_bytes()),
                 gpu: self.renderer.gpu_bytes(),
@@ -74,6 +76,7 @@ mod bridge {
             Ok(Self {
                 renderer,
                 document: None,
+                history: History::default(),
                 view: View::default(),
                 dpr: 1.0,
                 import: None,
@@ -125,6 +128,12 @@ mod bridge {
             let doc = Document::blank(width, height, dpi).map_err(|e| JsValue::from_str(&e))?;
             self.execute(SessionCommand::ReplaceDocument(doc));
             Ok(())
+        }
+        pub fn undo(&mut self) -> bool {
+            self.document.as_mut().is_some_and(|d| self.history.undo(d))
+        }
+        pub fn redo(&mut self) -> bool {
+            self.document.as_mut().is_some_and(|d| self.history.redo(d))
         }
         pub fn begin_import(&mut self, bytes: &[u8]) -> Result<(), JsValue> {
             self.import = Some(
@@ -207,6 +216,7 @@ mod bridge {
             serde_json::json!({"document":self.document.as_ref().map(|d|serde_json::json!({"width":d.width,"height":d.height,"dpi":d.dpi,"tiles":d.raster.tiles().len()})),
                 "view":{"zoom":v.zoom,"rotation":v.rotation,"flipped":v.flipped,"panX":v.pan_x,"panY":v.pan_y},
                 "memory":{"document":r.document,"history":r.history,"temporary":r.temporary,"gpu":r.gpu},
+                "history":{"undo":self.history.depths().0,"redo":self.history.depths().1},
                 "visibleTiles":self.renderer.visible_tiles(),"refining":self.renderer.refining_tiles(),"uploadedBytes":self.renderer.uploaded_bytes()}).to_string()
         }
     }

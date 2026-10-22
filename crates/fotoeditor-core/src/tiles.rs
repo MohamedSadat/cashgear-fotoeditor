@@ -66,6 +66,14 @@ impl<P: Pixel> TileSurface<P> {
     pub fn drain_dirty(&mut self) -> DirtySet {
         std::mem::take(&mut self.dirty)
     }
+    pub(crate) fn restore(&mut self, coord: TileCoord, tile: Option<Arc<Tile<P>>>) {
+        if let Some(tile) = tile {
+            self.tiles.insert(coord, tile);
+        } else {
+            self.tiles.remove(&coord);
+        }
+        self.dirty.insert(coord);
+    }
     pub fn sample(&self, x: u32, y: u32) -> P {
         if x >= self.width || y >= self.height {
             return P::default();

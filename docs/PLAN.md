@@ -61,3 +61,32 @@ User choices are recorded in DECISIONS.md; all four phase questions are answered
 2. New-document size and DPI presets?
 3. Transparency checkerboard and canvas background preferences?
 4. Wheel zoom versus scroll, and trackpad pinch behavior?
+
+## P2 acceptance
+
+The detailed source requirements are on printed pages 11–12. The approved
+correction moves general commands and basic undo ahead of painting.
+
+- General apply/revert commands with COW tile snapshots, atomic admission,
+  exact undo/redo and unique document/history/temporary residency accounting.
+- One command per stroke; Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y. History panel, configurable
+  budgets/eviction, project files and recovery remain P3.
+- Round dabs: size, hardness, opacity, flow, spacing, roundness and angle.
+- Editable pressure and tilt curves for size and opacity; coalesced pen samples,
+  path interpolation, stabilizer and strength control.
+- Stroke buffer: flow accumulates per dab, opacity caps the complete stroke.
+- Eraser, eyedropper, primary/secondary colors, swapping, HSV square, hue slider,
+  hex input and recent colors. Hard round, soft round, airbrush and pixel pencil.
+- True-size brush outline and dirty-tile live preview through the frame pump.
+- Measure a 300 px soft brush on a 6000×4000 document at 60 fps and pointer-to-pixel
+  latency under one frame; no gaps on fast flicks. Pressure on Windows Ink in
+  Chrome/Edge requires actual available pen hardware and explicit evidence.
+- Full required checks, both installed browsers/backends, desktop verification,
+  production size, measured hardware results and remote CI green before p2-brush.
+
+## P2 product questions (answered 2026-10-22)
+
+1. No pen hardware available; physical Windows Ink acceptance remains unverified.
+2. Photoshop shortcuts B/E/I/[ / ]/X and Alt eyedropper confirmed.
+3. Both pulled-string and weighted-average stabilizers.
+4. Image tips/textures in P9; P2 uses procedural tips.
