@@ -22,8 +22,12 @@ let refining = false;
 const yieldTask = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 function snapshot(): DocumentSnapshot {
   const p = cursorScreen ? engine!.cursor(...cursorScreen) : undefined;
+  const state = JSON.parse(engine!.snapshot()) as DocumentSnapshot;
   return {
-    ...(JSON.parse(engine!.snapshot()) as DocumentSnapshot),
+    ...state,
+    // A completed stroke can have the next stroke waiting behind it. Keep the
+    // entire queued edit busy so open/export cannot interleave in that gap.
+    painting: state.painting || inputsWaiting.some((input) => input.kind.startsWith('stroke-')),
     name,
     cursor: p ? [p[0], p[1]] : undefined,
     editError,

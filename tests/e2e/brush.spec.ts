@@ -223,6 +223,34 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       await idle(page, 3);
       expect((await snap(page)).memory.temporary).toBe(0);
       expect((await snap(page)).editError).toBeUndefined();
+      // A long stroke leaves the following quick click queued in the worker.
+      // Lifecycle actions must stay blocked while that edit is still waiting.
+      await range(page, 'Brush size', 2048);
+      await range(page, 'Brush spacing', 0.01);
+      const boundary = await page.evaluateHandle(() => {
+        const canvas = document.querySelector<HTMLCanvasElement>('[data-testid="gpu-canvas"]')!;
+        const states: { undo: number; painting: boolean }[] = [];
+        const observer = new MutationObserver(() => {
+          const s = JSON.parse(canvas.dataset.snapshot!);
+          states.push({ undo: s.history.undo, painting: s.painting });
+        });
+        observer.observe(canvas, { attributes: true, attributeFilter: ['data-snapshot'] });
+        return { states, observer };
+      });
+      await page.mouse.move(cx - 220, cy);
+      await page.mouse.down();
+      await page.mouse.move(cx + 220, cy);
+      await page.mouse.up();
+      await page.getByRole('textbox', { name: 'Color hex' }).fill('#00ff00');
+      await page.mouse.click(cx, cy);
+      await idle(page, 5);
+      const intermediate = await boundary.evaluate(({ states, observer }) => {
+        observer.disconnect();
+        return states.filter((s) => s.undo === 4);
+      });
+      await boundary.dispose();
+      expect(intermediate.length).toBeGreaterThan(0);
+      expect(intermediate.every((s) => s.painting)).toBe(true);
       await page.setViewportSize({ width: 700, height: 600 });
       await page.getByRole('button', { name: 'Brush settings', exact: true }).click();
       await expect(page.getByRole('textbox', { name: 'Color hex' })).toBeVisible();
