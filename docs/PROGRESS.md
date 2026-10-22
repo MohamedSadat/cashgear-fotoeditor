@@ -1,5 +1,14 @@
 # Progress
 
+## P4 — In progress
+
+Started on 2026-10-23 on clean main at `ae46c5b`, the tagged P3 completion.
+Read AGENTS.md, the phase records and original roadmap printed page 13. The user
+confirmed sRGB, default pass-through groups, after-stroke thumbnails, and the real
+50-dense-layer workload with paging and a 4 GiB streamed project cap. CPU/GPU and
+image-file budgets are unchanged. P4-DESIGN.md records the implementation and
+acceptance plan. No P4 acceptance or performance result is claimed yet.
+
 ## P3 — Complete
 
 Completed on 2026-10-23, starting on clean main at `9a0d577`, the accepted P2 handoff.

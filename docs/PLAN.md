@@ -119,3 +119,36 @@ COW snapshots, exact stroke undo/redo and shortcuts already shipped in P2.
 2. Autosave every 30 seconds when changed, plus best-effort tab hide.
 3. Ask “Restore last session?” on startup.
 4. Document-only project/recovery files; reopen with fresh undo history.
+
+## P4 acceptance
+
+The detailed source requirements are on printed page 13. All four product
+questions and the dense-workload/file-cap conflict were answered on 2026-10-23;
+see DECISIONS.md and P4-DESIGN.md.
+
+- Layers panel: add/delete/duplicate/rename, drag reorder, multi-select and groups.
+- Opacity, fill, 16 blend modes, visibility and pixel/alpha/position/all locks.
+- Masks: add, paint, disable, apply, delete, and Alt-click mask view; clipping below.
+- Merge down, merge visible and flatten. All document mutations use exact COW
+  undo/redo commands, including layer, group and mask operations.
+- Independent Rust CPU reference and portable WGSL GPU compositors. Golden
+  comparisons within ±1/channel for every mode, with masks and groups.
+- Worker-generated low-resolution thumbnails, refreshed after each stroke.
+- Bounded CPU residency with immutable paged tile generations, shared history
+  accounting, bounded GPU composite caches, and visible storage failures.
+- Streamed versioned layer/mask/group project and recovery formats, 4 GiB project
+  cap, strict validation, atomic candidate commits, v1 single-raster read support,
+  and recoverable coordinated generations. Images retain their 128 MiB cap.
+- Fifty distinct dense 4000×3000 layers pan at 60 fps on measured hardware. Record
+  dataset, storage, memory, cold/warm conditions and percentile frame timings.
+- Full required checks, installed Chrome/Edge and both backends, Windows/WebView2,
+  size and license gates, remote CI and deployment before tagging p4-layers.
+- Stop before P5 selections/fill/clipboard.
+
+## P4 product questions (answered 2026-10-23)
+
+1. sRGB blending.
+2. Pass-through groups by default.
+3. Fifty dense layers; paging and 4 GiB streamed projects approved within unchanged
+   CPU/GPU budgets and unchanged image-file limits.
+4. Thumbnails after the stroke ends.

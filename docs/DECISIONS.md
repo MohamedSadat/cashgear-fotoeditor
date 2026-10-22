@@ -1,5 +1,21 @@
 # Decisions
 
+## 2026-10-23 — P4 user choices and residency boundary
+
+- Blend in sRGB. New groups default to pass-through; isolated Normal groups remain
+  available. Layer thumbnails refresh after a completed stroke.
+- Keep the real acceptance workload at 50 dense 4000×3000 RGBA8 layers. The user
+  approved disk-backed paging and a 4 GiB streamed project-file cap. The existing
+  768 MiB total logical CPU and 128 MiB GPU budgets stay unchanged; image input
+  and image export retain their 128 MiB caps. This is not approval to materialize
+  a 4 GiB file or all document samples in RAM.
+- At 256² tile size, the dense workload contains 9,600 RGBA tiles: 2,400 MiB of
+  padded authoritative samples, excluding masks/history/scratch. Sparse layers,
+  identical shared duplicates, hidden layers, and a flattened image do not replace
+  that acceptance workload. See P4-DESIGN.md for the bounded implementation plan.
+- Measure cold paging/compositing separately from warmed cached panning. The
+  60 fps target remains unverified until measured on the actual dense workload.
+
 ## 2026-10-23 — P3 serialization foundation
 
 - User selected 256 MiB history / 200 steps, configurable within the existing
