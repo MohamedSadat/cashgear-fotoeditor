@@ -1,8 +1,9 @@
 # CashGear FotoEditor
 
-A focused photo editing and painting workspace. P1 opens PNG, JPEG and WebP images,
-creates transparent canvases, and exports lossless RGBA8 PNG. The worker-owned Rust
-engine displays sparse tiles through WebGPU or WebGL2. Painting starts in P2.
+A focused photo editing and painting workspace. Open PNG, JPEG and WebP images,
+create transparent canvases, paint with procedural brushes, and export lossless
+RGBA8 PNG. The worker-owned Rust engine processes sparse tiles and displays them
+through WebGPU or WebGL2.
 
 Use New canvas or Open image, or drop an image into the viewport. Wheel/two-finger
 gestures scroll; Ctrl/Cmd+wheel or trackpad pinch zooms around the pointer.
@@ -11,6 +12,20 @@ Space+drag or middle mouse pans; R+drag rotates. The left rail fits, resets to
 The document limit is 16,384 pixels per side; dense images also have a memory
 admission limit. PNG/JPEG/WebP files and PNG exports are capped at 128 MiB.
 16-bit input and color-profile conversion remain later-phase work.
+
+B selects brush, E eraser, I eyedropper, Alt temporarily samples a document pixel,
+[ and ] resize the brush, and X swaps primary/secondary colors. Ctrl+Z undoes one
+stroke, Ctrl+Shift+Z or Ctrl+Y redoes. Ctrl+Z during a stroke cancels it. Escape
+cancels the current stroke; losing
+pointer capture or window focus also cancels it. The right panel offers hard/soft
+round, airbrush and pixel-pencil presets, HSV/hex/recent colors, dab settings,
+both stabilizers, and editable pressure/tilt curves. On narrow windows, use
+Brush settings to open the panel. Image brush tips and textures remain P9.
+
+Every stroke uses a bounded temporary preview and one exact COW tile command.
+Flow accumulates per dab; opacity caps the complete stroke. The 768 MiB CPU
+admission limit includes document, history and stroke scratch buffers. P2 rejects
+edits that exceed it; the history panel, eviction, project save and recovery are P3.
 
 ## Prerequisites
 
@@ -31,8 +46,8 @@ bootstrapper only when it is missing. CI performs this check explicitly.
     pnpm dev
 
 Open http://127.0.0.1:5173. Rust changes rebuild WASM and restart the worker through
-Vite HMR. All UI and pointer processing stay on the main thread; the engine and GPU
-resources belong to one dedicated worker.
+Vite HMR. UI and pointer-event collection stay on the main thread; document/pixel
+processing and GPU resources belong to one dedicated worker.
 
     pnpm build
     pnpm preview
@@ -56,6 +71,7 @@ Installers, native file integration, and updating are P10 work.
     pnpm test
     pnpm test:e2e
     pnpm bench:viewport
+    pnpm bench:brush
 
 Build before typechecking, E2E, or compiling the desktop shell: generated WASM
 bindings and the web distribution are intentionally untracked.
@@ -73,6 +89,17 @@ four-second pan, zoom and cross-mip zoom sessions on both installed browsers and
 both backends. JSON and screenshots go to bench/results. It requires a built web
 distribution and refuses a software adapter. Refinement keeps a cached preview
 visible while sharpening after cold mip transitions; exact export uses CPU samples.
+
+The brush benchmark uses the same deterministic 6000×4000 image fixture, a 300 px
+soft brush at 100% view and 1800 px/s, with native protocol input at 120 Hz on each
+installed browser/backend. Two four-second trials follow a priming dab. It reports frame and
+sample-to-frame-acknowledgement percentiles, GPU identity and logical residency in
+bench/results/p2-performance.json. It refuses software adapters. Acknowledgement
+timing starts at the source sample that first changes a presented document pixel;
+full-dab completion is reported separately. It does not include compositor scanout
+or physical pen latency. Synthetic
+pressure/tilt browser tests pass through Chromium's pen input path; no physical pen
+is available, and the user explicitly deferred physical Windows Ink validation.
 
 The desktop smoke test uses a temporary profile and a loopback debugging port.
 On disposable GitHub-hosted runners only, it temporarily sets an executable-scoped

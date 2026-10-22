@@ -17,6 +17,35 @@
   engine contracts; physical Windows Ink behavior cannot be claimed as verified.
 - The user explicitly approved deferring physical pen validation and completing
   P2 with synthetic pressure/tilt coverage if every other acceptance check passes.
+- Each stroke keeps a COW preview and a UNORM16 coverage mask in u32 scratch
+  buffers. Flow accumulates coverage; stroke opacity is applied to the original
+  samples, so overlap does not exceed the cap. Erasure changes alpha and preserves
+  hidden RGB. Completion compacts exact zero tiles and admits one tile command.
+- Procedural elliptical masks are prepared once per stroke, capped at 512 pixels
+  of mask resolution and resampled for larger tips/dynamics. Pencil snaps to one
+  document pixel. Batches visit at most 262,144 pixel positions and 512 dabs;
+  the engine input queue holds at most 2,048 samples. Overflow/budget refusal
+  cancels the preview and reports the error, leaving the document/history intact.
+- Native raw pointer events and coalesced move fallback retain pressure, tilt and
+  source timestamps, with duplicate raw/move samples removed. Mouse pressure is
+  one. Low-flow brushes add a stationary dab every 33 ms. Weighted smoothing uses
+  a time-dependent exponential average; pulled-string radius is in document pixels.
+- Dirty rectangles update cached base-tile interiors during painting. Changed
+  generations and filtered mips are invalidated; neighboring gutters refresh when
+  needed for filtered views. Display scratch reserves 1 MiB within the CPU budget.
+  WASM SIMD and explicit hot-loop boundaries keep the CPU kernels small enough
+  for browser optimization; the same straight-alpha reference tests cover them.
+- The frame pump serializes worker transactions and owns every GPU presentation.
+  Input may use an unused frame slot immediately. An active preview requests the
+  remaining slot after 8 ms; unchanged previews do not consume it at the start
+  of the animation frame. Idle documents submit no GPU frames. Presentation
+  timestamps prevent a delayed RPC reply from consuming the following frame's slot.
+- The P2 hardware benchmark measures a 300 px soft round at 100% on the existing
+  deterministic 6000×4000 fixture, 10% spacing, 1800 px/s and 120 Hz native input.
+  Report average presentation rate plus p50/p95/p99 acknowledgement intervals and
+  source-sample latency. The under-one-frame result is assessed at p95, with tails
+  retained explicitly. Acknowledgement includes queueing, CPU work and GPU submission;
+  compositor/scanout and physical input hardware latency are outside this measurement.
 
 ## 2026-10-22 — P1 choices and implementation
 

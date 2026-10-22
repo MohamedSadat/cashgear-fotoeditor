@@ -1,30 +1,137 @@
 # Progress
 
-## P2 — In progress
+## P2 — Complete
 
-Started on 2026-10-22 from the accepted p1-viewport tag, directly on main.
+Completed on 2026-10-22 from the accepted p1-viewport tag, directly on main.
 Read the original roadmap's detailed P2 requirements (printed pages 11–12) and
-the approved corrections. Product questions are answered in DECISIONS.md. Work begins
-with the general command/basic undo foundation before any brush implementation.
+the approved corrections. All product questions are answered in DECISIONS.md.
+The command/basic undo foundation was committed and verified before painting.
 
-The first foundation adds reversible tile snapshots, exact sparse/hidden-RGB
-restoration, unique COW history accounting and atomic memory admission. Lifecycle
-replacement resets history. P3 retains the history panel, eviction, serialization
-and recovery. Foundation verification: 12 Rust tests (including 500 deterministic
-command sequences), native/WASM clippy, Rust/Prettier formatting, TypeScript,
-ESLint, 5 Vitest tests, license inventory and production build passed. All 40
-browser regression tests passed on installed Chrome and Edge with WebGPU/WebGL2.
-Release WASM: 2,509,984 bytes; gzip level 9: 1,031,910 / 1,500,000 bytes.
-No painting or P2 acceptance/performance is claimed yet.
+Shipped:
 
-Rust stroke engine implementation now adds procedural elliptical dabs, a per-stroke
-flow mask with a stroke opacity cap, exact straight-alpha source-over/erasure,
-kurbo path interpolation, pressure/tilt curves and both selected stabilizers.
-Input queues and pixel batches are bounded, preview/mask buffers are admitted
-against document/history residency, and a completed stroke yields one tile command.
-Cancellation drops scratch state. Native/WASM clippy and 16 Rust tests passed.
-kurbo and its reachable dependencies use approved licenses; inventory: 442 entries.
-Browser UI integration and full phase verification are in progress.
+- General apply/revert commands with COW before/after tile generations, exact
+  sparse and hidden-RGB restoration, branch-safe undo/redo, and atomic memory
+  admission. No-op/rejected commands preserve redo. Each completed stroke is one
+  command; new/open replacements reset history.
+- Rust procedural elliptical dabs with size, hardness, opacity, flow, spacing,
+  roundness and angle; kurbo line interpolation; hard/soft round, stationary
+  airbrush and one-document-pixel pencil presets.
+- Stroke coverage accumulates flow while opacity caps the complete stroke.
+  Straight-alpha paint preserves source-over color; erasure preserves hidden RGB.
+  Bounded COW preview/mask/tip/input buffers are admitted within the existing
+  768 MiB CPU budget, including a 1 MiB display reserve. GPU remains capped at
+  128 MiB. Overflow/refused strokes cancel without changing document/history.
+- Editable five-point pressure/tilt curves for size/opacity, both pulled-string
+  and weighted-average stabilizers, coalesced pen samples and raw-pointer input
+  with duplicate suppression. Mouse input uses pressure one. Physical Windows Ink
+  validation is explicitly deferred by user approval because no pen is available.
+- HSV square/hue slider, RGBA hex, primary/secondary swapping, recent colors,
+  eyedropper and eraser; B/E/I/[ / ]/X/Alt and basic undo shortcuts. Escape, focus
+  loss and lost capture cancel active strokes. Narrow windows use a brush drawer.
+- True-size dynamic brush outline, live dirty-region uploads, generation/mip
+  invalidation and neighboring gutter refresh. SIMD/hot-loop boundaries optimize
+  the Rust kernels. The sole frame pump prioritizes input before requesting a
+  later unchanged preview; idle documents submit no GPU frames.
+
+Local acceptance verification: Rust formatting, native/WASM clippy, 23 Cargo tests,
+TypeScript, ESLint, Prettier, 13 Vitest tests and all 442 dependency license
+expressions passed. Release WASM is 2,689,780 bytes; gzip level 9 is
+1,024,905 / 1,500,000 bytes. All 64 installed Chrome/Edge tests passed on WebGPU
+and WebGL2 without retries; all 44 software browser tests also passed. The Windows
+desktop release build and WebView2 155.0.4283.62 launch/isolation checks passed on
+both hardware backends, including actual painted pixels and complete canvas pixel
+comparisons after undo/redo. The final desktop package was rebuilt and rechecked
+after the queued-stroke fix.
+
+[FotoEditor checks run 39840183893](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/runs/39840183893)
+passed for implementation commit `596dba30e8fd1620f3b15c7adea269bfefdf38bf`.
+Every configured Rust/JavaScript/license/build check passed, and all 44 software
+browser cases ultimately passed with zero skips or unexpected final failures.
+Three cases in the separate software WebGL2 project needed the existing CI retry:
+initial engine startup exceeded the 30-second deadline. Diagnostic pixels,
+resize/recovery and PNG navigation all passed on their next attempt. These were
+startup timeouts before editing, not painting assertions. They remain a known
+CI stability limitation; the report does not claim a retry-free remote run.
+Local software, installed hardware and live-site suites passed without retries.
+
+CI also built and launched Windows/WebView2 on both backends and verified painting
+plus exact presented undo/redo pixels. Its WebGPU adapter was SwiftShader and
+WebGL2 used Microsoft Basic Render Driver/WARP; these prove function only.
+CI release WASM measured 2,691,028 bytes, gzip level 9: 1,025,004 bytes, below
+the same 1,500,000-byte gate. The phase-verification artifact retains browser,
+desktop, size and failure/retry evidence; a local copy is in bench/results/p2-ci.
+
+[Azure deployment run 39840183890](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/runs/39840183890)
+passed for implementation commit `596dba30e8fd1620f3b15c7adea269bfefdf38bf`.
+The public [CashGear FotoEditor](https://proud-pebble-07b8b4f10.2.azurestaticapps.net)
+then passed all 64 tests on installed Chrome and Edge using WebGPU and WebGL2,
+with no retries or skips. This covers actual presented pixels, exact exported
+samples/undo/redo, queued input, synthetic pen dynamics, isolation headers and
+WASM delivery. Evidence is in bench/results/p2-live-browser-tests.json.
+
+Final review also closed a lifecycle race between a completed stroke and the next
+queued stroke: the worker now reports the complete queued edit as busy, preventing
+open/export from interleaving at the command boundary. All 24 hardware brush cases
+passed again. The additional queued-stroke regression passed on all four hardware
+paths and all three software test configurations. The test observes the intermediate
+history state during a long stroke followed immediately by another color stroke.
+
+Hardware brush measurements used Windows 10 Pro 10.0.19045, Xeon E5-2680 v3
+2.50 GHz, approximately 32 GB RAM, GTX 1650, driver 27.21.14.5751. Both browsers
+reported vendor nvidia, architecture turing, isFallbackAdapter false. Viewport
+1280×850, DPR 1, installed headless Chrome 156.0.8078.47 / Edge 155.0.4283.62.
+The existing deterministic 6000×4000 RGBA8 PNG is 67,038,649 bytes, SHA-256
+809669e7f406d83b59d39fe659411b32c8d014cf6d54e189ba86165ddf82e7f5.
+Two four-second warm strokes follow a priming dab: 300 px soft round, 100% view,
+10% spacing, 1800 px/s triangular path with vertical motion, native protocol
+mouse input at 120 Hz. Raw input was available on all four configurations.
+
+| Browser / backend | Trial fps     | Sample-to-ack p95 | Worst sample p99 | Worst cadence p95 / p99 |
+| ----------------- | ------------- | ----------------- | ---------------- | ----------------------- |
+| Chrome / WebGPU   | 60.11 / 59.99 | 15.06 / 14.72 ms  | 17.14 ms         | 22.94 / 25.02 ms        |
+| Chrome / WebGL2   | 60.15 / 60.00 | 15.17 / 15.37 ms  | 17.34 ms         | 22.69 / 25.58 ms        |
+| Edge / WebGPU     | 60.09 / 59.74 | 14.99 / 14.59 ms  | 16.93 ms         | 23.16 / 25.56 ms        |
+| Edge / WebGL2     | 60.14 / 60.07 | 15.39 / 14.84 ms  | 17.07 ms         | 22.79 / 26.22 ms        |
+
+Source-sample latency starts at the input first changing a presented document
+pixel and ends at main-thread observation of the worker's presentation
+acknowledgement. It includes queueing, paint, display conversion/upload and GPU
+submission; it excludes compositor/scanout and physical input latency. The p95
+result is below a 16.67 ms frame; p99 outliers are shown rather than claiming a
+hard real-time bound. Full-dab completion p95 was 14.72–15.32 ms. Average active
+presentation was approximately 60 fps, including previews between spaced dabs;
+acknowledgement cadence is not a promise that every interval is 16.67 ms.
+
+Paint batches p95 were 4.37–4.66 ms; render p95 2.25–2.85 ms. Pending work peaked
+at two samples and returned to zero by each trial's last observed presentation.
+Dense document tiles used 96 MiB, history
+1–3.5 MiB, stroke scratch plus display reserve 6.77 MiB, GPU atlas/instances
+32.03 MiB. These are logical buffer capacities, excluding map/Arc headers,
+browser/driver overhead and retained WASM allocator pages, not process RAM/VRAM.
+Raw evidence: bench/results/p2-performance.json, p2-machine.json, p2-*.png and
+p2-hardware-browser-tests.json. Reproduce with pnpm bench:brush.
+These final measurements used implementation commit
+`596dba30e8fd1620f3b15c7adea269bfefdf38bf`. The preceding verification run is
+retained in p2-performance-04e0849.json: 59.85–60.14 fps and p95 14.76–15.76 ms.
+
+The viewport performance regression also passed on all four hardware paths:
+first opens 1.14–1.20 seconds, warm opens 0.97–1.10 seconds, approximately 60 fps
+for pan/zoom/cold-mip zoom, worst p95/p99 interval 16.73/16.78 ms. Final cold-mip
+refinement took 1.43–1.82 seconds while showing the cached preview. Evidence is
+bench/results/p2-viewport-regression.json; the earlier P1 baseline is preserved.
+Software browser results are in p2-software-browser-tests.json and desktop results
+in p2-desktop-smoke.json. Software rendering is functional evidence only.
+
+Deferred: physical pen/Windows Ink validation (explicitly approved), image tips
+and textures (P9), history panel/budget eviction/project files/recovery (P3).
+Software cold-start timing, physical input-to-photon latency, broader hardware
+and exact process/driver memory are not claimed by these measurements.
+
+The p2-brush tag includes this documentation-only completion report after the
+verified implementation. All required checks completed and remote CI/deployment
+are green, with the software startup retries and approved pen deferral disclosed.
+Proposed next phase: P3 — history controls/budget eviction, versioned project
+save/reopen and recoverable autosave. Stop at this boundary; P3 has not started.
 
 ## P0 — Complete
 
