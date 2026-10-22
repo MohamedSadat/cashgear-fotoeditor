@@ -3,7 +3,8 @@ import { spawn } from 'node:child_process';
 import { mkdir, writeFile, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-const base = process.env.PERF_BASE_URL ?? 'http://127.0.0.1:4174';
+const base = process.env.PERF_BASE_URL ?? 'http://127.0.0.1:4188';
+const phase = process.env.PERF_PHASE ?? 'p1';
 const server = process.env.PERF_BASE_URL
   ? undefined
   : spawn(
@@ -14,7 +15,7 @@ const server = process.env.PERF_BASE_URL
         '--host',
         '127.0.0.1',
         '--port',
-        '4174',
+        '4188',
         '--strictPort',
       ],
       { cwd: resolve('apps/web'), stdio: 'ignore', windowsHide: true },
@@ -54,7 +55,14 @@ try {
               }
             : null;
         });
-        if (!gpu || gpu.isFallbackAdapter || ['google', 'microsoft'].includes(gpu.vendor))
+        const adapterName = await page.getByTestId('gpu-backend').getAttribute('title');
+        if (
+          !gpu ||
+          gpu.isFallbackAdapter ||
+          ['google', 'microsoft'].includes(gpu.vendor) ||
+          /swiftshader|warp|software|llvmpipe|basic render/i.test(adapterName ?? '') ||
+          (backend === 'WebGL2' && !adapterName)
+        )
           throw new Error('Hardware benchmark requires a hardware adapter: ' + JSON.stringify(gpu));
         const opens = [];
         for (let repeat = 0; repeat < 3; repeat++) {
@@ -184,7 +192,9 @@ try {
         };
         results.push(result);
         console.log(JSON.stringify(result));
-        await page.screenshot({ path: `bench/results/p1-${channel}-${backend}.png` });
+        await page.screenshot({
+          path: `bench/results/${phase}-viewport-${channel}-${backend}.png`,
+        });
         await context.close();
       }
     } finally {
@@ -193,7 +203,7 @@ try {
   }
   await mkdir('bench/results', { recursive: true });
   await writeFile(
-    'bench/results/p1-performance.json',
+    `bench/results/${phase}${process.env.PERF_PHASE ? '-viewport' : ''}-performance.json`,
     JSON.stringify({ measuredAt: new Date().toISOString(), results }, null, 2) + '\n',
   );
 } finally {

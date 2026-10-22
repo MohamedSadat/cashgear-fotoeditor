@@ -3,7 +3,8 @@ import { spawn } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-const base = process.env.PERF_BASE_URL ?? 'http://127.0.0.1:4174';
+const base = process.env.PERF_BASE_URL ?? 'http://127.0.0.1:4188';
+const phase = process.env.PERF_PHASE ?? 'p2';
 const server = process.env.PERF_BASE_URL
   ? undefined
   : spawn(
@@ -14,7 +15,7 @@ const server = process.env.PERF_BASE_URL
         '--host',
         '127.0.0.1',
         '--port',
-        '4174',
+        '4188',
         '--strictPort',
       ],
       { cwd: resolve('apps/web'), stdio: 'ignore', windowsHide: true },
@@ -57,7 +58,8 @@ try {
           !gpu ||
           gpu.isFallbackAdapter ||
           ['google', 'microsoft'].includes(gpu.vendor) ||
-          /swiftshader|warp|llvmpipe|software/i.test(adapter ?? '')
+          /swiftshader|warp|llvmpipe|software|basic render/i.test(adapter ?? '') ||
+          (backend === 'WebGL2' && !adapter)
         )
           throw new Error('Hardware adapter required: ' + JSON.stringify({ gpu, adapter }));
         await page
@@ -195,7 +197,7 @@ try {
         };
         results.push(result);
         console.log(JSON.stringify(result));
-        await page.screenshot({ path: `bench/results/p2-${channel}-${backend}.png` });
+        await page.screenshot({ path: `bench/results/${phase}-brush-${channel}-${backend}.png` });
         await context.close();
       }
     } finally {
@@ -204,7 +206,7 @@ try {
   }
   await mkdir('bench/results', { recursive: true });
   await writeFile(
-    'bench/results/p2-performance.json',
+    `bench/results/${phase}-performance.json`,
     JSON.stringify({ measuredAt: new Date().toISOString(), results }, null, 2) + '\n',
   );
 } finally {

@@ -1,30 +1,104 @@
 # Progress
 
-## P3 — In progress
+## P3 — In progress: acceptance verification
 
 Started on 2026-10-23 on clean main at `9a0d577`, the accepted P2 handoff.
 Read AGENTS.md, the phase documents, and original roadmap printed pages 12–13.
-The four P3 product choices have been presented and remain pending; no defaults
-have been accepted yet. Work so far is limited to the independent document codec.
+All four user choices are confirmed in DECISIONS.md: 256 MiB / 200 history steps
+within the shared 768 MiB CPU model, 30-second plus best-effort tab-hide autosave,
+ask before restoring, and document-only files with fresh undo history on reopen.
 
-- Added a Rust-only version-1 sparse project reader/writer with exact straight RGBA8
-  and f64 DPI preservation, deterministic tile order, full-file CRC32, strict
-  version/dimension/coordinate/length checks, a 128 MiB file cap and shared CPU
-  admission. Each step processes at most one tile so the worker can yield/cancel
-  before committing a completed document.
-- Tests cover sparse maximum-size blank documents, tile edges, hidden RGB,
-  low alpha, exact DPI, deterministic roundtrips, truncated/corrupt files and
-  duplicate coordinates. No browser save/reopen or recovery flow is connected yet.
+Implemented:
 
-Foundation checks passed: formatting, native/WASM clippy, 25 Rust tests,
-TypeScript, ESLint, 13 Vitest tests, all 442 dependency license expressions and
-the production build. Release WASM: 2,691,276 bytes; gzip level 9: 1,024,951 /
-1,500,000 bytes. Browser/desktop and recovery acceptance remain to be run after
-integration; this checkpoint makes no P3 acceptance or hardware performance claim.
+- History panel with click-to-jump, branching, persistent configurable limits and
+  visible eviction counts. Oldest applied commands and then farthest redo states
+  give way to the configured limits. Save/readback reservations can also evict
+  history before allocating buffers within the total CPU limit.
+- Resolution metadata commands merge within one focus/pointer gesture. Strokes
+  remain separate. A queued main-thread stroke stays visibly busy until it reaches
+  the worker, extending the worker queue protection from P2.
+- Version-1 `.cgfoto` sparse project save/open and drag/drop. Rust preserves exact
+  straight RGBA8, hidden RGB and f64 DPI; validates versions, lengths, dimensions,
+  coordinates and CRC32; and commits a candidate only after complete validation.
+  The existing 128 MiB file cap also applies to these uncompressed project files.
+- Worker-owned OPFS recovery with unique generation files, explicit flush/close,
+  Rust readback validation and a separately flushed metadata commit record.
+  Three validated generations are retained. Inactive uncommitted files are cleaned
+  up. A failed write removes only its own new files and preserves completed saves.
+- Session ownership and catalog Web Locks coordinate tabs, exclude active sessions
+  from restore prompts and recheck restore/discard operations. Persistent storage
+  is requested on the main thread. Quota, write and persistence failures are visible.
+- Bounded project batches yield via MessageChannel; each Rust step handles one tile.
+  New files are validated once, then two prior valid generations are checked before
+  pruning. This removed duplicated whole-file reads and nested timer clamping.
 
-No P3 acceptance or performance claim is made yet. Remaining: product decisions,
-history UI/eviction/merging, worker/UI project integration, recovery generations,
-fault/kill tests, complete local/desktop/live verification, remote CI and phase tag.
+Local checks so far: formatting, native/WASM clippy, TypeScript, ESLint, 14 Vitest
+tests, all 450 dependency license expressions and production build passed. All
+30 Rust tests passed. Rust
+coverage includes 500 proptest mixed command sequences with exact undo-all hashes,
+200 soft strokes under the budgets, branching/merging/eviction and malformed files.
+All 92 installed Chrome/Edge cases passed after the bounded job optimization,
+without retries or skips. Windows/WebView2 155.0.4283.62 release build, exact
+project roundtrip and autosave/restore checks passed on both hardware backends.
+All 65 local software Chromium cases also passed without retries or skips. These
+are functional evidence only. Remote CI, deployment and live-site acceptance remain.
+Release WASM: 2,714,673 bytes; gzip level 9: 1,035,102 / 1,500,000 bytes.
+
+Hardware measurements used the same Windows 10 Pro / Xeon E5-2680 v3 / approximately
+32 GB RAM / GTX 1650 / driver 27.21.14.5751 machine as P2. Installed headless Chrome
+156.0.8078.47 and Edge 155.0.4283.62, viewport 1280×850, DPR 1. WebGPU reports nvidia /
+turing / isFallbackAdapter false; actual WebGL2 adapter strings identify ANGLE /
+NVIDIA GeForce GTX 1650 / Direct3D11. The unchanged 6000×4000 PNG fixture is
+67,038,649 bytes, SHA-256 809669e7f406d83b59d39fe659411b32c8d014cf6d54e189ba86165ddf82e7f5.
+
+On every hardware path, 200 separate 300 px soft dabs retained all 200 commands:
+96 MiB document plus 214 MiB history, 310 MiB post-stroke logical CPU tile buffers.
+This is below the 256 MiB history cap and 768 MiB total admission limit; transient
+scratch is tested separately and file/bridge buffers are admitted before allocation.
+Logical capacities exclude map/Arc headers, retained allocator pages and browser/
+driver overhead; these are not exact process RAM/VRAM measurements.
+
+Two warmed save/reopen cycles followed those strokes. Each project is 100,666,408
+bytes; all eight saved files have identical SHA-256
+609726aee71e5d10c4fea1f3fc83023761daa71f84271733c087e1507414f0ca.
+
+| Hardware path   | Project save trials | Project reopen trials | Autosave worker range |
+| --------------- | ------------------- | --------------------- | --------------------- |
+| Chrome / WebGPU | 1.63 / 1.40 s       | 0.86 / 0.85 s         | 1.14–1.68 s           |
+| Chrome / WebGL2 | 1.42 / 1.73 s       | 0.85 / 0.85 s         | 1.07–1.62 s           |
+| Edge / WebGPU   | 1.49 / 1.46 s       | 0.87 / 0.89 s         | 1.18–1.73 s           |
+| Edge / WebGL2   | 1.50 / 1.41 s       | 0.87 / 0.88 s         | 1.14–1.73 s           |
+
+Save/reopen timings include UI automation, input/download I/O, bridge copies and
+observation polling. They measure document commit/normal frame acknowledgement,
+not compositor/scanout or completion of every preview refinement. Four manual
+autosaves per path measured worker serialization, flush, readback, metadata commit
+and pruning; UI observation was 1.93–1.96 s. Autosave currently pauses editing for
+its bounded operation; the 1.07–1.73 s worker cost on this workload is disclosed.
+Three completed generations remain after the fourth save. The initial redundant
+validation implementation observed approximately 3–5 s; its raw baseline is retained.
+
+The separate P2 brush workload regression held 59.79–60.09 average fps, with p95
+source-sample-to-presentation-acknowledgement 9.43–14.91 ms. Worst sample p99 was
+16.67 ms; worst acknowledgement cadence p95/p99 was 22.71/26.45 ms. This uses the
+same two four-second warm 300 px soft-brush trials, native 120 Hz mouse input and
+1800 px/s path. It includes queueing, CPU paint, conversion/upload and submission,
+and excludes compositor/scanout and physical pen latency. It is not a hard frame
+deadline or a measurement of continuous painting with 200 retained history steps.
+
+Viewport regression: first image opens 1.10–1.38 s, warm opens 0.98–1.30 s;
+approximately 60 fps for pan, zoom and cold-mip zoom; worst p95/p99 period
+16.74/16.78 ms. Final cold-mip refinement took 1.22–1.97 s with the cached overview.
+Raw evidence is in ignored bench/results/p3-history-performance.json,
+p3-history-performance-initial.json, p3-performance.json, p3-viewport-performance.json,
+p3-machine.json and p3-*.png. Reproduce with pnpm bench:history. For regression
+measurements set $env:PERF_PHASE = 'p3' in PowerShell, then run pnpm bench:brush
+and pnpm bench:viewport.
+
+Remaining: push verification commits, confirm remote CI/deployment, test the live
+site, then create p3-history.
+No P3 completion claim or tag yet. Physical pen validation remains the approved
+P2 deferral. Layers, masks and compositing remain P4 and have not started.
 
 ## P2 — Complete
 

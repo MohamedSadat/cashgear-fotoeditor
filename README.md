@@ -2,7 +2,8 @@
 
 A focused photo editing and painting workspace. Open PNG, JPEG and WebP images,
 create transparent canvases, paint with procedural brushes, and export lossless
-RGBA8 PNG. The worker-owned Rust engine processes sparse tiles and displays them
+RGBA8 PNG. Save editable `.cgfoto` projects and recover completed browser autosaves.
+The worker-owned Rust engine processes sparse tiles and displays them
 through WebGPU or WebGL2.
 
 Use New canvas or Open image, or drop an image into the viewport. Wheel/two-finger
@@ -10,7 +11,7 @@ gestures scroll; Ctrl/Cmd+wheel or trackpad pinch zooms around the pointer.
 Space+drag or middle mouse pans; R+drag rotates. The left rail fits, resets to
 100%, rotates, flips and resets rotation. View changes never modify export pixels.
 The document limit is 16,384 pixels per side; dense images also have a memory
-admission limit. PNG/JPEG/WebP files and PNG exports are capped at 128 MiB.
+admission limit. Image/project files and PNG exports are capped at 128 MiB.
 16-bit input and color-profile conversion remain later-phase work.
 
 B selects brush, E eraser, I eyedropper, Alt temporarily samples a document pixel,
@@ -23,9 +24,26 @@ both stabilizers, and editable pressure/tilt curves. On narrow windows, use
 Brush settings to open the panel. Image brush tips and textures remain P9.
 
 Every stroke uses a bounded temporary preview and one exact COW tile command.
-Flow accumulates per dab; opacity caps the complete stroke. The 768 MiB CPU
-admission limit includes document, history and stroke scratch buffers. P2 rejects
-edits that exceed it; the history panel, eviction, project save and recovery are P3.
+Flow accumulates per dab; opacity caps the complete stroke. The inspector's History
+button opens the history panel: click a state to jump, or configure memory/step
+limits. Defaults are 256 MiB / 200 steps within the shared 768 MiB CPU admission
+limit, including document and temporary buffers. Old retained states can be evicted
+to make room. Zero disables retained undo; an edit larger than the history cap can
+complete without an undo step. Resolution changes use commands and merge within a
+single focus/pointer gesture; they change DPI metadata without resampling pixels.
+
+Save project downloads a versioned `.cgfoto` file preserving sparse straight RGBA8
+samples, hidden RGB and exact DPI. Open project or drop the file to reopen it with
+fresh undo history. Project files store the document only, not history or view state.
+
+Recovery saves changed, completed documents every 30 seconds and on tab hide when
+idle. Tab-hide saves are best effort: startup asks to restore the last completed
+snapshot. Recovery storage is local to this browser/profile/origin; tabs own
+independent sessions and do not restore or overwrite active sessions. Up to three
+validated generations remain. Storage denial/quota/write failures are visible in
+the Recovery section; Save recovery now retries a failed save. Keep project files
+as independent copies because browser data can be cleared or evicted. Save/recovery
+operations briefly pause editing and report their current operation.
 
 ## Prerequisites
 
@@ -72,6 +90,7 @@ Installers, native file integration, and updating are P10 work.
     pnpm test:e2e
     pnpm bench:viewport
     pnpm bench:brush
+    pnpm bench:history
 
 Build before typechecking, E2E, or compiling the desktop shell: generated WASM
 bindings and the web distribution are intentionally untracked.
@@ -81,6 +100,9 @@ GPU_TEST_SOFTWARE=1 and installs Playwright Chromium. One project selects the
 SwiftShader WebGPU adapter with a WARP software compositor; a second forces SwiftShader
 for WebGL2. Tests verify the software adapter rather than silently accepting
 another backend. Software results demonstrate correctness, not hardware performance.
+Tests start their own strict-port preview on 4187 (override with E2E_PORT); they do
+not reuse an unrelated preview. Hardware benchmarks use port 4188. Build once before
+a suite and keep that distribution unchanged until its server exits.
 
 E2E generates deterministic alpha, JPEG/WebP and 6000×4000 PNG fixtures with a
 native Rust example in bench/results/fixtures. The hardware viewport benchmark
@@ -101,6 +123,14 @@ or physical pen latency. Synthetic
 pressure/tilt browser tests pass through Chromium's pen input path; no physical pen
 is available, and the user explicitly deferred physical Windows Ink validation.
 
+The history benchmark runs 200 separate soft dabs on the same 6000×4000 document,
+checks history/CPU limits, measures two warmed project save/reopen cycles with
+byte-identical hashes, and measures four flushed/readback-validated autosaves while
+checking three retained generations. Its worker timings and UI observation timings
+are separate. Evidence goes to bench/results/p3-history-performance.json.
+Set PERF_PHASE=p3 for the brush/viewport benchmarks to retain P3 regression evidence
+without replacing prior phase results.
+
 The desktop smoke test uses a temporary profile and a loopback debugging port.
 On disposable GitHub-hosted runners only, it temporarily sets an executable-scoped
 HKLM browser-argument policy, then restores it. Elevated WebView2 hosts ignore
@@ -112,6 +142,8 @@ Use ?gpu=webgl2 to force WebGL2. The ?diagnostic=1 scene uploads a 2x2 texture f
 Rust and displays red, green, blue, and white quadrants. Its diagnostic controls
 exercise device-loss and panic recovery. ?diagnostic=1&fault=init tests initialization
 failure; Retry creates a new canvas and worker.
+Additional diagnostic controls inject quota/partial-write failures or pause an
+uncommitted generation for renderer-kill tests. They are hidden in normal use.
 
 Production builds measure optimized WASM and enforce a maximum of 1,500,000
 gzipped bytes. The report is written to bench/results/wasm-size.json.
