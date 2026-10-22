@@ -53,7 +53,7 @@ screenshot. The runner-specific WebView2 argument policy is restored after testi
 
 Known limitations: P0 opens no image and has no editing tools. Installer/updater and
 native file integration remain P10 work. Windows 11 and other hardware are not
-claimed as tested. Static hosting is prepared; no public deployment was requested.
+claimed as tested. Public hosting was added after P0, as recorded below.
 
 The `p0-scaffold` tag marks the validated foundation. There are no known outstanding
 P0 acceptance failures.
@@ -63,3 +63,25 @@ No later editing phase has started.
 Suggested next phase: P1 — Tiles, viewport, open and PNG export. It establishes
 straight-alpha samples and residency accounting before pixel edits begin. The
 four outstanding product questions are recorded in PLAN.md.
+
+## Post-P0 — Azure deployment
+
+Published on 2026-10-22 to
+[Azure Static Web Apps](https://proud-pebble-07b8b4f10.2.azurestaticapps.net).
+[Deployment run 39785836033](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/runs/39785836033)
+passed for implementation commit `c646a1418cf1f1303080f0869f7eac033e99e459`.
+[P0 checks run 39785835868](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/runs/39785835868)
+also passed for the same implementation, including all software browser tests and
+the Windows desktop build and launch.
+
+The workflow now builds release WASM and Vite with the pinned toolchains, then
+uploads apps/web/dist. Azure's staticwebapp.config.json supplies isolation headers,
+the WASM MIME type, and caching rules. The generated workflow's formatting failure
+is corrected.
+
+Live production checks passed on installed Chrome and Edge using both WebGPU and
+forced WebGL2: actual diagnostic texture pixels, successful worker/WASM loading,
+crossOriginIsolated, all three isolation headers, application/wasm, entry HTML
+revalidation, and immutable hashed asset caching. Results and screenshots are
+available locally in bench/results/azure-smoke.json and bench/results/azure-*.png.
+No image editing phase was started.

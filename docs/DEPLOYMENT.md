@@ -25,6 +25,8 @@ be cached immutably; deploy the complete new directory atomically.
 
 ## Azure Static Web Apps
 
+Production: [CashGear FotoEditor](https://proud-pebble-07b8b4f10.2.azurestaticapps.net).
+
 The Azure workflow installs Node 24, pnpm 12.11.2, Rust 1.99.1, the WASM target,
 and the matching wasm-bindgen CLI. It runs pnpm build at the repository root,
 including release WASM optimization and the size gate. Azure then uploads
