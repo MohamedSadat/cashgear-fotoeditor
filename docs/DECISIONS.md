@@ -36,6 +36,10 @@
 - Import tiling and PNG export yield between chunks and support cancellation.
   The decoder call itself is synchronous; cancellation resumes after decode.
   Failed/cancelled imports leave the previous document intact.
+- UI cancellation also invalidates a pending file read before worker dispatch.
+  Once dispatched, worker cancellation is acknowledged before the UI reports it.
+  Tests use the visible operation rather than relying on transient memory samples
+  being observable on a particular software renderer frame.
 - All surface presentation goes through the existing frame pump, including the
   first opened-image frame. Opening waits for that presentation acknowledgement;
   import must not render independently and acquire the same WebGPU canvas texture
