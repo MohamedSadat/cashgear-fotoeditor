@@ -33,22 +33,47 @@ const softwareArgs =
   process.env.GPU_TEST_SOFTWARE === '1'
     ? ' --enable-unsafe-webgpu --enable-unsafe-swiftshader --use-angle=d3d11-warp --use-webgpu-adapter=swiftshader'
     : '';
-// Hosted runners launch the trusted test shell in an elevated, non-user session.
-// Match Playwright's test-only sandbox configuration; normal app launches do not
-// receive these switches or expose a debugging endpoint.
-const ciArgs = process.env.CI ? ' --no-sandbox --enable-logging=stderr' : '';
+const browserArguments =
+  '--remote-debugging-port=' + port + ' --remote-debugging-address=127.0.0.1' + softwareArgs;
+// Elevated WebView2 hosts ignore environment browser arguments. Use the documented
+// HKLM override only on disposable GitHub-hosted runners, scoped to our executable.
+// https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/security#for-an-elevated-host-app-use-appropriate-override-flags
+const policyKey = 'HKLM\\SOFTWARE\\Policies\\Microsoft\\Edge\\WebView2\\AdditionalBrowserArguments';
+const policyName = 'fotoeditor-desktop.exe';
+const hostedRunner =
+  process.env.GITHUB_ACTIONS === 'true' && process.env.RUNNER_ENVIRONMENT === 'github-hosted';
+let previousPolicy;
+function reg(args) {
+  return spawnSync('reg.exe', args, { encoding: 'utf8', windowsHide: true });
+}
+if (hostedRunner) {
+  const existing = reg(['query', policyKey, '/v', policyName, '/reg:64']);
+  if (existing.status === 0) {
+    previousPolicy = existing.stdout.match(/REG_SZ\s+(.+)/)?.[1];
+    if (previousPolicy === undefined) throw new Error('Unexpected existing WebView2 test policy');
+  }
+  const added = reg([
+    'add',
+    policyKey,
+    '/v',
+    policyName,
+    '/t',
+    'REG_SZ',
+    '/d',
+    browserArguments,
+    '/f',
+    '/reg:64',
+  ]);
+  if (added.status !== 0)
+    throw new Error('Could not configure WebView2 test policy: ' + added.stderr);
+}
 const child = spawn(join(root, 'target/release/fotoeditor-desktop.exe'), [], {
   cwd: root,
   windowsHide: true,
   env: {
     ...process.env,
     WEBVIEW2_USER_DATA_FOLDER: profile,
-    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:
-      '--remote-debugging-port=' +
-      port +
-      ' --remote-debugging-address=127.0.0.1' +
-      softwareArgs +
-      ciArgs,
+    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: browserArguments,
   },
   stdio: 'inherit',
 });
@@ -141,8 +166,33 @@ try {
   );
   console.log(JSON.stringify(results, null, 2));
 } finally {
-  await browser?.close();
+  await browser?.close().catch((error) => {
+    console.error('Could not close the desktop browser: ' + error.message);
+    process.exitCode = 1;
+  });
   child.kill();
+  if (hostedRunner) {
+    const restored = reg(
+      previousPolicy === undefined
+        ? ['delete', policyKey, '/v', policyName, '/f', '/reg:64']
+        : [
+            'add',
+            policyKey,
+            '/v',
+            policyName,
+            '/t',
+            'REG_SZ',
+            '/d',
+            previousPolicy,
+            '/f',
+            '/reg:64',
+          ],
+    );
+    if (restored.status !== 0) {
+      console.error('Could not restore WebView2 test policy: ' + restored.stderr);
+      process.exitCode = 1;
+    }
+  }
   if (profile.startsWith(join(tmpdir(), 'fotoeditor-webview2-smoke-'))) {
     await rm(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 }).catch(
       (error) => console.warn('Temporary WebView2 profile cleanup: ' + error.message),

@@ -56,6 +56,13 @@ SwiftShader WebGPU adapter with a WARP software compositor; a second forces Swif
 for WebGL2. Tests verify the software adapter rather than silently accepting
 another backend. Software results demonstrate correctness, not hardware performance.
 
+The desktop smoke test uses a temporary profile and a loopback debugging port.
+On disposable GitHub-hosted runners only, it temporarily sets an executable-scoped
+HKLM browser-argument policy, then restores it. Elevated WebView2 hosts ignore
+environment browser flags, as documented in
+[Microsoft's WebView2 guidance](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/security#for-an-elevated-host-app-use-appropriate-override-flags).
+Normal app launches do not expose a debugging port.
+
 Use ?gpu=webgl2 to force WebGL2. The ?diagnostic=1 scene uploads a 2x2 texture from
 Rust and displays red, green, blue, and white quadrants. Its diagnostic controls
 exercise device-loss and panic recovery. ?diagnostic=1&fault=init tests initialization
