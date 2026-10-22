@@ -11,6 +11,10 @@ and wgpu display pipeline with WebGPU and WebGL2. Image editing starts in P1.
   Rust procedural macros also require the native linker when building WASM.
 - Chrome and Edge for hardware browser tests.
 
+The desktop runtime is separate from Microsoft Edge itself. On Windows, run
+scripts/setup-webview2.ps1 to detect it and install Microsoft's signed Evergreen
+bootstrapper only when it is missing. CI performs this check explicitly.
+
 ## Run
 
     pnpm install --frozen-lockfile

@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:net';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -7,6 +7,23 @@ import { chromium, expect } from '@playwright/test';
 import { root } from './lib.mjs';
 
 if (process.platform !== 'win32') throw new Error('Desktop smoke currently targets Windows.');
+const runtimeKeys = [
+  'HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+  'HKLM\\SOFTWARE\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+  'HKCU\\Software\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+];
+const runtimeVersion = runtimeKeys
+  .map(
+    (key) =>
+      spawnSync('reg', ['query', key, '/v', 'pv'], {
+        encoding: 'utf8',
+        windowsHide: true,
+      }).stdout?.match(/REG_SZ\s+([\d.]+)/)?.[1],
+  )
+  .find((version) => version && version !== '0.0.0.0');
+if (!runtimeVersion)
+  throw new Error('WebView2 Runtime is missing. Run scripts/setup-webview2.ps1 first.');
+console.log('WebView2 Runtime: ' + runtimeVersion);
 const listener = createServer();
 await new Promise((resolve) => listener.listen(0, '127.0.0.1', resolve));
 const port = listener.address().port;
