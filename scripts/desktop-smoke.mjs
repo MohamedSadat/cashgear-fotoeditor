@@ -33,6 +33,10 @@ const softwareArgs =
   process.env.GPU_TEST_SOFTWARE === '1'
     ? ' --enable-unsafe-webgpu --enable-unsafe-swiftshader --use-angle=d3d11-warp --use-webgpu-adapter=swiftshader'
     : '';
+// Hosted runners launch the trusted test shell in an elevated, non-user session.
+// Match Playwright's test-only sandbox configuration; normal app launches do not
+// receive these switches or expose a debugging endpoint.
+const ciArgs = process.env.CI ? ' --no-sandbox --enable-logging=stderr' : '';
 const child = spawn(join(root, 'target/release/fotoeditor-desktop.exe'), [], {
   cwd: root,
   windowsHide: true,
@@ -40,7 +44,11 @@ const child = spawn(join(root, 'target/release/fotoeditor-desktop.exe'), [], {
     ...process.env,
     WEBVIEW2_USER_DATA_FOLDER: profile,
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:
-      '--remote-debugging-port=' + port + ' --remote-debugging-address=127.0.0.1' + softwareArgs,
+      '--remote-debugging-port=' +
+      port +
+      ' --remote-debugging-address=127.0.0.1' +
+      softwareArgs +
+      ciArgs,
   },
   stdio: 'inherit',
 });
@@ -64,7 +72,32 @@ try {
     } catch {
       /* Wait for WebView2 to create its debugging endpoint. */
     }
-    if (Date.now() > deadline) throw new Error('WebView2 debugging endpoint timed out');
+    if (Date.now() > deadline) {
+      if (process.env.CI) {
+        const details = spawnSync(
+          'powershell.exe',
+          [
+            '-NoProfile',
+            '-Command',
+            '$app = Get-Process -Id ' +
+              child.pid +
+              ' -ErrorAction SilentlyContinue; ' +
+              '$children = Get-CimInstance Win32_Process -Filter "ParentProcessId=' +
+              child.pid +
+              '"; ' +
+              '@{app=($app | Select-Object ProcessName,MainWindowTitle,Responding,SessionId); children=($children | Select-Object Name,ProcessId,CommandLine)} | ConvertTo-Json -Depth 4',
+          ],
+          { encoding: 'utf8', windowsHide: true },
+        );
+        await mkdir(join(root, 'bench/results'), { recursive: true });
+        await writeFile(
+          join(root, 'bench/results/desktop-startup.json'),
+          details.stdout || details.stderr || 'No startup diagnostics',
+        );
+        console.error(details.stdout || details.stderr);
+      }
+      throw new Error('WebView2 debugging endpoint timed out');
+    }
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
   browser = await chromium.connectOverCDP(endpoint);
