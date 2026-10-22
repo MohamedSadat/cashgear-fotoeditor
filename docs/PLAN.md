@@ -91,3 +91,32 @@ correction moves general commands and basic undo ahead of painting.
 2. Photoshop shortcuts B/E/I/[ / ]/X and Alt eyedropper confirmed.
 3. Both pulled-string and weighted-average stabilizers.
 4. Image tips/textures in P9; P2 uses procedural tips.
+
+## P3 acceptance
+
+The detailed source requirements are on printed pages 12–13. General commands,
+COW snapshots, exact stroke undo/redo and shortcuts already shipped in P2.
+
+- History panel with click-to-jump, configurable memory/step limits and oldest
+  history eviction within the existing 768 MiB total CPU admission model.
+- Merge applicable consecutive document property commands; keep each stroke separate.
+- Versioned project save/reopen preserving exact straight RGBA8, sparse tiles and DPI.
+  Reject corrupt/unsupported input without replacing the live document.
+- Recoverable OPFS generations, retaining prior valid snapshots, explicit flush and
+  readback validation, quota/persistence failure handling and coordinated writers.
+- Main-thread persistent-storage request; visible recovery and storage status.
+- Configured autosave interval/tab-hide behavior and startup restore flow.
+- 500 property-tested command sequences return byte-identical document hashes after
+  undo-all; 200 brush strokes stay within the configured and total memory budgets.
+- Killing a tab restores its last completed autosave; interrupting a write or corrupting
+  the latest snapshot leaves a prior valid generation recoverable.
+- Full required checks, Chrome/Edge on WebGPU/WebGL2, appropriate Windows/WebView2
+  verification, measured performance, and remote CI/deployment green before p3-history.
+
+## P3 product questions (pending)
+
+1. History memory cap and maximum steps within the shared 768 MiB total CPU budget.
+   Proposed: 256 MiB / 200 steps, configurable, with earlier eviction when needed.
+2. Autosave interval and tab-hide behavior. Proposed: 30 seconds plus best-effort hide.
+3. Startup restore behavior. Proposed: ask whether to restore the last session.
+4. Include history in project/recovery files? Proposed: document only, fresh history.

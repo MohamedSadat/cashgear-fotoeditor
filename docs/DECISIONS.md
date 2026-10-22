@@ -1,5 +1,20 @@
 # Decisions
 
+## 2026-10-23 — P3 serialization foundation
+
+- P3 product defaults remain unresolved. The proposed history cap is part of the
+  existing 768 MiB total CPU admission model, never an independent extra allowance.
+- Version-1 project encoding is a browser-independent Rust job in fotoeditor-io.
+  It stores sparse 256² RGBA8 tiles in coordinate order and exact f64 DPI, bounded
+  by the existing 128 MiB file cap. A CRC32 covers header and every tile record.
+  Checksums detect accidental corruption; they are not authentication.
+- The reader constructs a candidate document, rejects unsupported versions,
+  malformed lengths and duplicate/out-of-range coordinates, and completes only
+  after checksum verification. Integration must commit this candidate atomically.
+- Project save/read jobs handle one tile per step and reserve document, file and
+  bridge copies against the total CPU budget. No document pixels are processed
+  in TypeScript. crc32fast is already in the approved dependency inventory.
+
 ## 2026-10-22 — P2 command foundation
 
 - General commands implement apply/revert and enumerate retained tile allocations.

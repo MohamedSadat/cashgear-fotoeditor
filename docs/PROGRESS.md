@@ -1,5 +1,31 @@
 # Progress
 
+## P3 — In progress
+
+Started on 2026-10-23 on clean main at `9a0d577`, the accepted P2 handoff.
+Read AGENTS.md, the phase documents, and original roadmap printed pages 12–13.
+The four P3 product choices have been presented and remain pending; no defaults
+have been accepted yet. Work so far is limited to the independent document codec.
+
+- Added a Rust-only version-1 sparse project reader/writer with exact straight RGBA8
+  and f64 DPI preservation, deterministic tile order, full-file CRC32, strict
+  version/dimension/coordinate/length checks, a 128 MiB file cap and shared CPU
+  admission. Each step processes at most one tile so the worker can yield/cancel
+  before committing a completed document.
+- Tests cover sparse maximum-size blank documents, tile edges, hidden RGB,
+  low alpha, exact DPI, deterministic roundtrips, truncated/corrupt files and
+  duplicate coordinates. No browser save/reopen or recovery flow is connected yet.
+
+Foundation checks passed: formatting, native/WASM clippy, 25 Rust tests,
+TypeScript, ESLint, 13 Vitest tests, all 442 dependency license expressions and
+the production build. Release WASM: 2,691,276 bytes; gzip level 9: 1,024,951 /
+1,500,000 bytes. Browser/desktop and recovery acceptance remain to be run after
+integration; this checkpoint makes no P3 acceptance or hardware performance claim.
+
+No P3 acceptance or performance claim is made yet. Remaining: product decisions,
+history UI/eviction/merging, worker/UI project integration, recovery generations,
+fault/kill tests, complete local/desktop/live verification, remote CI and phase tag.
+
 ## P2 — Complete
 
 Completed on 2026-10-22 from the accepted p1-viewport tag, directly on main.

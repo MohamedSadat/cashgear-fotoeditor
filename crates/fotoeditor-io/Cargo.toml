@@ -9,3 +9,4 @@ rust-version.workspace = true
 fotoeditor-core = { path = "../fotoeditor-core" }
 image = { version = "=0.25.10", default-features = false, features = ["png", "jpeg", "webp"] }
 png = "=0.18.1"
+crc32fast = "=1.5.3"
