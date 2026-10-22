@@ -2,6 +2,8 @@ import { defineConfig } from '@playwright/test';
 
 const software = process.env.GPU_TEST_SOFTWARE === '1';
 const deployedUrl = process.env.E2E_BASE_URL;
+const port = Number(process.env.E2E_PORT ?? 4187);
+const previewUrl = `http://127.0.0.1:${port}`;
 export default defineConfig({
   testDir: './tests/e2e',
   timeout: 60000,
@@ -17,7 +19,7 @@ export default defineConfig({
       ]
     : [['list'], ['json', { outputFile: 'bench/results/browser-tests.json' }]],
   use: {
-    baseURL: deployedUrl ?? 'http://127.0.0.1:4173',
+    baseURL: deployedUrl ?? previewUrl,
     viewport: { width: 1280, height: 850 },
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
@@ -57,9 +59,9 @@ export default defineConfig({
   webServer: deployedUrl
     ? undefined
     : {
-        command: 'pnpm preview',
-        url: 'http://127.0.0.1:4173',
-        reuseExistingServer: !process.env.CI,
+        command: `pnpm preview --port ${port} --strictPort`,
+        url: previewUrl,
+        reuseExistingServer: false,
         timeout: 30000,
       },
 });

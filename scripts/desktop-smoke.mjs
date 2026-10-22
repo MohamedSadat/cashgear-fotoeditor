@@ -135,6 +135,8 @@ try {
   for (const backend of ['WebGPU', 'WebGL2']) {
     await page.goto(origin + '/?diagnostic=1' + (backend === 'WebGL2' ? '&gpu=webgl2' : ''));
     await expect(page.getByTestId('engine-status')).toHaveText('Engine ready', { timeout: 30000 });
+    if (await page.getByRole('dialog', { name: 'Restore last session?' }).isVisible())
+      await page.getByRole('button', { name: 'Later', exact: true }).click();
     await expect(page.getByTestId('gpu-backend')).toHaveText(backend);
     await expect(page.getByTestId('gpu-canvas')).toHaveAttribute('data-presented', 'true');
     if (!(await page.evaluate(() => crossOriginIsolated)))
@@ -158,6 +160,8 @@ try {
     };
     await page.goto(origin + (backend === 'WebGL2' ? '/?gpu=webgl2' : '/'));
     await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');
+    if (await page.getByRole('dialog', { name: 'Restore last session?' }).isVisible())
+      await page.getByRole('button', { name: 'Later', exact: true }).click();
     await page
       .getByTestId('open-image')
       .setInputFiles(join(root, 'bench/results/fixtures/alpha.png'));
@@ -216,9 +220,62 @@ try {
     const redone = PNG.sync.read(await page.getByTestId('gpu-canvas').screenshot());
     expect(redone.data.equals(painted.data)).toBe(true);
     result.brushUndoRedo = true;
+    // Capture the normal download Blob without opening WebView2's native save UI.
+    // This instruments browser download APIs only; the actual Rust save/load runs.
+    await page.evaluate(() => {
+      const create = URL.createObjectURL.bind(URL),
+        click = HTMLAnchorElement.prototype.click;
+      URL.createObjectURL = (blob) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          window.__projectPayload = reader.result;
+        };
+        reader.readAsDataURL(blob);
+        return create(blob);
+      };
+      HTMLAnchorElement.prototype.click = function () {
+        if (!this.download.endsWith('.cgfoto')) click.call(this);
+      };
+    });
+    async function savedProject() {
+      await page.evaluate(() => {
+        window.__projectPayload = undefined;
+      });
+      await page.getByRole('button', { name: 'Save project', exact: true }).click();
+      await page.waitForFunction(() => typeof window.__projectPayload === 'string');
+      const data = await page.evaluate(() => window.__projectPayload);
+      return Buffer.from(data.split(',')[1], 'base64');
+    }
+    const project = await savedProject();
+    const projectPath = join(root, 'bench/results/desktop-project-' + backend + '.cgfoto');
+    await writeFile(projectPath, project);
+    await page.getByTestId('open-project').setInputFiles(projectPath);
+    await expect(page.getByTestId('operation-status')).toHaveText(/Opened in/);
+    await page.waitForFunction(
+      () =>
+        JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot).history
+          .undo === 0,
+    );
+    expect((await savedProject()).equals(project)).toBe(true);
+    result.projectRoundtrip = true;
+    await page.getByRole('button', { name: 'Save recovery now', exact: true }).click();
+    await expect(page.getByTestId('recovery-status')).toHaveText(/^Autosaved /);
+    await page.reload();
+    await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');
+    await page.getByRole('button', { name: 'Restore session', exact: true }).click();
+    await page.getByRole('button', { name: 'Actual pixels', exact: true }).click();
+    await expect(page.getByTestId('zoom')).toHaveText('100.0%');
+    await page.waitForFunction(
+      () =>
+        JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot)
+          .refining === 0,
+    );
+    const restored = PNG.sync.read(await page.getByTestId('gpu-canvas').screenshot());
+    expect(restored.data.equals(painted.data)).toBe(true);
+    result.autosaveRestore = true;
     result.software = process.env.GPU_TEST_SOFTWARE === '1';
     await mkdir(join(root, 'bench/results'), { recursive: true });
-    await page.screenshot({ path: join(root, 'bench/results/desktop-p2-' + backend + '.png') });
+    await page.screenshot({ path: join(root, 'bench/results/desktop-p3-' + backend + '.png') });
     results.push(result);
   }
   await mkdir(join(root, 'bench/results'), { recursive: true });
