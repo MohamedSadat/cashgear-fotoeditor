@@ -117,6 +117,7 @@ export interface RecoveryStatus {
   persistent: 'granted' | 'denied' | 'unavailable';
   candidates: RecoveryCandidate[];
   lastSavedAt?: number;
+  lastSaveMs?: number;
   error?: string;
 }
 export interface EngineFatalEvent {

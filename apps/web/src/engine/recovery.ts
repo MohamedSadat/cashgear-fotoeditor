@@ -1,5 +1,6 @@
 // OPFS access stays in the engine worker. Payload validation is always Rust.
 import type { RecoveryCandidate } from './types';
+import { yieldProjectTask } from './yield-task';
 const DIRECTORY = 'cashgear-recovery-v1';
 const MAX_BYTES = 128 * 1048576;
 interface SyncFile {
@@ -174,7 +175,7 @@ export class RecoveryStore {
         if (fault === 'pause-after-chunk') await new Promise<void>(() => {});
         if (fault === 'partial') throw new Error('Diagnostic interrupted snapshot write');
         // Yield between bounded file chunks; an actual tab kill may happen here.
-        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        await yieldProjectTask();
       }
       access.truncate(bytes.length);
       access.flush();
@@ -208,11 +209,13 @@ export class RecoveryStore {
         throw error;
       }
       // Read back the committed metadata as well before reporting success.
-      if (!(await this.entries()).some((entry) => entry.file === file))
+      const entries = await this.entries();
+      if (!entries.some((entry) => entry.file === file))
         throw new Error('Recovery generation commit failed');
-      const valid: RecoveryCandidate[] = [];
-      for (const entry of await this.entries())
-        if (entry.session === this.session) {
+      const valid: RecoveryCandidate[] = [info];
+      for (const entry of entries)
+        if (entry.session === this.session && entry.file !== info.file) {
+          if (valid.length >= 3) break;
           try {
             await this.read(entry);
             valid.push(entry);
@@ -221,7 +224,11 @@ export class RecoveryStore {
           }
         }
       // Retain three validated generations; prune only after a new valid commit.
-      for (const old of valid.slice(3)) await this.remove(old);
+      if (valid.length >= 3)
+        for (const old of entries) {
+          if (old.session === this.session && !valid.some((entry) => entry.file === old.file))
+            await this.remove(old);
+        }
       return info;
     });
   }

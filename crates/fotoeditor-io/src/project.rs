@@ -53,8 +53,15 @@ impl ProjectWriter {
             let start = self.bytes.len();
             self.bytes.extend_from_slice(&coord.0.to_le_bytes());
             self.bytes.extend_from_slice(&coord.1.to_le_bytes());
-            for p in &self.document.raster.tiles()[coord].pixels {
-                self.bytes.extend_from_slice(&p.0);
+            let pixel_start = self.bytes.len();
+            self.bytes.resize(pixel_start + TILE_BYTES, 0);
+            for (target, p) in self.bytes[pixel_start..]
+                .as_chunks_mut::<4>()
+                .0
+                .iter_mut()
+                .zip(&self.document.raster.tiles()[coord].pixels)
+            {
+                *target = p.0;
             }
             self.checksum.update(&self.bytes[start..]);
             self.next += 1;

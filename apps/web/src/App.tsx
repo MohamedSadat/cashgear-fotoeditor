@@ -197,7 +197,7 @@ export function App() {
             Brush settings
           </button>
           <button
-            disabled={status !== 'ready' || !!busy}
+            disabled={status !== 'ready' || working || painting}
             onClick={() => {
               setNotice('');
               setDialog(true);
@@ -205,7 +205,10 @@ export function App() {
           >
             New canvas
           </button>
-          <button disabled={status !== 'ready' || !!busy} onClick={() => file.current?.click()}>
+          <button
+            disabled={status !== 'ready' || working || painting}
+            onClick={() => file.current?.click()}
+          >
             Open image
           </button>
           <button
@@ -222,7 +225,7 @@ export function App() {
           </button>
           <button
             className="primary"
-            disabled={!doc || status !== 'ready' || !!busy}
+            disabled={!doc || status !== 'ready' || working || painting}
             onClick={() => void exportPng()}
           >
             Export PNG <span aria-hidden="true">↗</span>

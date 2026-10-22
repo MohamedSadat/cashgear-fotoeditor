@@ -5,6 +5,7 @@ import type { DocumentSnapshot } from './types';
 import type { RecoveryStatus } from './types';
 import { RecoveryStore } from './recovery';
 import type { RecoveryFault } from './recovery';
+import { yieldProjectTask } from './yield-task';
 
 let engine: Engine | undefined;
 let initializing = false;
@@ -71,8 +72,10 @@ async function readProject(bytes: Uint8Array, commit: boolean, token = job) {
     else e.begin_project_validation(bytes);
     let done = false;
     while (!done) {
-      for (let i = 0; i < 8 && !done; i++) done = e.project_read_step();
-      await yieldTask();
+      const deadline = performance.now() + 4;
+      for (let i = 0; i < 64 && !done && performance.now() < deadline; i++)
+        done = e.project_read_step();
+      await yieldProjectTask();
       if (disposed || token !== job) throw new Error('Operation cancelled');
     }
     if (commit) e.finish_project_read(true);
@@ -88,8 +91,10 @@ async function writeProject(token = job, recovery = false) {
   e.begin_project_write(recovery);
   let done = false;
   while (!done) {
-    for (let i = 0; i < 8 && !done; i++) done = e.project_write_step();
-    await yieldTask();
+    const deadline = performance.now() + 4;
+    for (let i = 0; i < 64 && !done && performance.now() < deadline; i++)
+      done = e.project_write_step();
+    await yieldProjectTask();
     if (disposed || token !== job) throw new Error('Operation cancelled');
   }
   const bytes = e.finish_project_write();
@@ -191,6 +196,7 @@ const api: EngineApi = {
     operation = 'Autosaving…';
     const token = ++job;
     recovery = { ...recovery, state: 'saving', error: undefined };
+    const started = performance.now();
     try {
       const bytes = await writeProject(token, true);
       const fault = recoveryFault;
@@ -198,7 +204,12 @@ const api: EngineApi = {
       const result = await store.save(bytes, name, fault);
       if (disposed || token !== job) return;
       savedRevision = state.revision;
-      recovery = { ...recovery, state: 'saved', lastSavedAt: result.savedAt };
+      recovery = {
+        ...recovery,
+        state: 'saved',
+        lastSavedAt: result.savedAt,
+        lastSaveMs: performance.now() - started,
+      };
     } catch (error) {
       if (!disposed && token === job)
         recovery = {
