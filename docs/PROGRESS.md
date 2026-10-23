@@ -7,7 +7,95 @@ Read AGENTS.md, the phase records and original roadmap printed page 13. The user
 confirmed sRGB, default pass-through groups, after-stroke thumbnails, and the real
 50-dense-layer workload with paging and a 4 GiB streamed project cap. CPU/GPU and
 image-file budgets are unchanged. P4-DESIGN.md records the implementation and
-acceptance plan. No P4 acceptance or performance result is claimed yet.
+acceptance plan. P4 is not complete and no completion tag has been created.
+
+Foundation checkpoint (implementation through `48377d6`):
+
+- Pageable immutable tile-generation handles now back the existing document,
+  brush and history surfaces. Pins prevent eviction; validated immutable backing
+  is required before eviction. Undo can restore cold handles without retaining
+  their buffers. Hydration preserves generation identity and exact hidden RGB.
+- Core document data is a bottom-to-top raster/group tree, with masks, properties,
+  locks and stable runtime layer IDs. Metadata operations use COW command snapshots
+  sharing surface maps; duplicate samples count once. RGBA and Gray8 generations
+  share history accounting. A 500-case random layer-command property test verifies
+  undo-all/redo restoration, alongside the existing command property tests.
+- Per-layer brush targeting and alpha/pixel lock foundations preserve transparent
+  RGB and partial alpha. These core APIs are not exposed as layer controls yet.
+- Sixteen sRGB reference kernels and a tile-sized CPU composition plan cover
+  isolated/pass-through groups, masks and clipping. Portable WGSL parses and
+  validates in Naga. GPU execution/readback comparisons remain unfinished.
+- V2 stream framing and a layer-aware document adapter preserve properties,
+  masks/groups, shared tile references, exact f64 metadata and straight samples.
+  Parsing constructs cold tile handles rather than materializing the whole image.
+  Tile hydration validates CRC/length; complete stream and semantic validation
+  precede returning a candidate. No live document replacement occurs in the codec.
+- Project packets and input chunks are bounded. The manifest is capped at 1 MiB
+  with a reference-count guard before construction, and project jobs conservatively
+  reserve 16 MiB for metadata/framing/bridge scratch. Total framing is included
+  in the approved 4 GiB stream cap. Existing v1 compatibility tests still pass.
+
+Local code checks passed: formatting, native/WASM clippy, 55 Rust tests, TypeScript,
+ESLint, 14 Vitest tests, production build and all 450 dependency license expressions.
+The source graph reuses already inventoried serde/serde_json; float_roundtrip is
+enabled for exact f64 project metadata. Optimized WASM is 2,740,614 bytes, gzip9
+1,048,341 / 1,500,000 bytes. All 92 installed Chrome/Edge and 65 local software
+browser regressions passed without skips, retries or failures on the frozen build.
+Windows/WebView2 155.0.4283.62 build/launch, painting, exact undo/redo, byte-identical
+v1 project and autosave restore passed on both hardware backends. Save/open picker
+and OPFS APIs are exposed in WebView2; actual large streamed file flows remain open.
+Local evidence: bench/results/p4-hardware-browser-tests.json,
+p4-software-browser-tests.json and p4-desktop-smoke.json. These cover existing
+single-raster behavior; they do not establish layer UI/GPU/storage acceptance.
+
+Single-layer hardware regression measurements used Windows 10 Pro 10.0.19045,
+Xeon E5-2680 v3, approximately 32 GiB RAM, GTX 1650 / driver 27.21.14.5751,
+Chrome 156.0.8078.47 and Edge 155.0.4283.62, 1280×850 / DPR 1, NVIDIA WebGPU and
+ANGLE D3D11 WebGL2. The unchanged 6000×4000 / 67,038,649-byte fixture has SHA-256
+809669e7f406d83b59d39fe659411b32c8d014cf6d54e189ba86165ddf82e7f5.
+Two four-second warmed 300 px soft-brush trials after a priming dab measured
+59.17–60.07 fps and p95 source-to-presentation-ack latency 11.73–15.74 ms;
+worst p99 was 18.40 ms. These exclude compositor/scanout and physical pen latency,
+and do not involve 200 retained steps. Logical capacities were 96 MiB document,
+1–3.5 MiB history, 6.77 MiB stroke scratch and 32.03 MiB GPU atlas/instances;
+map/Arc metadata, allocator retention and browser/driver memory are excluded.
+
+First browser-session image opens measured 1.20–1.27 s, subsequent opens
+1.01–1.19 s. OS/file caches were not flushed. Pan/zoom/mip-transition trials ran
+at 59.998–60.039 fps, worst period p95/p99 17.28/19.23 ms. Cold-mip final refinement
+after navigation stopped took 1.90–2.39 s while retaining the cached preview;
+this is slower than P3's measured 1.22–1.97 s range and remains recorded explicitly.
+These are single-layer regression results, not the P4 fifty-layer acceptance.
+Raw data: bench/results/p4-foundation-performance.json,
+p4-foundation-viewport-performance.json and p4-foundation-machine.json.
+
+[FotoEditor checks run 39878818706](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/runs/39878818706)
+and [Azure deployment run 39878818582](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/runs/39878818582)
+passed for `48377d65af2a830d881ba006122be284d7bab836`. The downloaded CI artifact
+contains all 65 eventually passing software browser cases, zero skips/final
+failures/global errors, and **three startup retries** in the software-WebGL2
+project. Crash recovery/corrupt-latest, timer/tab-hide autosave, and active-writer
+tests initially exceeded the 30-second Engine ready deadline; the first two
+screenshots show the graphics-engine startup timeout. Each passed on its existing
+CI retry. This is not a retry-free remote run and does not establish a storage
+failure or a hardware performance result. Traces/screenshots are retained under
+bench/results/p4-ci/test-results.
+
+CI also built and launched WebView2 155.0.4283.62 and passed painting/exact undo,
+v1 project roundtrip and autosave restore on SwiftShader WebGPU (vendor google)
+and WebGL2 Microsoft Basic Render Driver/WARP. Those are software functional
+checks only. CI WASM is 2,741,881 bytes, gzip9 1,048,449 / 1,500,000. Its artifact
+is retained under bench/results/p4-ci. No P4 completion acceptance, tag or dense
+layer performance result is claimed by this foundation checkpoint.
+
+Outstanding within P4 (not deferred to P5): worker OPFS tile backing and eviction,
+streamed manual project and recovery integration, GPU compositor execution and
+CPU/GPU golden readbacks, incremental composite caching, layer controls/selection/
+drag reorder, mask painting/view/apply, merge operations and thumbnails. The live
+application still exposes its single-raster controls and v1 128 MiB project path;
+the approved 4 GiB layered format is a Rust adapter, not a shipped UI feature yet.
+The actual distinct dense 50-layer workload and its cold/warm hardware measurements
+remain unverified. No sparse/shared fixture substitutes for that acceptance target.
 
 ## P3 — Complete
 

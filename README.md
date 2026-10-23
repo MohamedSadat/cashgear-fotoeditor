@@ -6,6 +6,10 @@ RGBA8 PNG. Save editable `.cgfoto` projects and recover completed browser autosa
 The worker-owned Rust engine processes sparse tiles and displays them
 through WebGPU or WebGL2.
 
+P4 layer controls and paged multi-layer project integration are in progress. The
+Rust foundations are being built first; see [progress](docs/PROGRESS.md) and the
+[P4 design](docs/P4-DESIGN.md) for implemented components and remaining acceptance.
+
 Use New canvas or Open image, or drop an image into the viewport. Wheel/two-finger
 gestures scroll; Ctrl/Cmd+wheel or trackpad pinch zooms around the pointer.
 Space+drag or middle mouse pans; R+drag rotates. The left rail fits, resets to

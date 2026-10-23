@@ -92,3 +92,33 @@ p50/p95/p99 timings and machine/browser/adapter data. Software results prove
 function only. Keep ports 4187/4188 isolated and freeze dist while tests serve it.
 
 All acceptance items remain open until implementation and measured verification.
+
+## Foundation checkpoint
+
+Core surfaces/history now use pageable generation handles, with RGBA/Gray8 shared
+accounting and COW layer-tree commands. The CPU tile plan and all sixteen blend
+kernels have reference tests; WGSL has syntax/portable capability validation only.
+The GPU adapter must execute the same plan and pass actual readback comparisons.
+
+The Rust v2 document adapter uses a bounded JSON manifest followed by typed raw
+tile records. Writer IDs are canonical, independent of runtime layer/generation
+IDs, so shared data and deterministic reopen/save are preserved. serde_json's
+float_roundtrip feature preserves exact f64 metadata. The manifest is at most
+1 MiB and 52,428 tile references, guarded before building directories/JSON. Both
+project adapters admit a conservative 16 MiB metadata/framing/bridge reservation;
+the writer emits one bounded packet and the reader one record at a time. Each
+RGBA/Gray payload has a checksum and an immutable backing-file offset. Readers
+construct cold handles, reject duplicate/out-of-bounds coordinates, missing/wrong
+sample types, unknown fields, invalid IDs and unused records, then return a
+separate validated candidate. They do not publish or mutate a live document.
+
+These components still need worker file/storage adapters. In particular, a
+successful Rust parse does not prove that its backing file has been flushed and
+read back. The worker must establish that contract before installing the candidate
+or evicting samples. Large manual file destination support must also be validated
+in WebView2; API presence alone is not a large-file I/O acceptance result.
+
+A local WebView2 155.0.4283.62 probe at http://tauri.localhost confirms that
+showSaveFilePicker, showOpenFilePicker and OPFS getDirectory are exposed on both
+hardware renderer paths. This establishes available entry points only; no large
+streamed manual save, cancellation or permission flow has been accepted yet.
