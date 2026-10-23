@@ -1,6 +1,7 @@
 //! The only JavaScript-facing engine API.
 #[cfg(target_arch = "wasm32")]
 mod bridge {
+    mod layers;
     use fotoeditor_brush::{BrushSettings, Sample, StrokeCommand};
     use fotoeditor_core::{Document, History, HistoryLimits, Residency, ResolutionCommand, View};
     use fotoeditor_io::{ExportJob, ImportJob, ProjectReader, ProjectWriter};
@@ -36,6 +37,7 @@ mod bridge {
         project_write: Option<ProjectWriter>,
         revision: u32,
         external_bytes: u64,
+        layered: layers::LayerRuntime,
     }
 
     // Lifecycle replacement starts a new editing session and releases its history.
@@ -57,6 +59,7 @@ mod bridge {
                     self.paint_time = 0.0;
                     self.paint_complete_time = 0.0;
                     self.renderer.clear_tiles();
+                    self.layered = layers::LayerRuntime::default();
                     self.revision = self.revision.wrapping_add(1);
                 }
             }
@@ -67,6 +70,12 @@ mod bridge {
                 history: self.document.as_ref().map_or(0, |d| self.history.bytes(d)),
                 temporary: self.import.as_ref().map_or(0, |j| j.temporary_bytes())
                     + self.external_bytes
+                    + self.layered.bytes()
+                    + self.layered.extra_source_bytes(
+                        self.document.as_ref(),
+                        &self.history,
+                        self.stroke.as_ref().map(|s| &s.preview),
+                    )
                     + self.export.as_ref().map_or(0, |j| j.temporary_bytes())
                     + self
                         .project_read
@@ -114,6 +123,7 @@ mod bridge {
                 project_write: None,
                 revision: 0,
                 external_bytes: 0,
+                layered: layers::LayerRuntime::default(),
             })
         }
         pub fn backend(&self) -> String {
@@ -139,6 +149,18 @@ mod bridge {
             self.view.height = self.renderer.height() as f64 / self.dpr;
         }
         pub fn frame(&mut self) -> Result<bool, JsValue> {
+            if self.layered.display.is_some()
+                || self.layered.requires_composite(self.document.as_ref())
+            {
+                if let Some(doc) = self.layered.display.as_mut() {
+                    let regions = doc.raster_mut().drain_regions();
+                    self.renderer.invalidate_tiles(doc.raster(), &regions);
+                }
+                return self
+                    .renderer
+                    .frame(self.layered.display.as_ref(), &self.view, self.dpr)
+                    .map_err(|e| JsValue::from_str(&e));
+            }
             let document = self
                 .stroke
                 .as_mut()
@@ -178,11 +200,13 @@ mod bridge {
         pub fn undo(&mut self) -> bool {
             let changed = self.document.as_mut().is_some_and(|d| self.history.undo(d));
             self.revision = self.revision.wrapping_add(u32::from(changed));
+            self.normalize_layer_target();
             changed
         }
         pub fn redo(&mut self) -> bool {
             let changed = self.document.as_mut().is_some_and(|d| self.history.redo(d));
             self.revision = self.revision.wrapping_add(u32::from(changed));
+            self.normalize_layer_target();
             changed
         }
         pub fn history_limits(&mut self, bytes: u32, steps: u32) -> Result<(), JsValue> {
@@ -216,6 +240,7 @@ mod bridge {
                 .jump(doc, target as usize)
                 .map_err(|e| JsValue::from_str(&e))?;
             self.revision = self.revision.wrapping_add(u32::from(changed));
+            self.normalize_layer_target();
             Ok(())
         }
         pub fn resolution(&mut self, dpi: f64, gesture: u32) -> Result<(), JsValue> {
@@ -238,10 +263,11 @@ mod bridge {
             Ok(())
         }
         pub fn stroke_begin(&mut self, settings: &str) -> Result<(), JsValue> {
+            self.layered.invalidate_memory();
             if self.stroke.is_some() {
                 return Err(JsValue::from_str("Finish the current stroke first"));
             }
-            let settings: BrushSettings =
+            let mut settings: BrushSettings =
                 serde_json::from_str(settings).map_err(|e| JsValue::from_str(&e.to_string()))?;
             let doc = self
                 .document
@@ -250,8 +276,44 @@ mod bridge {
             let r = self.residency();
             let available = fotoeditor_core::CPU_BUDGET
                 .saturating_sub(r.document + r.history + r.temporary + DISPLAY_SCRATCH);
+            let target = self
+                .layered
+                .active
+                .or_else(|| doc.layers.first().map(|l| l.id))
+                .ok_or_else(|| JsValue::from_str("Choose a layer to paint"))?;
+            let mask_doc;
+            let source = if self.layered.mask_target {
+                mask_doc = self
+                    .mask_document(target)
+                    .map_err(|e| JsValue::from_str(&e))?;
+                self.layered.mask_base_bytes = mask_doc.bytes();
+                let gray = if settings.eraser {
+                    255
+                } else {
+                    ((u32::from(settings.color[0]) * 30
+                        + u32::from(settings.color[1]) * 59
+                        + u32::from(settings.color[2]) * 11
+                        + 50)
+                        / 100) as u8
+                };
+                settings.color = [gray, gray, gray, settings.color[3]];
+                settings.eraser = false;
+                &mask_doc
+            } else {
+                doc
+            };
             self.stroke = Some(
-                StrokeCommand::new(doc, settings, available).map_err(|e| JsValue::from_str(&e))?,
+                StrokeCommand::for_layer(
+                    source,
+                    settings,
+                    available.saturating_sub(if self.layered.mask_target {
+                        source.bytes()
+                    } else {
+                        0
+                    }),
+                    target,
+                )
+                .map_err(|e| JsValue::from_str(&e))?,
             );
             Ok(())
         }
@@ -282,6 +344,9 @@ mod bridge {
             self.stroke.is_some()
         }
         pub fn needs_render(&self) -> bool {
+            if self.layered.requires_composite(self.document.as_ref()) {
+                return false;
+            }
             self.stroke
                 .as_ref()
                 .map(|s| &s.preview)
@@ -289,28 +354,62 @@ mod bridge {
                 .is_some_and(|d| d.raster().has_dirty())
         }
         pub fn stroke_cancel(&mut self) {
+            self.layered.mask_base_bytes = 0;
             if self.stroke.take().is_some() {
+                self.layered.invalidate_display();
                 self.renderer.clear_tiles();
             }
         }
         pub fn stroke_step(&mut self) -> Result<(), JsValue> {
+            if self.stroke.is_some() {
+                self.layered.invalidate_memory();
+            }
             if let Some(s) = &mut self.stroke {
                 s.step(262144).map_err(|e| JsValue::from_str(&e))?;
                 self.paint_time = self.paint_time.max(s.applied_time);
                 self.paint_complete_time = self.paint_complete_time.max(s.completed_time);
             }
             if self.stroke.as_ref().is_some_and(|s| s.done()) {
-                let command = self
-                    .stroke
-                    .take()
-                    .unwrap()
-                    .finish()
-                    .map_err(|e| JsValue::from_str(&e))?;
+                let mut stroke = self.stroke.take().unwrap();
+                self.layered.dirty = Some(
+                    stroke
+                        .preview
+                        .raster_mut()
+                        .drain_dirty()
+                        .into_iter()
+                        .collect(),
+                );
+                let command: Box<dyn fotoeditor_core::Command> = if self.layered.mask_target {
+                    let layer = self
+                        .mask_preview(&stroke.preview)
+                        .map_err(|e| JsValue::from_str(&e))?;
+                    let doc = self.document.as_ref().unwrap();
+                    let mut candidate = doc.clone();
+                    let target = layer.id;
+                    *candidate
+                        .layer_mut(target)
+                        .map_err(|e| JsValue::from_str(&e))? = layer;
+                    Box::new(
+                        fotoeditor_core::LayerCommand::replacing(
+                            doc,
+                            candidate.layers,
+                            "Paint mask",
+                        )
+                        .map_err(|e| JsValue::from_str(&e))?,
+                    )
+                } else {
+                    Box::new(stroke.finish().map_err(|e| JsValue::from_str(&e))?)
+                };
                 let changed = self
                     .history
-                    .execute(self.document.as_mut().unwrap(), Box::new(command), 0)
+                    .execute(
+                        self.document.as_mut().unwrap(),
+                        command,
+                        self.layered.bytes(),
+                    )
                     .map_err(|e| JsValue::from_str(&e))?;
                 self.revision = self.revision.wrapping_add(u32::from(changed));
+                self.layered.mask_base_bytes = 0;
             }
             Ok(())
         }
@@ -322,7 +421,11 @@ mod bridge {
                     p.0 >= 0.0 && p.1 >= 0.0 && p.0 < d.width as f64 && p.1 < d.height as f64
                 })
                 .map_or_else(Vec::new, |d| {
-                    d.raster()
+                    self.layered
+                        .display
+                        .as_ref()
+                        .unwrap_or(d)
+                        .raster()
                         .sample(p.0.floor() as u32, p.1.floor() as u32)
                         .0
                         .to_vec()
@@ -347,11 +450,14 @@ mod bridge {
             Ok(done)
         }
         pub fn begin_export(&mut self) -> Result<(), JsValue> {
+            let source = if self.export_original() {
+                self.document.as_ref()
+            } else {
+                self.layered.display.as_ref()
+            };
             self.export = Some(
                 ExportJob::new(
-                    self.document
-                        .as_ref()
-                        .ok_or_else(|| JsValue::from_str("Open or create a document first"))?,
+                    source.ok_or_else(|| JsValue::from_str("Open or create a document first"))?,
                     self.residency(),
                 )
                 .map_err(|e| JsValue::from_str(&e))?,
@@ -373,6 +479,7 @@ mod bridge {
                 .map_err(|e| JsValue::from_str(&e))
         }
         pub fn cancel_job(&mut self) {
+            self.layered.cancel();
             self.import = None;
             self.export = None;
             self.project_read = None;
@@ -385,6 +492,7 @@ mod bridge {
             Ok(())
         }
         pub fn external_bytes(&mut self, bytes: u32) -> Result<(), JsValue> {
+            self.layered.invalidate_memory();
             let mut r = self.residency();
             r.temporary = r.temporary.saturating_sub(self.external_bytes);
             r.check_cpu(bytes as u64)
@@ -492,7 +600,8 @@ mod bridge {
         pub fn snapshot(&self) -> String {
             let r = self.residency();
             let v = &self.view;
-            serde_json::json!({"document":self.document.as_ref().map(|d|serde_json::json!({"width":d.width,"height":d.height,"dpi":d.dpi,"tiles":d.raster().tiles().len()})),
+            serde_json::json!({"document":self.document.as_ref().map(|d|serde_json::json!({"width":d.width,"height":d.height,"dpi":d.dpi,"tiles":d.tile_count()})),
+                "layers":self.layer_json(),
                 "view":{"zoom":v.zoom,"rotation":v.rotation,"flipped":v.flipped,"panX":v.pan_x,"panY":v.pan_y},
                 "memory":{"document":r.document,"history":r.history,"temporary":r.temporary,"gpu":r.gpu},
                 "history":{"undo":self.history.depths().0,"redo":self.history.depths().1,"labels":self.history.labels(),"bytesLimit":self.history.limits.bytes,"stepsLimit":self.history.limits.steps,"evicted":self.history.evicted},
