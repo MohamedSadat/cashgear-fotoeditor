@@ -17,7 +17,7 @@
     "lint": "eslint . --max-warnings 0",
     "typecheck": "pnpm --filter @fotoeditor/web typecheck",
     "test": "vitest run",
-    "test:fixtures": "cargo run --release -p fotoeditor-io --example fixtures",
+    "test:fixtures": "cargo run --release -p fotoeditor-io --example fixtures && cargo run --release -p fotoeditor-io --example layers -- bench/results/fixtures/layers-small.cgfoto 128 128 3",
     "test:e2e": "pnpm test:fixtures && playwright test",
     "bench:viewport": "pnpm test:fixtures && node scripts/viewport-bench.mjs",
     "bench:brush": "pnpm test:fixtures && node scripts/brush-bench.mjs",

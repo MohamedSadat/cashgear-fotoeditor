@@ -6,8 +6,8 @@ const port = Number(process.env.E2E_PORT ?? 4187);
 const previewUrl = `http://127.0.0.1:${port}`;
 export default defineConfig({
   testDir: './tests/e2e',
-  timeout: 60000,
-  expect: { timeout: 30000 },
+  timeout: software ? 120000 : 60000,
+  expect: { timeout: software ? 60000 : 30000 },
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 1 : 0,
