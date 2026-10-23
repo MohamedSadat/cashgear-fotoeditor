@@ -35,6 +35,68 @@ fn mask(layer: &Layer, coord: TileCoord) -> Option<TileHandle<Gray8>> {
         .cloned()
 }
 impl CompositePlan {
+    /// Low-resolution worker previews evaluate only requested samples, using the
+    /// same tree semantics without allocating a full-resolution composite.
+    pub fn sample(&self, index: usize) -> Result<Composite, String> {
+        if index >= TILE_PIXELS {
+            return Err("Composite sample outside tile".into());
+        }
+        let mut current = Composite::default();
+        let mut stack = Vec::new();
+        for step in &self.steps {
+            match step {
+                CompositeStep::Begin { pass_through } => {
+                    stack.push((current, *pass_through));
+                    if !pass_through {
+                        current = Composite::default();
+                    }
+                }
+                CompositeStep::Raster {
+                    source,
+                    mask,
+                    properties,
+                    clipped,
+                } => {
+                    if let Some(source) = source {
+                        let factor = properties.opacity
+                            * properties.fill
+                            * mask
+                                .as_ref()
+                                .map(|m| m.pin().map(|m| f64::from(m.pixels[index].0) / 255.0))
+                                .transpose()?
+                                .unwrap_or(1.0);
+                        current = current.blend(
+                            Composite::from_straight(source.pin()?.pixels[index]),
+                            properties.blend,
+                            factor,
+                            *clipped,
+                        );
+                    }
+                }
+                CompositeStep::End {
+                    mask,
+                    properties,
+                    clipped,
+                } => {
+                    let (backdrop, pass_through) =
+                        stack.pop().ok_or("Unbalanced composite plan")?;
+                    let factor = properties.opacity
+                        * properties.fill
+                        * mask
+                            .as_ref()
+                            .map(|m| m.pin().map(|m| f64::from(m.pixels[index].0) / 255.0))
+                            .transpose()?
+                            .unwrap_or(1.0);
+                    current = if pass_through {
+                        backdrop.interpolate(current, factor)
+                    } else {
+                        backdrop.blend(current, properties.blend, factor, *clipped)
+                    };
+                }
+            }
+        }
+        Ok(current)
+    }
     pub fn tile(
         document: &Document,
         coord: TileCoord,

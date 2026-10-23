@@ -77,6 +77,36 @@ pub enum StoredProjectTile {
     Gray(TileHandle<Gray8>),
 }
 impl StoredProjectTile {
+    pub fn evict(&self) -> Result<(), String> {
+        match self {
+            Self::Rgba(t) => TilePager::default().evict(t).map(|_| ()),
+            Self::Gray(t) => TilePager::default().evict(t).map(|_| ()),
+        }
+    }
+    /// Called only with readback bytes from a flushed immutable file. Verify
+    /// against the resident generation before permitting eviction.
+    pub fn acknowledge(
+        &self,
+        store: u128,
+        offset: u64,
+        bytes: &[u8],
+        residency: Residency,
+    ) -> Result<(), String> {
+        let expected = self.encode(residency)?;
+        if expected != bytes {
+            return Err("Tile backing readback differs from its generation".into());
+        }
+        let backing = TileBacking {
+            store,
+            offset,
+            length: bytes.len() as u32,
+            checksum: crc32fast::hash(bytes),
+        };
+        match self {
+            Self::Rgba(t) => TilePager::default().acknowledge_backing(t, backing),
+            Self::Gray(t) => TilePager::default().acknowledge_backing(t, backing),
+        }
+    }
     pub fn kind(&self) -> Kind {
         match self {
             Self::Rgba(_) => Kind::RgbaTile,

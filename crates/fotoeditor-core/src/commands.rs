@@ -155,6 +155,11 @@ pub struct History {
     merge_allowed: bool,
 }
 impl History {
+    pub fn visit_tiles(&self, visitor: &mut dyn FnMut(TileRef<'_>)) {
+        for command in &self.entries {
+            command.visit_tiles(visitor);
+        }
+    }
     pub fn depths(&self) -> (usize, usize) {
         (self.cursor, self.entries.len() - self.cursor)
     }

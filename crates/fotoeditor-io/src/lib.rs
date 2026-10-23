@@ -13,6 +13,25 @@ use std::{
     rc::Rc,
 };
 pub const MAX_FILE_BYTES: u64 = 128 * 1024 * 1024;
+pub fn encode_thumbnail(width: u32, height: u32, pixels: &[u8]) -> Result<Vec<u8>, String> {
+    if width == 0
+        || height == 0
+        || width > 64
+        || height > 64
+        || pixels.len() != (width * height * 4) as usize
+    {
+        return Err("Invalid thumbnail dimensions".into());
+    }
+    let mut bytes = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut bytes, width, height);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().map_err(|e| e.to_string())?;
+        writer.write_image_data(pixels).map_err(|e| e.to_string())?;
+    }
+    Ok(bytes)
+}
 
 pub struct ImportJob {
     pub document: Document,

@@ -158,7 +158,7 @@ pub fn find_layer_mut(nodes: &mut [Layer], id: LayerId) -> Option<&mut Layer> {
     }
     None
 }
-fn siblings_mut(
+pub(crate) fn siblings_mut(
     nodes: &mut Vec<Layer>,
     parent: Option<LayerId>,
 ) -> Result<&mut Vec<Layer>, String> {
@@ -173,7 +173,11 @@ fn siblings_mut(
         },
     }
 }
-fn parent_of(nodes: &[Layer], id: LayerId, parent: Option<LayerId>) -> Option<Option<LayerId>> {
+pub(crate) fn parent_of(
+    nodes: &[Layer],
+    id: LayerId,
+    parent: Option<LayerId>,
+) -> Option<Option<LayerId>> {
     for node in nodes {
         if node.id == id {
             return Some(parent);
