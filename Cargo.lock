@@ -975,6 +975,7 @@ dependencies = [
  "js-sys",
  "naga",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
  "wgpu",
 ]

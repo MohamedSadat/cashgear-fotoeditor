@@ -21,6 +21,7 @@ struct Page {
     last_used: u64,
 }
 pub struct ViewportRenderer {
+    budget: u64,
     background: RenderPipeline,
     grid: RenderPipeline,
     tiles: RenderPipeline,
@@ -152,6 +153,7 @@ impl ViewportRenderer {
             Some(BlendState::PREMULTIPLIED_ALPHA_BLENDING),
         );
         Self {
+            budget: GPU_BUDGET,
             background,
             grid,
             tiles,
@@ -175,6 +177,12 @@ impl ViewportRenderer {
         self.coordinates.clear();
         self.gutter_dirty.clear();
         self.pending_regions.clear();
+    }
+    pub fn budget(&mut self, budget: u64) {
+        self.budget = budget;
+        if self.bytes() > budget {
+            self.clear();
+        }
     }
     pub fn invalidate(&mut self, dirty: &DirtyRegions, surface: &TileSurface<Rgba8>) {
         if dirty.is_empty() {
@@ -425,7 +433,7 @@ impl ViewportRenderer {
             let (p, slot) = match available {
                 Some(slot) => slot,
                 None => {
-                    if self.bytes() + PAGE_BYTES + slots as u64 * 32 > GPU_BUDGET {
+                    if self.bytes() + PAGE_BYTES + slots as u64 * 32 > self.budget {
                         let victim = self
                             .pages
                             .iter()

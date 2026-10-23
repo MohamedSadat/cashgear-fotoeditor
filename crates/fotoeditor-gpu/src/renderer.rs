@@ -19,6 +19,7 @@ pub struct Renderer {
     paused: bool,
     resized: bool,
     viewport: ViewportRenderer,
+    compositor: Option<crate::compositor::Compositor>,
 }
 
 async fn device_for(adapter: &Adapter) -> Result<(Device, Queue), String> {
@@ -199,6 +200,7 @@ impl Renderer {
             paused: true,
             resized: true,
             viewport,
+            compositor: None,
         };
         renderer.resize(renderer.canvas.width(), renderer.canvas.height());
         Ok(renderer)
@@ -257,7 +259,17 @@ impl Renderer {
         self.viewport.invalidate(dirty, surface);
     }
     pub fn gpu_bytes(&self) -> u64 {
-        self.viewport.bytes()
+        self.viewport.bytes() + self.compositor.as_ref().map_or(0, |c| c.bytes())
+    }
+    pub fn composite(
+        &mut self,
+        plan: &fotoeditor_core::CompositePlan,
+    ) -> Result<js_sys::Promise, String> {
+        self.viewport
+            .budget(fotoeditor_core::GPU_BUDGET - crate::compositor::COMPOSITE_RESERVE);
+        self.compositor
+            .get_or_insert_with(|| crate::compositor::Compositor::new(&self.device))
+            .compose(&self.device, &self.queue, plan)
     }
     pub fn visible_tiles(&self) -> u32 {
         self.viewport.visible

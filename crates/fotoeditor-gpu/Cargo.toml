@@ -14,5 +14,6 @@ naga = { version = "=30.0.1", features = ["wgsl-in"] }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wgpu.workspace = true
 wasm-bindgen.workspace = true
+wasm-bindgen-futures.workspace = true
 js-sys.workspace = true
 web-sys = { workspace = true, features = ["OffscreenCanvas"] }

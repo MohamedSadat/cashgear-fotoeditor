@@ -1,5 +1,7 @@
 //! GPU display only. Authoritative document samples will live in fotoeditor-core.
 #[cfg(target_arch = "wasm32")]
+mod compositor;
+#[cfg(target_arch = "wasm32")]
 mod renderer;
 #[cfg(target_arch = "wasm32")]
 pub use renderer::Renderer;
