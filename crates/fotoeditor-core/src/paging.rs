@@ -2,7 +2,8 @@
 //! the worker; processing crates see only validated backing extents and samples.
 use crate::{Pixel, Residency, Tile, TILE_PIXELS};
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, RwLock, Weak};
+use std::ops::{Deref, DerefMut};
+use std::sync::{Arc, RwLock, RwLockWriteGuard, Weak};
 
 /// A worker-owned immutable extent. Acknowledgement is allowed only after the
 /// storage adapter has flushed and validated the exact generation's payload.
@@ -26,6 +27,46 @@ struct State<P: Pixel> {
 #[derive(Clone)]
 pub struct TileHandle<P: Pixel>(Arc<Generation<P>>);
 impl<P: Pixel> TileHandle<P> {
+    pub(crate) fn new(tile: Arc<Tile<P>>) -> Self {
+        Self(Arc::new(Generation {
+            id: tile.id,
+            state: RwLock::new(State {
+                resident: Some(tile),
+                backing: None,
+            }),
+        }))
+    }
+    pub(crate) fn edit(&mut self) -> Result<TileEdit<'_, P>, String> {
+        let replacement = {
+            let state = self.0.state.read().map_err(|_| "Tile lock failed")?;
+            let tile = state
+                .resident
+                .as_ref()
+                .ok_or("Hydrate tile before editing")?;
+            if Arc::strong_count(&self.0) > 1
+                || Arc::strong_count(tile) > 1
+                || state.backing.is_some()
+            {
+                Some(Arc::new((**tile).clone()))
+            } else {
+                None
+            }
+        };
+        if let Some(tile) = replacement {
+            *self = Self::new(tile);
+        }
+        let mut guard = self.0.state.write().map_err(|_| "Tile lock failed")?;
+        Arc::get_mut(guard.resident.as_mut().unwrap())
+            .unwrap()
+            .known_opaque = false;
+        Ok(TileEdit { guard })
+    }
+    pub(crate) fn refresh_opacity(&mut self) {
+        let mut state = self.0.state.write().expect("tile lock");
+        if let Some(tile) = state.resident.as_mut().and_then(Arc::get_mut) {
+            tile.known_opaque = tile.pixels.iter().all(|p| p.is_opaque());
+        }
+    }
     pub fn id(&self) -> u64 {
         self.0.id
     }
@@ -49,6 +90,22 @@ impl<P: Pixel> TileHandle<P> {
             .resident
             .as_ref()
             .map_or(0, |tile| tile.bytes())
+    }
+}
+pub struct TileEdit<'a, P: Pixel> {
+    guard: RwLockWriteGuard<'a, State<P>>,
+}
+impl<P: Pixel> Deref for TileEdit<'_, P> {
+    type Target = [P];
+    fn deref(&self) -> &[P] {
+        &self.guard.resident.as_ref().unwrap().pixels
+    }
+}
+impl<P: Pixel> DerefMut for TileEdit<'_, P> {
+    fn deref_mut(&mut self) -> &mut [P] {
+        &mut Arc::get_mut(self.guard.resident.as_mut().unwrap())
+            .unwrap()
+            .pixels
     }
 }
 struct Entry<P: Pixel> {
@@ -80,13 +137,11 @@ impl<P: Pixel> TilePager<P> {
                 return TileHandle(generation);
             }
         }
-        let handle = TileHandle(Arc::new(Generation {
-            id: tile.id,
-            state: RwLock::new(State {
-                resident: Some(tile),
-                backing: None,
-            }),
-        }));
+        let handle = TileHandle::new(tile);
+        self.track(&handle);
+        handle
+    }
+    pub fn track(&mut self, handle: &TileHandle<P>) {
         self.entries.insert(
             handle.id(),
             Entry {
@@ -94,7 +149,6 @@ impl<P: Pixel> TilePager<P> {
                 used: self.clock,
             },
         );
-        handle
     }
     pub fn touch(&mut self, handle: &TileHandle<P>) {
         self.clock = self.clock.wrapping_add(1);

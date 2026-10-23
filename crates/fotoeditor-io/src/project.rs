@@ -50,6 +50,9 @@ impl ProjectWriter {
     }
     pub fn step(&mut self) -> bool {
         if let Some(coord) = self.coordinates.get(self.next) {
+            let tile = self.document.raster.tiles()[coord]
+                .pin()
+                .expect("hydrate project tile");
             let start = self.bytes.len();
             self.bytes.extend_from_slice(&coord.0.to_le_bytes());
             self.bytes.extend_from_slice(&coord.1.to_le_bytes());
@@ -59,7 +62,7 @@ impl ProjectWriter {
                 .as_chunks_mut::<4>()
                 .0
                 .iter_mut()
-                .zip(&self.document.raster.tiles()[coord].pixels)
+                .zip(&tile.pixels)
             {
                 *target = p.0;
             }

@@ -157,6 +157,7 @@ impl ExportJob {
             self.row.fill(0);
             for tx in 0..self.document.width.div_ceil(TILE_SIZE) {
                 if let Some(tile) = self.document.raster.tiles().get(&(tx, y / TILE_SIZE)) {
+                    let tile = tile.pin()?;
                     let n = TILE_SIZE.min(self.document.width - tx * TILE_SIZE) as usize;
                     let start = ((y % TILE_SIZE) * TILE_SIZE) as usize;
                     for (dst, p) in self.row[tx as usize * TILE_SIZE as usize * 4..][..n * 4]

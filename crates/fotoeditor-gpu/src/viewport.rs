@@ -195,7 +195,7 @@ impl ViewportRenderer {
             let coord = self.coordinates[&id];
             let neighbor_only = !dirty.contains_key(&coord);
             let keep_base = !neighbor_only
-                && surface.tiles().get(&coord).is_some_and(|t| t.id == id)
+                && surface.tiles().get(&coord).is_some_and(|t| t.id() == id)
                 && self.locations.contains_key(&(id, 0));
             if keep_base {
                 let rect = dirty[&coord];
@@ -354,14 +354,14 @@ impl ViewportRenderer {
             .filter(|(c, _)| view.visible(c.0 * TILE_SIZE, c.1 * TILE_SIZE, TILE_SIZE, TILE_SIZE))
             .collect();
         self.visible = visible.len() as u32;
-        let ids: HashSet<_> = visible.iter().map(|(_, t)| t.id).collect();
+        let ids: HashSet<_> = visible.iter().map(|(_, t)| t.id()).collect();
         let bulk = self.locations.is_empty();
         let start = js_sys::Date::now();
         for (coord, tile) in &visible {
             if lod == 0 && view.zoom >= 1.0 {
                 if let (Some(rect), Some(&(page, slot))) = (
-                    self.pending_regions.get(&tile.id).copied(),
-                    self.locations.get(&(tile.id, 0)),
+                    self.pending_regions.get(&tile.id()).copied(),
+                    self.locations.get(&(tile.id(), 0)),
                 ) {
                     let pixels = display_region(&doc.raster, **coord, rect);
                     let width = rect.x1 - rect.x0;
@@ -390,21 +390,22 @@ impl ViewportRenderer {
                         },
                     );
                     self.uploaded += pixels.len() as u64;
-                    self.pending_regions.remove(&tile.id);
+                    self.pending_regions.remove(&tile.id());
                     continue;
                 }
             }
             let refresh_gutter =
-                lod == 0 && view.zoom < 1.0 && self.gutter_dirty.contains(&tile.id);
-            if self.locations.contains_key(&(tile.id, lod)) && !refresh_gutter {
+                lod == 0 && view.zoom < 1.0 && self.gutter_dirty.contains(&tile.id());
+            if self.locations.contains_key(&(tile.id(), lod)) && !refresh_gutter {
                 continue;
             }
             // Keep a cached overview visible while sharper mips arrive. Long
             // navigation work must not monopolize the worker's next frame.
-            if !bulk && js_sys::Date::now() - start >= 3.0 && self.cached(tile.id, lod).is_some() {
+            if !bulk && js_sys::Date::now() - start >= 3.0 && self.cached(tile.id(), lod).is_some()
+            {
                 continue;
             }
-            let mut available = self.locations.get(&(tile.id, lod)).copied();
+            let mut available = self.locations.get(&(tile.id(), lod)).copied();
             for (p, page) in self.pages.iter().enumerate() {
                 if available.is_some() {
                     break;
@@ -481,25 +482,25 @@ impl ViewportRenderer {
                 },
             );
             self.uploaded += pixels.len() as u64;
-            page.slots[slot] = Some(tile.id);
-            self.locations.insert((tile.id, lod), (p, slot));
-            self.coordinates.insert(tile.id, **coord);
+            page.slots[slot] = Some(tile.id());
+            self.locations.insert((tile.id(), lod), (p, slot));
+            self.coordinates.insert(tile.id(), **coord);
             if lod == 0 {
-                self.gutter_dirty.remove(&tile.id);
-                self.pending_regions.remove(&tile.id);
+                self.gutter_dirty.remove(&tile.id());
+                self.pending_regions.remove(&tile.id());
             }
         }
         let mut vertices = vec![Vec::<f32>::new(); self.pages.len()];
         for (coord, tile) in visible {
             let (p, slot) = self
-                .cached(tile.id, lod)
+                .cached(tile.id(), lod)
                 .ok_or("Visible tile has no display backing")?;
             let page = &mut self.pages[p];
             page.last_used = self.tick;
             if page.lod != lod
                 || (page.lod == 0
-                    && (self.pending_regions.contains_key(&tile.id)
-                        || (view.zoom < 1.0 && self.gutter_dirty.contains(&tile.id))))
+                    && (self.pending_regions.contains_key(&tile.id())
+                        || (view.zoom < 1.0 && self.gutter_dirty.contains(&tile.id()))))
             {
                 self.refining += 1;
             }

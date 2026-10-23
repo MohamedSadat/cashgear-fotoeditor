@@ -1,7 +1,6 @@
 //! Reversible document commands. No browser, renderer or UI state.
-use crate::{Document, Rgba8, Tile, TileCoord, CPU_BUDGET};
+use crate::{Document, Rgba8, TileCoord, TileHandle, CPU_BUDGET};
 use std::collections::HashSet;
-use std::sync::Arc;
 
 /// Commands must apply/revert exactly, including transparent RGB and sparse tiles.
 /// Retained allocations are enumerated so shared COW generations count once.
@@ -14,14 +13,14 @@ pub trait Command: std::any::Any {
     }
     fn apply(&self, document: &mut Document);
     fn revert(&self, document: &mut Document);
-    fn visit_tiles(&self, visitor: &mut dyn FnMut(&Arc<Tile<Rgba8>>));
+    fn visit_tiles(&self, visitor: &mut dyn FnMut(&TileHandle<Rgba8>));
     fn is_empty(&self) -> bool;
 }
 
 struct TileChange {
     coord: TileCoord,
-    before: Option<Arc<Tile<Rgba8>>>,
-    after: Option<Arc<Tile<Rgba8>>>,
+    before: Option<TileHandle<Rgba8>>,
+    after: Option<TileHandle<Rgba8>>,
 }
 
 /// An atomic tile delta, also used by the brush's single-command stroke commit.
@@ -45,8 +44,11 @@ impl TileCommand {
             .filter_map(|coord| {
                 let old = before.raster.tiles().get(&coord);
                 let new = after.raster.tiles().get(&coord);
-                if old.map(|t| t.id) == new.map(|t| t.id)
-                    || old.map(|t| &t.pixels) == new.map(|t| &t.pixels)
+                if old.map(|t| t.id()) == new.map(|t| t.id())
+                    || old.zip(new).is_some_and(|(a, b)| match (a.pin(), b.pin()) {
+                        (Ok(a), Ok(b)) => a.pixels == b.pixels,
+                        _ => false,
+                    })
                 {
                     return None;
                 }
@@ -71,7 +73,7 @@ impl Command for TileCommand {
             document.raster.restore(change.coord, change.before.clone());
         }
     }
-    fn visit_tiles(&self, visitor: &mut dyn FnMut(&Arc<Tile<Rgba8>>)) {
+    fn visit_tiles(&self, visitor: &mut dyn FnMut(&TileHandle<Rgba8>)) {
         for change in &self.changes {
             for tile in [&change.before, &change.after].into_iter().flatten() {
                 visitor(tile);
@@ -99,7 +101,7 @@ impl Command for ResolutionCommand {
     fn revert(&self, document: &mut Document) {
         document.dpi = self.before;
     }
-    fn visit_tiles(&self, _: &mut dyn FnMut(&Arc<Tile<Rgba8>>)) {}
+    fn visit_tiles(&self, _: &mut dyn FnMut(&TileHandle<Rgba8>)) {}
     fn is_empty(&self) -> bool {
         self.before == self.after
     }
@@ -251,12 +253,12 @@ impl History {
     }
 }
 fn retained_bytes<'a>(document: &Document, commands: impl Iterator<Item = &'a dyn Command>) -> u64 {
-    let mut seen: HashSet<_> = document.raster.tiles().values().map(|t| t.id).collect();
+    let mut seen: HashSet<_> = document.raster.tiles().values().map(|t| t.id()).collect();
     let mut bytes = 0;
     for command in commands {
         command.visit_tiles(&mut |tile| {
-            if seen.insert(tile.id) {
-                bytes += tile.bytes();
+            if seen.insert(tile.id()) {
+                bytes += tile.resident_bytes();
             }
         });
     }
@@ -268,6 +270,62 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
     use std::hash::{Hash, Hasher};
+    #[test]
+    fn paged_undo_keeps_identity_and_exact_samples_without_pin_retention() {
+        use crate::{TileBacking, TilePager};
+        let mut document = Document::blank(256, 1, 72.0).unwrap();
+        document.raster.write(0, 0, Rgba8([87, 33, 19, 0]));
+        let old = document.raster.tiles()[&(0, 0)].clone();
+        let mut history = History::default();
+        let command = edit(&document, 0, [201, 3, 7, 1]);
+        history.execute(&mut document, command, 0).unwrap();
+        let mut handles = vec![old.clone(), document.raster.tiles()[&(0, 0)].clone()];
+        for command in &history.entries {
+            command.visit_tiles(&mut |tile| handles.push(tile.clone()));
+        }
+        let mut pager = TilePager::default();
+        let mut disk = std::collections::HashMap::new();
+        for handle in &handles {
+            pager.track(handle);
+            disk.insert(handle.id(), handle.pin().unwrap().pixels.clone());
+            pager
+                .acknowledge_backing(
+                    handle,
+                    TileBacking {
+                        store: 1,
+                        offset: handle.id() * 262144,
+                        length: 262144,
+                        checksum: 0,
+                    },
+                )
+                .unwrap();
+        }
+        assert_eq!(pager.evict_oldest(u64::MAX, &HashSet::new()), 524288);
+        assert_eq!(document.raster.bytes() + history.bytes(&document), 0);
+        assert!(history.undo(&mut document));
+        let restored = &document.raster.tiles()[&(0, 0)];
+        assert_eq!(restored.id(), old.id());
+        pager
+            .hydrate(
+                restored,
+                restored.backing().unwrap(),
+                disk[&restored.id()].clone(),
+                crate::Residency::default(),
+            )
+            .unwrap();
+        assert_eq!(document.raster.sample(0, 0), Rgba8([87, 33, 19, 0]));
+        assert!(history.redo(&mut document));
+        let restored = &document.raster.tiles()[&(0, 0)];
+        pager
+            .hydrate(
+                restored,
+                restored.backing().unwrap(),
+                disk[&restored.id()].clone(),
+                crate::Residency::default(),
+            )
+            .unwrap();
+        assert_eq!(document.raster.sample(0, 0), Rgba8([201, 3, 7, 1]));
+    }
     fn hash(d: &Document) -> u64 {
         let mut hash = std::collections::hash_map::DefaultHasher::new();
         d.dpi.to_bits().hash(&mut hash);
@@ -385,7 +443,7 @@ mod tests {
     fn exact_undo_redo_branch_and_unique_residency() {
         let mut doc = Document::blank(600, 1, 72.0).unwrap();
         doc.raster.write(0, 0, Rgba8([87, 33, 19, 0]));
-        let original_id = doc.raster.tiles()[&(0, 0)].id;
+        let original_id = doc.raster.tiles()[&(0, 0)].id();
         let mut h = History::default();
         let first = edit(&doc, 0, [201, 3, 7, 1]);
         h.execute(&mut doc, first, 0).unwrap();
@@ -397,7 +455,7 @@ mod tests {
         assert_eq!(h.bytes(&doc), 2 * 262144);
         assert!(h.undo(&mut doc));
         assert_eq!(doc.raster.sample(0, 0), Rgba8([87, 33, 19, 0]));
-        assert_eq!(doc.raster.tiles()[&(0, 0)].id, original_id);
+        assert_eq!(doc.raster.tiles()[&(0, 0)].id(), original_id);
         assert!(h.redo(&mut doc));
         let branch = edit(&doc, 1, [1, 2, 3, 255]);
         assert!(h.execute(&mut doc, branch, 0).unwrap());

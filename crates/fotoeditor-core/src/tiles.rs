@@ -1,3 +1,4 @@
+use crate::{TileEdit, TileHandle};
 use std::collections::{HashMap, HashSet};
 use std::sync::{
     atomic::{AtomicU64, Ordering},
@@ -78,7 +79,7 @@ impl<P: Pixel> Tile<P> {
 pub struct TileSurface<P: Pixel> {
     pub width: u32,
     pub height: u32,
-    tiles: HashMap<TileCoord, Arc<Tile<P>>>,
+    tiles: HashMap<TileCoord, TileHandle<P>>,
     dirty: DirtySet,
     regions: DirtyRegions,
 }
@@ -92,14 +93,14 @@ impl<P: Pixel> TileSurface<P> {
             regions: DirtyRegions::new(),
         }
     }
-    pub fn tiles(&self) -> &HashMap<TileCoord, Arc<Tile<P>>> {
+    pub fn tiles(&self) -> &HashMap<TileCoord, TileHandle<P>> {
         &self.tiles
     }
     /// Scratch/command primitive; one COW check per tile row/dab.
-    pub fn edit_tile(&mut self, coord: TileCoord) -> &mut [P] {
+    pub fn edit_tile(&mut self, coord: TileCoord) -> TileEdit<'_, P> {
         self.edit_region(coord, TileRect::FULL)
     }
-    pub fn edit_region(&mut self, coord: TileCoord, region: TileRect) -> &mut [P] {
+    pub fn edit_region(&mut self, coord: TileCoord, region: TileRect) -> TileEdit<'_, P> {
         assert!(coord.0 * TILE_SIZE < self.width && coord.1 * TILE_SIZE < self.height);
         assert!(
             region.x0 < region.x1
@@ -108,30 +109,33 @@ impl<P: Pixel> TileSurface<P> {
                 && region.y1 <= TILE_SIZE
         );
         self.mark_dirty(coord, region);
-        let tile = self
-            .tiles
-            .entry(coord)
-            .or_insert_with(|| Arc::new(Tile::new(vec![P::default(); TILE_PIXELS])));
-        let tile = Arc::make_mut(tile);
-        tile.known_opaque = false;
-        &mut tile.pixels
+        let tile = self.tiles.entry(coord).or_insert_with(|| {
+            TileHandle::new(Arc::new(Tile::new(vec![P::default(); TILE_PIXELS])))
+        });
+        tile.edit().expect("hydrate before editing")
     }
     pub fn compact_dirty(&mut self) {
         for coord in &self.dirty {
-            if self
-                .tiles
-                .get(coord)
-                .is_some_and(|t| t.pixels.iter().all(|p| *p == P::default()))
-            {
+            if self.tiles.get(coord).is_some_and(|t| {
+                t.pin()
+                    .expect("hydrate before compacting")
+                    .pixels
+                    .iter()
+                    .all(|p| *p == P::default())
+            }) {
                 self.tiles.remove(coord);
             } else if let Some(tile) = self.tiles.get_mut(coord) {
-                let tile = Arc::make_mut(tile);
-                tile.known_opaque = tile.pixels.iter().all(|p| p.is_opaque());
+                tile.refresh_opacity();
             }
         }
     }
     pub fn bytes(&self) -> u64 {
-        self.tiles.values().map(|t| t.bytes()).sum()
+        let mut seen = HashSet::new();
+        self.tiles
+            .values()
+            .filter(|t| seen.insert(t.id()))
+            .map(|t| t.resident_bytes())
+            .sum()
     }
     pub fn drain_dirty(&mut self) -> DirtySet {
         self.regions.clear();
@@ -151,7 +155,7 @@ impl<P: Pixel> TileSurface<P> {
             .and_modify(|r| r.union(region))
             .or_insert(region);
     }
-    pub(crate) fn restore(&mut self, coord: TileCoord, tile: Option<Arc<Tile<P>>>) {
+    pub(crate) fn restore(&mut self, coord: TileCoord, tile: Option<TileHandle<P>>) {
         if let Some(tile) = tile {
             self.tiles.insert(coord, tile);
         } else {
@@ -166,7 +170,8 @@ impl<P: Pixel> TileSurface<P> {
         self.tiles
             .get(&(x / TILE_SIZE, y / TILE_SIZE))
             .map_or(P::default(), |t| {
-                t.pixels[((y % TILE_SIZE) * TILE_SIZE + x % TILE_SIZE) as usize]
+                t.pin().expect("hydrate before sampling").pixels
+                    [((y % TILE_SIZE) * TILE_SIZE + x % TILE_SIZE) as usize]
             })
     }
     /// Builder/command primitive. Hidden nonzero RGB must remain allocated.
@@ -175,7 +180,8 @@ impl<P: Pixel> TileSurface<P> {
         if pixels.iter().all(|p| *p == P::default()) {
             self.tiles.remove(&coord);
         } else {
-            self.tiles.insert(coord, Arc::new(Tile::new(pixels)));
+            self.tiles
+                .insert(coord, TileHandle::new(Arc::new(Tile::new(pixels))));
         }
         self.mark_dirty(coord, TileRect::FULL);
     }
@@ -185,13 +191,13 @@ impl<P: Pixel> TileSurface<P> {
         if pixel == P::default() && !self.tiles.contains_key(&coord) {
             return;
         }
-        let tile = self
-            .tiles
-            .entry(coord)
-            .or_insert_with(|| Arc::new(Tile::new(vec![P::default(); TILE_PIXELS])));
-        let tile = Arc::make_mut(tile);
-        tile.known_opaque &= pixel.is_opaque();
-        tile.pixels[((y % TILE_SIZE) * TILE_SIZE + x % TILE_SIZE) as usize] = pixel;
+        {
+            let tile = self.tiles.entry(coord).or_insert_with(|| {
+                TileHandle::new(Arc::new(Tile::new(vec![P::default(); TILE_PIXELS])))
+            });
+            tile.edit().expect("hydrate before writing")
+                [((y % TILE_SIZE) * TILE_SIZE + x % TILE_SIZE) as usize] = pixel;
+        }
         self.mark_dirty(
             coord,
             TileRect {
@@ -210,7 +216,7 @@ mod tests {
     fn dirty_regions_union_and_opacity_metadata_survive_cow() {
         let mut surface = TileSurface::new(256, 256);
         surface.insert((0, 0), vec![Rgba8([1, 2, 3, 255]); TILE_PIXELS]);
-        assert!(surface.tiles()[&(0, 0)].known_opaque);
+        assert!(surface.tiles()[&(0, 0)].pin().unwrap().known_opaque);
         surface.drain_regions();
         let before = surface.clone();
         surface.write(10, 20, Rgba8([99, 77, 33, 0]));
@@ -225,8 +231,8 @@ mod tests {
             }
         );
         assert!(surface.drain_dirty().is_empty());
-        assert!(before.tiles()[&(0, 0)].known_opaque);
-        assert!(!surface.tiles()[&(0, 0)].known_opaque);
+        assert!(before.tiles()[&(0, 0)].pin().unwrap().known_opaque);
+        assert!(!surface.tiles()[&(0, 0)].pin().unwrap().known_opaque);
         surface.restore((0, 0), Some(before.tiles()[&(0, 0)].clone()));
         assert_eq!(surface.drain_regions()[&(0, 0)], TileRect::FULL);
         assert_eq!(surface.sample(10, 20), Rgba8([1, 2, 3, 255]));
@@ -246,10 +252,10 @@ mod tests {
             s.write(x as u32 + 255, 256, p);
         }
         let old = s.clone();
-        let old_id = old.tiles()[&(1, 1)].id;
+        let old_id = old.tiles()[&(1, 1)].id();
         s.write(256, 256, Rgba8([8, 9, 10, 2]));
         assert_eq!(old.sample(256, 256), Rgba8([201, 3, 7, 1]));
-        assert_ne!(s.tiles()[&(1, 1)].id, old_id);
+        assert_ne!(s.tiles()[&(1, 1)].id(), old_id);
         assert_eq!(s.bytes(), 2 * 256 * 256 * 4);
         assert_eq!(s.drain_dirty().len(), 2);
         assert!(s.drain_dirty().is_empty());

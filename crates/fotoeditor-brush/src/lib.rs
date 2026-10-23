@@ -458,12 +458,18 @@ impl StrokeCommand {
                 self.touched.push(coord);
             }
             let mask = self.coverage.get_mut(&coord).unwrap();
-            let base = self.base.raster.tiles().get(&coord);
+            let base = self
+                .base
+                .raster
+                .tiles()
+                .get(&coord)
+                .map(|tile| tile.pin())
+                .transpose()?;
             let end = dab
                 .x1
                 .min((coord.0 + 1) * TILE_SIZE)
                 .min(dab.x + pixels.min(TILE_SIZE as usize) as u32);
-            let output = self.preview.raster.edit_region(
+            let mut output = self.preview.raster.edit_region(
                 coord,
                 fotoeditor_core::TileRect {
                     x0: dab.x % TILE_SIZE,
@@ -476,9 +482,9 @@ impl StrokeCommand {
                 dab,
                 &self.tip,
                 &self.settings,
-                base.map(|t| t.as_ref()),
+                base.as_deref(),
                 mask,
-                output,
+                &mut output,
                 end,
             );
             if changed {
@@ -710,8 +716,8 @@ mod tests {
         finish(&mut b);
         for coord in [(0, 0), (1, 0)] {
             assert_eq!(
-                a.preview.raster.tiles()[&coord].pixels,
-                b.preview.raster.tiles()[&coord].pixels
+                a.preview.raster.tiles()[&coord].pin().unwrap().pixels,
+                b.preview.raster.tiles()[&coord].pin().unwrap().pixels
             );
         }
     }

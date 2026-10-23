@@ -4,7 +4,7 @@ pub fn display_region(surface: &TileSurface<Rgba8>, coord: TileCoord, rect: Tile
     let width = rect.x1 - rect.x0;
     let height = rect.y1 - rect.y0;
     let mut out = vec![0; (width * height * 4) as usize];
-    let tile = &surface.tiles()[&coord];
+    let tile = surface.tiles()[&coord].pin().expect("hydrate display tile");
     let valid_w = (surface.width - coord.0 * TILE_SIZE).min(TILE_SIZE);
     let valid_h = (surface.height - coord.1 * TILE_SIZE).min(TILE_SIZE);
     for y in 0..height {
@@ -27,7 +27,7 @@ pub fn display_tile(surface: &TileSurface<Rgba8>, coord: TileCoord, lod: u32) ->
     let side = TILE_SIZE / scale;
     let padded = side + 2;
     let mut out = vec![0; (padded * padded * 4) as usize];
-    let tile = &surface.tiles()[&coord];
+    let tile = surface.tiles()[&coord].pin().expect("hydrate display tile");
     let valid_w = (surface.width - coord.0 * TILE_SIZE).min(TILE_SIZE);
     let valid_h = (surface.height - coord.1 * TILE_SIZE).min(TILE_SIZE);
     for y in 0..padded {
@@ -86,7 +86,7 @@ fn premultiplied(p: Rgba8) -> [u8; 4] {
 fn display_base_tile(surface: &TileSurface<Rgba8>, coord: TileCoord) -> Vec<u8> {
     const PAD: usize = TILE_SIZE as usize + 2;
     let mut out = vec![0; PAD * PAD * 4];
-    let tile = &surface.tiles()[&coord];
+    let tile = surface.tiles()[&coord].pin().expect("hydrate display tile");
     let w = (surface.width - coord.0 * TILE_SIZE).min(TILE_SIZE) as usize;
     let h = (surface.height - coord.1 * TILE_SIZE).min(TILE_SIZE) as usize;
     for y in 0..TILE_SIZE as usize {
