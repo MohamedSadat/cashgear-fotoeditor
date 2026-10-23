@@ -2,7 +2,7 @@
 import type { RecoveryCandidate } from './types';
 import { yieldProjectTask } from './yield-task';
 const DIRECTORY = 'cashgear-recovery-v1';
-const MAX_BYTES = 128 * 1048576;
+const MAX_BYTES = 4 * 1024 ** 3;
 interface SyncFile {
   write(data: Uint8Array, options: { at: number }): number;
   truncate(size: number): void;
@@ -23,6 +23,7 @@ export class RecoveryStore {
   constructor(
     private validate: (bytes: Uint8Array) => Promise<void>,
     private admitRead: (size: number) => void,
+    private validateFile?: (file: File) => Promise<void>,
   ) {}
   async init() {
     if (!navigator.locks || !navigator.storage?.getDirectory)
@@ -81,6 +82,13 @@ export class RecoveryStore {
     const handle = await this.directory!.getFileHandle(info.file);
     const f = await handle.getFile();
     if (f.size !== info.size) throw new Error('Incomplete recovery snapshot');
+    const header = await f.slice(0, 12).arrayBuffer();
+    if (header.byteLength === 12 && new DataView(header).getUint32(8, true) === 2) {
+      if (!this.validateFile) throw new Error('Layer recovery is unavailable');
+      await this.validateFile(f);
+      return f;
+    }
+    if (f.size > 128 * 1048576) throw new Error('Legacy recovery exceeds its 128 MiB limit');
     this.admitRead(f.size);
     const bytes = new Uint8Array(await f.arrayBuffer());
     await this.validate(bytes);
@@ -127,7 +135,7 @@ export class RecoveryStore {
       return { candidates, invalid };
     });
   }
-  async restore(info: RecoveryCandidate, commit: (bytes: Uint8Array) => Promise<void>) {
+  async restore(info: RecoveryCandidate, commit: (bytes: Uint8Array | File) => Promise<void>) {
     return this.catalog(() =>
       navigator.locks.request(
         'fotoeditor-session-' + info.session,
@@ -170,7 +178,8 @@ export class RecoveryStore {
           throw new DOMException('Diagnostic storage quota exceeded', 'QuotaExceededError');
         const end = Math.min(bytes.length, offset + 1048576);
         const written = access.write(bytes.subarray(offset, end), { at: offset });
-        if (written <= 0) throw new Error('Recovery storage made no write progress');
+        if (!Number.isInteger(written) || written <= 0 || written > end - offset)
+          throw new Error('Recovery storage quota or write failure');
         offset += written;
         if (fault === 'pause-after-chunk') await new Promise<void>(() => {});
         if (fault === 'partial') throw new Error('Diagnostic interrupted snapshot write');
@@ -186,6 +195,15 @@ export class RecoveryStore {
     }
   }
   async save(bytes: Uint8Array, name: string, fault?: RecoveryFault) {
+    return this.savePrepared(bytes.length, name, (file) => this.write(file, bytes, fault));
+  }
+  async saveStream(size: number, name: string, write: (handle: SyncHandle) => Promise<void>) {
+    return this.savePrepared(size, name, async (file) => {
+      const handle = (await this.directory!.getFileHandle(file, { create: true })) as SyncHandle;
+      await write(handle);
+    });
+  }
+  private async savePrepared(size: number, name: string, write: (file: string) => Promise<void>) {
     return this.catalog(async () => {
       const savedAt = Math.max(Date.now(), this.lastTime + 1);
       this.lastTime = savedAt;
@@ -196,11 +214,11 @@ export class RecoveryStore {
         file,
         name: name.slice(0, 512),
         savedAt,
-        size: bytes.length,
+        size,
       };
       // Unique immutable generations: never truncate a previous valid snapshot.
       try {
-        await this.write(file, bytes, fault);
+        await write(file);
         await this.read(info);
         await this.write(file + '.json', new TextEncoder().encode(JSON.stringify(info)));
       } catch (error) {

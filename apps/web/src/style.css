@@ -1,4 +1,93 @@
 @import url('/fonts.css');
+.layers-panel {
+  padding: 16px;
+  font-size: 12px;
+}
+.panel-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.panel-heading h2 {
+  font-size: 15px;
+  margin: 0 0 12px;
+}
+.layer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 8px 0;
+}
+.layer-actions button,
+.layer-row button {
+  padding: 5px 7px;
+  border: 1px solid #414651;
+  border-radius: 4px;
+  background: #252a32;
+  color: inherit;
+  font-size: 11px;
+}
+.layer-list {
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid #343942;
+  margin: 10px 0;
+}
+.layer-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 34px;
+}
+.layer-row.selected {
+  background: #494033;
+}
+.layer-row .layer-name {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.layers-panel fieldset {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+.layers-panel label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 7px 0;
+  text-transform: capitalize;
+}
+.layers-panel input:not([type='checkbox']),
+.layers-panel select {
+  min-width: 0;
+  flex: 1;
+  width: 85px;
+  background: #20242b;
+  border: 1px solid #464c56;
+  border-radius: 3px;
+  color: inherit;
+  padding: 5px;
+}
+.layer-locks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.layer-help {
+  color: #a6adba;
+  line-height: 1.5;
+}
+.layer-thumbnail {
+  width: 32px;
+  height: 24px;
+  object-fit: contain;
+  vertical-align: middle;
+  margin-right: 6px;
+  background: #bbb;
+}
 :root {
   font-family: Inter, 'Segoe UI', sans-serif;
   color: #e9ecf0;

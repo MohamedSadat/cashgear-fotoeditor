@@ -9,6 +9,7 @@ export interface PhysicalSize {
 export interface InitOptions extends PhysicalSize {
   backend: BackendPreference;
   diagnostic: boolean;
+  diagnosticTexture?: boolean;
   failInitialization?: boolean;
   simulateGpuFailure?: 'adapter' | 'device';
 }
@@ -23,6 +24,14 @@ export interface FrameResult extends PhysicalSize {
   snapshot?: DocumentSnapshot;
 }
 export interface DocumentSnapshot {
+  layers: {
+    nodes: LayerNode[];
+    active?: number;
+    maskTarget: boolean;
+    maskView: boolean;
+    compositing: number;
+  };
+  projectTiming?: { copyMs: number; validateMs: number; compositeMs: number };
   revision: number;
   operation?: string;
   recovery?: RecoveryStatus;
@@ -74,6 +83,14 @@ export interface Interaction {
   sample?: [number, number, number, number, number, number];
 }
 export interface EngineApi {
+  thumbnail(target: number): Promise<Uint8Array>;
+  compareCompositors(): Promise<number[]>;
+  selectLayer(target: number, mask?: boolean, view?: boolean): Promise<DocumentSnapshot>;
+  mergeLayers(kind: 'down' | 'visible' | 'flatten', target: number): Promise<DocumentSnapshot>;
+  layerAction(action: LayerAction): Promise<DocumentSnapshot>;
+  applyMask(target: number): Promise<DocumentSnapshot>;
+  openProjectFile(file: File): Promise<DocumentSnapshot>;
+  saveProjectFile(handle: FileSystemFileHandle): Promise<number>;
   configureHistory(bytes: number, steps: number): Promise<void>;
   historyJump(target: number): Promise<void>;
   resolution(dpi: number, gesture: number): Promise<void>;
@@ -105,6 +122,31 @@ export interface EngineApi {
   exportPng(): Promise<Uint8Array>;
   cancelJob(): boolean | Promise<boolean>;
 }
+export interface LayerProperties {
+  visible: boolean;
+  opacity: number;
+  fill: number;
+  blend: string;
+  passThrough: boolean;
+  clipped: boolean;
+  locks: { pixels: boolean; alpha: boolean; position: boolean; all: boolean };
+}
+export interface LayerNode {
+  id: number;
+  name: string;
+  properties: LayerProperties;
+  mask: { enabled: boolean } | null;
+  children: LayerNode[] | null;
+}
+export type LayerAction =
+  | { kind: 'add'; name: string; parent: number | null; index: number; group: boolean }
+  | { kind: 'delete' | 'duplicate'; ids: number[] }
+  | { kind: 'rename'; target: number; name: string }
+  | { kind: 'move'; ids: number[]; parent: number | null; index: number }
+  | { kind: 'group'; ids: number[]; name: string }
+  | { kind: 'ungroup' | 'mask-add' | 'mask-delete'; target: number }
+  | { kind: 'properties'; target: number; properties: LayerProperties }
+  | { kind: 'mask-enabled'; target: number; enabled: boolean };
 export interface RecoveryCandidate {
   session: string;
   file: string;

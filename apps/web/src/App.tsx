@@ -3,6 +3,7 @@ import { transfer } from 'comlink';
 import { CanvasHost } from './CanvasHost';
 import { BrushPanel } from './BrushPanel';
 import { HistoryPanel } from './HistoryPanel';
+import { LayerPanel } from './LayerPanel';
 import { useBrush } from './brush-state';
 import { updateWorkspace, useWorkspace } from './state';
 import type { EngineApi, Interaction } from './engine/types';
@@ -41,6 +42,8 @@ export function App() {
   const onApiReady = useCallback((engine: EngineApi | undefined) => {
     api.current = engine;
     setEngineApi(() => engine);
+    if (new URLSearchParams(location.search).get('diagnostic') === '1')
+      Reflect.set(window, '__fotoeditor', engine);
     setRecoveryDismissed(false);
     if (!engine) {
       ++operation.current;
@@ -92,13 +95,17 @@ export function App() {
     setNotice('');
     const start = performance.now();
     try {
-      if (selected.size > 128 * 1048576) throw new Error('Image files must be at most 128 MiB');
-      const bytes = await selected.arrayBuffer();
+      const project = /\.cgfoto$/i.test(selected.name);
+      if (selected.size > (project ? 4 * 1024 ** 3 : 128 * 1048576))
+        throw new Error(
+          project ? 'Projects must be at most 4 GiB' : 'Image files must be at most 128 MiB',
+        );
+      const bytes = project ? undefined : await selected.arrayBuffer();
       if (token !== operation.current) return;
       workerJobStarted.current = true;
-      const next = await api.current[
-        /\.cgfoto$/i.test(selected.name) ? 'openProject' : 'openImage'
-      ](transfer(bytes, [bytes]), selected.name);
+      const next = project
+        ? await api.current.openProjectFile(selected)
+        : await api.current.openImage(transfer(bytes!, [bytes!]), selected.name);
       if (token === operation.current) {
         updateWorkspace({ snapshot: next });
         setNotice('Opened in ' + ((performance.now() - start) / 1000).toFixed(2) + ' s');
@@ -116,6 +123,40 @@ export function App() {
     setBusy('Saving project…');
     setNotice('');
     try {
+      const layers = snapshot?.layers.nodes;
+      const layered =
+        layers &&
+        (layers.length !== 1 ||
+          layers[0].children ||
+          layers[0].mask ||
+          layers[0].name !== 'Layer 1' ||
+          !layers[0].properties.visible ||
+          layers[0].properties.opacity !== 1 ||
+          layers[0].properties.fill !== 1 ||
+          layers[0].properties.blend !== 'normal' ||
+          layers[0].properties.passThrough ||
+          layers[0].properties.clipped ||
+          Object.values(layers[0].properties.locks).some(Boolean));
+      if (layered || doc.tiles * 262152 + 40 > 128 * 1048576) {
+        const picker = Reflect.get(window, 'showSaveFilePicker') as
+          ((options: object) => Promise<FileSystemFileHandle>) | undefined;
+        if (!picker)
+          throw new Error(
+            'Streamed project saving needs the file picker in Chrome, Edge or the desktop app.',
+          );
+        const handle = await picker({
+          suggestedName: (snapshot?.name ?? 'Untitled').replace(/\.[^.]+$/, '') + '.cgfoto',
+          types: [
+            {
+              description: 'FotoEditor project',
+              accept: { 'application/octet-stream': ['.cgfoto'] },
+            },
+          ],
+        });
+        const size = await api.current.saveProjectFile(handle);
+        setNotice('Project saved · document only · ' + (size / 1048576).toFixed(1) + ' MiB');
+        return;
+      }
       const bytes = await api.current.saveProject();
       if (token !== operation.current) return;
       const url = URL.createObjectURL(
@@ -435,6 +476,11 @@ export function App() {
           <BrushPanel />
           <div className="section-divider" />
           <HistoryPanel api={engineApi} disabled={status !== 'ready' || working || painting} />
+          <div className="section-divider" />
+          <LayerPanel
+            api={engineApi}
+            disabled={status !== 'ready' || working || painting || !doc}
+          />
           <div className="section-divider" />
           <section className="recovery-status" aria-label="Autosave and recovery">
             <span className="section-eyebrow">AUTOSAVE · EVERY 30 SECONDS + TAB HIDE</span>

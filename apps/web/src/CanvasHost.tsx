@@ -339,13 +339,14 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
     const offscreen = canvas.transferControlToOffscreen();
     const timeout = setTimeout(
       () => fail('The graphics engine did not start. Retry or try WebGL2.'),
-      30000,
+      60000,
     );
     void client
       .init(offscreen, {
         ...initialSize,
         backend,
         diagnostic,
+        diagnosticTexture: diagnostic && params.get('document') !== '1',
         failInitialization: diagnostic && generation === 0 && params.get('fault') === 'init',
         simulateGpuFailure:
           diagnostic && ['adapter', 'device'].includes(params.get('fault') ?? '')
