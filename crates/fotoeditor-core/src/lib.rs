@@ -72,6 +72,17 @@ impl Document {
         }
         self.layers[0].raster_samples()
     }
+    pub fn export_raster(&self) -> Result<&TileSurface<Rgba8>, String> {
+        if self.layers.len() != 1 || self.layers[0].mask.is_some() {
+            return Err("Composite layers before image export".into());
+        }
+        let mut properties = self.layers[0].properties.clone();
+        properties.locks = LayerLocks::default();
+        if properties != LayerProperties::default() {
+            return Err("Composite layer effects before image export".into());
+        }
+        self.layers[0].raster_samples()
+    }
     pub fn layer(&self, id: LayerId) -> Result<&Layer, String> {
         find_layer(&self.layers, id).ok_or_else(|| "Layer no longer exists".into())
     }
@@ -92,6 +103,18 @@ impl Document {
             }
         });
         bytes
+    }
+    pub fn tile_count(&self) -> usize {
+        fn count(nodes: &[Layer]) -> usize {
+            nodes
+                .iter()
+                .map(|l| match &l.content {
+                    LayerContent::Raster(s) => s.tiles().len(),
+                    LayerContent::Group(c) => count(c),
+                })
+                .sum()
+        }
+        count(&self.layers)
     }
 }
 /// Live buffer allocations, excluding allocator high-water retention and driver overhead.

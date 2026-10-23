@@ -220,7 +220,10 @@ impl ProjectStreamReader {
                 }
                 self.target = PREFIX + length;
                 if self.consumed + length as u64 > self.expected {
-                    return Err("Truncated project record".into());
+                    return Err(format!(
+                        "Truncated project record at {} + {} beyond {} bytes",
+                        self.consumed, length, self.expected
+                    ));
                 }
                 // Reserve exactly the bounded packet rather than geometric growth.
                 self.buffer.reserve_exact(length);

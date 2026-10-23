@@ -78,12 +78,33 @@ pub struct MergeRecipe {
 impl MergeRecipe {
     pub fn new(document: &Document, kind: &str, target: LayerId) -> Result<Self, String> {
         let mut after = document.layers.clone();
-        let replacement = Layer::raster(
+        let mut replacement = Layer::raster(
             "Merged layer".into(),
             TileSurface::new(document.width, document.height),
         );
-        let replacement_id = replacement.id;
+        let mut replacement_id = replacement.id;
         let (layers, label) = match kind {
+            "mask" => {
+                let original = document.layer(target)?;
+                if !matches!(original.content, LayerContent::Group(_)) || original.mask.is_none() {
+                    return Err("Choose a masked group".into());
+                }
+                if original.properties.pass_through {
+                    return Err("Set the group to Normal (isolated) before rasterizing and applying its mask".into());
+                }
+                replacement.id = target;
+                replacement_id = target;
+                replacement.name = original.name.clone();
+                replacement.properties = original.properties.clone();
+                *find_layer_mut(&mut after, target).ok_or("Group expired")? = replacement;
+                let mut source = original.clone();
+                source.properties.opacity = 1.0;
+                source.properties.fill = 1.0;
+                source.properties.blend = BlendMode::Normal;
+                source.properties.visible = true;
+                source.properties.clipped = false;
+                (vec![source], "Rasterize and apply group mask")
+            }
             "down" => {
                 let parent = parent_of(&after, target, None).ok_or("Choose a layer")?;
                 let siblings = siblings_mut(&mut after, parent)?;
@@ -422,5 +443,58 @@ mod tests {
                 &doc.raster().sample(x as u32 * 8, y as u32 * 8).0
             );
         }
+    }
+    #[test]
+    fn isolated_group_mask_bake_preserves_blend_properties_and_is_reversible() {
+        let mut doc = Document::blank(1, 1, 72.0).unwrap();
+        doc.raster_mut().write(0, 0, Rgba8([70, 160, 210, 230]));
+        let mut samples = TileSurface::new(1, 1);
+        samples.write(0, 0, Rgba8([220, 50, 90, 190]));
+        let mut group = Layer::group(
+            "Masked group".into(),
+            vec![Layer::raster("Child".into(), samples)],
+        );
+        group.properties.pass_through = false;
+        group.properties.blend = BlendMode::Screen;
+        group.properties.opacity = 0.7;
+        let mut mask = TileSurface::with_default(1, 1, Gray8(255));
+        mask.write(0, 0, Gray8(90));
+        group.mask = Some(LayerMask {
+            enabled: true,
+            samples: Arc::new(mask),
+        });
+        let id = group.id;
+        doc.layers.push(group);
+        let expected = CompositePlan::tile(&doc, (0, 0), None)
+            .unwrap()
+            .reference(Residency::default())
+            .unwrap()[0]
+            .straight();
+        let recipe = MergeRecipe::new(&doc, "mask", id).unwrap();
+        let mut job = LayerRenderJob::new(recipe.source.clone()).unwrap();
+        while !job.step(Residency::default()).unwrap() {}
+        let command = recipe.finish(&doc, job.output).unwrap();
+        let mut candidate = doc.clone();
+        command.apply(&mut candidate);
+        let actual = CompositePlan::tile(&candidate, (0, 0), None)
+            .unwrap()
+            .reference(Residency::default())
+            .unwrap()[0]
+            .straight();
+        assert!(actual
+            .0
+            .into_iter()
+            .zip(expected.0)
+            .all(|(a, b)| a.abs_diff(b) <= 1));
+        assert!(candidate.layer(id).unwrap().mask.is_none());
+        assert_eq!(
+            candidate.layer(id).unwrap().properties.blend,
+            BlendMode::Screen
+        );
+        command.revert(&mut candidate);
+        assert!(matches!(
+            candidate.layer(id).unwrap().content,
+            LayerContent::Group(_)
+        ));
     }
 }

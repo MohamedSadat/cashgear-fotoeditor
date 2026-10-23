@@ -144,7 +144,7 @@ pub struct ExportJob {
 }
 impl ExportJob {
     pub fn new(document: &Document, residency: Residency) -> Result<Self, String> {
-        document.single_raster()?;
+        document.export_raster()?;
         // Conservative output capacity + JS bridge copy; shared tile Arcs add no pixel copies.
         residency.check_cpu(2 * MAX_FILE_BYTES + document.width as u64 * 8 + 4 * 1024 * 1024)?;
         let out = Output(Rc::new(RefCell::new(Vec::new())));
@@ -229,6 +229,7 @@ mod tests {
                 );
             }
         }
+        d.layers[0].properties.locks.all = true;
         let mut e = ExportJob::new(&d, Residency::default()).unwrap();
         while !e.step().unwrap() {}
         let png = e.finish().unwrap();
