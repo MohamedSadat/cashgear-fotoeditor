@@ -570,11 +570,12 @@ impl LayerCommand {
         label: &'static str,
     ) -> Result<Self, String> {
         validate_layers(&after, document.width, document.height)?;
+        let empty = equivalent(&document.layers, &after);
         Ok(Self {
             before: document.layers.clone(),
             after,
             label,
-            empty: false,
+            empty,
         })
     }
 }
