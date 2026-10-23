@@ -30,6 +30,8 @@ pub struct ProjectRecord {
     pub kind: ProjectRecordKind,
     pub id: u64,
     pub payload: Vec<u8>,
+    /// Raw payload position in the immutable backing project stream.
+    pub file_offset: u64,
 }
 fn u32_at(bytes: &[u8], at: usize) -> u32 {
     u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap())
@@ -253,7 +255,16 @@ impl ProjectStreamReader {
                     3 => ProjectRecordKind::GrayTile,
                     _ => unreachable!("validated prefix"),
                 };
-                return Ok((used, Some(ProjectRecord { kind, id, payload })));
+                let file_offset = self.consumed - payload.len() as u64;
+                return Ok((
+                    used,
+                    Some(ProjectRecord {
+                        kind,
+                        id,
+                        payload,
+                        file_offset,
+                    }),
+                ));
             }
         }
     }

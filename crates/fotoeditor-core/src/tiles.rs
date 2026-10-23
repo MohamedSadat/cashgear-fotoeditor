@@ -31,6 +31,9 @@ impl TileRect {
     }
 }
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+pub(crate) fn next_tile_id() -> u64 {
+    NEXT_ID.fetch_add(1, Ordering::Relaxed)
+}
 pub trait Pixel: Copy + Default + PartialEq + Send + Sync + 'static {
     fn is_opaque(self) -> bool {
         false
@@ -56,7 +59,7 @@ pub struct Tile<P: Pixel> {
 impl<P: Pixel> Clone for Tile<P> {
     fn clone(&self) -> Self {
         Self {
-            id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
+            id: next_tile_id(),
             pixels: self.pixels.clone(),
             known_opaque: self.known_opaque,
         }
@@ -66,7 +69,7 @@ impl<P: Pixel> Tile<P> {
     pub fn new(pixels: Vec<P>) -> Self {
         assert_eq!(pixels.len(), TILE_PIXELS);
         Self {
-            id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
+            id: next_tile_id(),
             known_opaque: pixels.iter().all(|p| p.is_opaque()),
             pixels,
         }
@@ -100,6 +103,14 @@ impl<P: Pixel> TileSurface<P> {
     }
     pub fn tiles(&self) -> &HashMap<TileCoord, TileHandle<P>> {
         &self.tiles
+    }
+    pub fn insert_handle(&mut self, coord: TileCoord, tile: TileHandle<P>) -> Result<(), String> {
+        if coord.0 >= self.width.div_ceil(TILE_SIZE) || coord.1 >= self.height.div_ceil(TILE_SIZE) {
+            return Err("Tile coordinate lies outside the surface".into());
+        }
+        self.tiles.insert(coord, tile);
+        self.mark_dirty(coord, TileRect::FULL);
+        Ok(())
     }
     /// Scratch/command primitive; one COW check per tile row/dab.
     pub fn edit_tile(&mut self, coord: TileCoord) -> TileEdit<'_, P> {

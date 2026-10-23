@@ -987,6 +987,8 @@ dependencies = [
  "fotoeditor-core",
  "image",
  "png",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

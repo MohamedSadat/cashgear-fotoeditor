@@ -27,6 +27,22 @@ struct State<P: Pixel> {
 #[derive(Clone)]
 pub struct TileHandle<P: Pixel>(Arc<Generation<P>>);
 impl<P: Pixel> TileHandle<P> {
+    /// Construct a cold generation after the I/O adapter validates an immutable
+    /// source record. This allocates no pixel buffer.
+    pub fn paged(backing: TileBacking) -> Result<Self, String> {
+        if backing.length as usize != TILE_PIXELS * size_of::<P>()
+            || backing.offset.checked_add(backing.length as u64).is_none()
+        {
+            return Err("Invalid paged tile extent".into());
+        }
+        Ok(Self(Arc::new(Generation {
+            id: crate::tiles::next_tile_id(),
+            state: RwLock::new(State {
+                resident: None,
+                backing: Some(backing),
+            }),
+        })))
+    }
     pub(crate) fn new(tile: Arc<Tile<P>>) -> Self {
         Self(Arc::new(Generation {
             id: tile.id,
