@@ -1,9 +1,11 @@
 //! Straight-alpha CPU document samples. No browser or GPU types.
+mod blend;
 mod commands;
 mod display;
 mod paging;
 mod tiles;
 mod view;
+pub use blend::*;
 pub use commands::*;
 pub use display::*;
 pub use paging::*;

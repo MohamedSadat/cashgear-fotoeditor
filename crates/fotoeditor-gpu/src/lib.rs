@@ -9,6 +9,17 @@ mod viewport;
 #[cfg(test)]
 mod tests {
     #[test]
+    fn composite_shader_is_valid_portable_wgsl() {
+        let module =
+            naga::front::wgsl::parse_str(include_str!("composite.wgsl")).expect("composite WGSL");
+        naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::empty(),
+        )
+        .validate(&module)
+        .expect("compositor must validate without optional GPU capabilities");
+    }
+    #[test]
     fn diagnostic_shader_is_valid_wgsl() {
         let module = naga::front::wgsl::parse_str(include_str!("diagnostic.wgsl"))
             .expect("diagnostic shader must parse");
