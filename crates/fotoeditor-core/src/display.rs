@@ -1,4 +1,45 @@
 use crate::{Rgba8, TileCoord, TileRect, TileSurface, TILE_SIZE};
+// A mip gutter can touch only the eight neighboring source tiles. Pin them once
+// for the kernel instead of taking an Arc and residency lock for every sample.
+struct Neighborhood<'a> {
+    surface: &'a TileSurface<Rgba8>,
+    coord: TileCoord,
+    tiles: [Option<std::sync::Arc<crate::Tile<Rgba8>>>; 9],
+}
+impl<'a> Neighborhood<'a> {
+    fn new(surface: &'a TileSurface<Rgba8>, coord: TileCoord) -> Self {
+        let tiles = std::array::from_fn(|i| {
+            let x = i as i64 % 3 + i64::from(coord.0) - 1;
+            let y = i as i64 / 3 + i64::from(coord.1) - 1;
+            if x < 0 || y < 0 {
+                return None;
+            }
+            surface
+                .tiles()
+                .get(&(x as u32, y as u32))
+                .map(|t| t.pin().expect("hydrate display neighborhood"))
+        });
+        Self {
+            surface,
+            coord,
+            tiles,
+        }
+    }
+    #[inline(always)]
+    fn sample(&self, x: i64, y: i64) -> Rgba8 {
+        let x = x.clamp(0, i64::from(self.surface.width) - 1) as u32;
+        let y = y.clamp(0, i64::from(self.surface.height) - 1) as u32;
+        let index = ((i64::from(y / TILE_SIZE) - i64::from(self.coord.1) + 1) * 3
+            + i64::from(x / TILE_SIZE)
+            - i64::from(self.coord.0)
+            + 1) as usize;
+        self.tiles[index]
+            .as_ref()
+            .map_or(self.surface.default, |t| {
+                t.pixels[((y % TILE_SIZE) * TILE_SIZE + x % TILE_SIZE) as usize]
+            })
+    }
+}
 #[inline(never)]
 pub fn display_region(surface: &TileSurface<Rgba8>, coord: TileCoord, rect: TileRect) -> Vec<u8> {
     let width = rect.x1 - rect.x0;
@@ -28,6 +69,7 @@ pub fn display_tile(surface: &TileSurface<Rgba8>, coord: TileCoord, lod: u32) ->
     let padded = side + 2;
     let mut out = vec![0; (padded * padded * 4) as usize];
     let tile = surface.tiles()[&coord].pin().expect("hydrate display tile");
+    let neighborhood = Neighborhood::new(surface, coord);
     let valid_w = (surface.width - coord.0 * TILE_SIZE).min(TILE_SIZE);
     let valid_h = (surface.height - coord.1 * TILE_SIZE).min(TILE_SIZE);
     for y in 0..padded {
@@ -46,10 +88,7 @@ pub fn display_tile(surface: &TileSurface<Rgba8>, coord: TileCoord, lod: u32) ->
                         let sy = coord.1 as i64 * TILE_SIZE as i64
                             + (y as i64 - 1) * scale as i64
                             + by as i64;
-                        surface.sample(
-                            sx.clamp(0, surface.width as i64 - 1) as u32,
-                            sy.clamp(0, surface.height as i64 - 1) as u32,
-                        )
+                        neighborhood.sample(sx, sy)
                     };
                     let a = p.0[3] as u32;
                     for (s, c) in sum[..3].iter_mut().zip(p.0) {
@@ -104,12 +143,8 @@ fn display_base_tile(surface: &TileSurface<Rgba8>, coord: TileCoord) -> Vec<u8> 
     }
     let sx = coord.0 as i64 * TILE_SIZE as i64;
     let sy = coord.1 as i64 * TILE_SIZE as i64;
-    let sample = |x: i64, y: i64| {
-        premultiplied(surface.sample(
-            x.clamp(0, surface.width as i64 - 1) as u32,
-            y.clamp(0, surface.height as i64 - 1) as u32,
-        ))
-    };
+    let neighborhood = Neighborhood::new(surface, coord);
+    let sample = |x: i64, y: i64| premultiplied(neighborhood.sample(x, y));
     for i in 0..PAD {
         let x = sx + i as i64 - 1;
         out[i * 4..][..4].copy_from_slice(&sample(x, sy - 1));
