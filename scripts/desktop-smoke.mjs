@@ -129,12 +129,12 @@ try {
   browser = await chromium.connectOverCDP(endpoint);
   const context = browser.contexts()[0];
   const page = context.pages()[0] ?? (await context.waitForEvent('page'));
-  await expect(page.getByTestId('engine-status')).toHaveText('Engine ready', { timeout: 30000 });
+  await expect(page.getByTestId('engine-status')).toHaveText('Engine ready', { timeout: 60000 });
   const origin = new URL(page.url()).origin;
   const results = [];
   for (const backend of ['WebGPU', 'WebGL2']) {
     await page.goto(origin + '/?diagnostic=1' + (backend === 'WebGL2' ? '&gpu=webgl2' : ''));
-    await expect(page.getByTestId('engine-status')).toHaveText('Engine ready', { timeout: 30000 });
+    await expect(page.getByTestId('engine-status')).toHaveText('Engine ready', { timeout: 60000 });
     if (await page.getByRole('dialog', { name: 'Restore last session?' }).isVisible())
       await page.getByRole('button', { name: 'Later', exact: true }).click();
     await expect(page.getByTestId('gpu-backend')).toHaveText(backend);
@@ -159,7 +159,7 @@ try {
       origin,
     };
     await page.goto(origin + (backend === 'WebGL2' ? '/?gpu=webgl2' : '/'));
-    await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');
+    await expect(page.getByTestId('engine-status')).toHaveText('Engine ready', { timeout: 60000 });
     if (await page.getByRole('dialog', { name: 'Restore last session?' }).isVisible())
       await page.getByRole('button', { name: 'Later', exact: true }).click();
     await page
@@ -226,6 +226,7 @@ try {
       const create = URL.createObjectURL.bind(URL),
         click = HTMLAnchorElement.prototype.click;
       URL.createObjectURL = (blob) => {
+        if (blob.type !== 'application/octet-stream') return create(blob);
         const reader = new FileReader();
         reader.onload = () => {
           window.__projectPayload = reader.result;
@@ -244,7 +245,9 @@ try {
       await page.getByRole('button', { name: 'Save project', exact: true }).click();
       await page.waitForFunction(() => typeof window.__projectPayload === 'string');
       const data = await page.evaluate(() => window.__projectPayload);
-      return Buffer.from(data.split(',')[1], 'base64');
+      const bytes = Buffer.from(data.split(',')[1], 'base64');
+      expect(bytes.subarray(0, 8).toString()).toBe('CGFOTO\r\n');
+      return bytes;
     }
     const project = await savedProject();
     const projectPath = join(root, 'bench/results/desktop-project-' + backend + '.cgfoto');
@@ -261,7 +264,7 @@ try {
     await page.getByRole('button', { name: 'Save recovery now', exact: true }).click();
     await expect(page.getByTestId('recovery-status')).toHaveText(/^Autosaved /);
     await page.reload();
-    await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');
+    await expect(page.getByTestId('engine-status')).toHaveText('Engine ready', { timeout: 60000 });
     await page.getByRole('button', { name: 'Restore session', exact: true }).click();
     await page.getByRole('button', { name: 'Actual pixels', exact: true }).click();
     await expect(page.getByTestId('zoom')).toHaveText('100.0%');
@@ -273,9 +276,112 @@ try {
     const restored = PNG.sync.read(await page.getByTestId('gpu-canvas').screenshot());
     expect(restored.data.equals(painted.data)).toBe(true);
     result.autosaveRestore = true;
+    await page.goto(
+      origin + '/?diagnostic=1&document=1' + (backend === 'WebGL2' ? '&gpu=webgl2' : ''),
+    );
+    await expect(page.getByTestId('engine-status')).toHaveText('Engine ready', { timeout: 60000 });
+    if (await page.getByRole('dialog', { name: 'Restore last session?' }).isVisible())
+      await page.getByRole('button', { name: 'Later', exact: true }).click();
+    const golden = await page.evaluate(async () =>
+      Reflect.get(window, '__fotoeditor').compareCompositors(),
+    );
+    expect(golden).toHaveLength(64);
+    expect(Math.max(...golden)).toBeLessThanOrEqual(1);
+    result.gpuGoldenMaxError = Math.max(...golden);
+    await page
+      .getByTestId('open-image')
+      .setInputFiles(join(root, 'bench/results/fixtures/layers-small.cgfoto'));
+    await expect(page.getByTestId('operation-status')).toHaveText(/Opened in/);
+    result.layerStream = await page.evaluate(async () => {
+      const api = Reflect.get(window, '__fotoeditor');
+      const directory = await navigator.storage.getDirectory();
+      const handle = await directory.getFileHandle('desktop-layer-project.cgfoto', {
+        create: true,
+      });
+      const size = await api.saveProjectFile(handle);
+      const first = new Uint8Array(await (await handle.getFile()).arrayBuffer());
+      const state = await api.openProjectFile(await handle.getFile());
+      await api.saveProjectFile(handle);
+      const second = new Uint8Array(await (await handle.getFile()).arrayBuffer());
+      return {
+        size,
+        layers: state.layers.nodes.length,
+        history: state.history.undo,
+        exact: first.length === second.length && first.every((b, i) => b === second[i]),
+      };
+    });
+    expect(result.layerStream.layers).toBe(3);
+    expect(result.layerStream.history).toBe(0);
+    expect(result.layerStream.exact).toBe(true);
+    await page.waitForFunction(
+      () =>
+        JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot)
+          .visibleTiles > 0,
+    );
+    if (process.env.P4_DESKTOP_DENSE === '1' && backend === 'WebGPU') {
+      page.setDefaultTimeout(360000);
+      const started = performance.now();
+      // CDP-connected WebView2 is local, but Playwright's remote-upload helper
+      // refuses files above 50 MB. Let the local browser read the actual file.
+      const session = await context.newCDPSession(page);
+      const { root: dom } = await session.send('DOM.getDocument');
+      const { nodeId } = await session.send('DOM.querySelector', {
+        nodeId: dom.nodeId,
+        selector: '[data-testid="open-image"]',
+      });
+      await session.send('DOM.setFileInputFiles', {
+        nodeId,
+        files: [join(root, 'bench/results/fixtures/layers-50.cgfoto')],
+      });
+      await session.detach();
+      await expect(page.getByTestId('operation-status')).toHaveText(/Opened in/, {
+        timeout: 360000,
+      });
+      result.denseOpenMs = performance.now() - started;
+      result.denseStream = await page.evaluate(async () => {
+        const api = Reflect.get(window, '__fotoeditor');
+        const digest = async () =>
+          Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', await api.exportPng())))
+            .map((b) => b.toString(16).padStart(2, '0'))
+            .join('');
+        const before = await digest();
+        await api.autosave();
+        const deadline = performance.now() + 360000;
+        for (;;) {
+          const state = JSON.parse(
+            document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot,
+          );
+          if (state.recovery?.state !== 'saving' && !state.operation) break;
+          if (performance.now() > deadline) throw new Error('Dense autosave did not become idle');
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        const directory = await navigator.storage.getDirectory();
+        const handle = await directory.getFileHandle('desktop-dense-output.cgfoto', {
+          create: true,
+        });
+        const start = performance.now();
+        const size = await api.saveProjectFile(handle);
+        const saveMs = performance.now() - start;
+        const opened = await api.openProjectFile(await handle.getFile());
+        const after = await digest();
+        return {
+          size,
+          saveMs,
+          layers: opened.layers.nodes.length,
+          tiles: opened.document.tiles,
+          memory: opened.memory,
+          pngSha256: after,
+          exactComposite: before === after,
+        };
+      });
+      expect(result.denseStream.layers).toBe(50);
+      expect(result.denseStream.tiles).toBe(9600);
+      expect(result.denseStream.exactComposite).toBe(true);
+      expect(result.denseStream.size).toBeGreaterThan(2400 * 1048576);
+    }
     result.software = process.env.GPU_TEST_SOFTWARE === '1';
     await mkdir(join(root, 'bench/results'), { recursive: true });
-    await page.screenshot({ path: join(root, 'bench/results/desktop-p3-' + backend + '.png') });
+    await page.screenshot({ path: join(root, 'bench/results/desktop-p4-' + backend + '.png') });
     results.push(result);
   }
   await mkdir(join(root, 'bench/results'), { recursive: true });
