@@ -1,7 +1,7 @@
 # P4 layers — phase report
 
-Final remote CI and deployment verification are in progress. The completion tag
-will be created only after those gates pass. P5 has not started.
+P4 acceptance is complete. Completion tag: `p4-layers`, published after green
+remote checks and deployment. P5 has not started.
 
 ## Shipped
 
@@ -93,6 +93,9 @@ Cold opening and recovery are substantial costs. No cold-load time limit was
 approved for this paged workload. The table reports those costs separately from
 warm navigation. Raw evidence is retained locally in
 `bench/results/p4-layers-performance.json` and `p4-layer-dataset.json`.
+Opening sums the worker's copy/validate/composite timings; recovery uses
+`snapshot.recovery.lastSaveMs`. The older raw field `initialAutosaveMs` measures
+synchronization after a possibly completed timer save, not the write duration.
 Reproduction is documented in P4-IMPLEMENTATION.md and
 `scripts/layers-bench.mjs`.
 
@@ -121,12 +124,38 @@ Reproduction is documented in P4-IMPLEMENTATION.md and
   test uses an OPFS FileSystemWritable handle; it does not automate a native
   picker dialog. Evidence: `bench/results/p4-layer-desktop-smoke.json`.
 
-Final remote CI and public deployment evidence will be added after their checks
-complete. Hardware browser evidence is retained in
+[Azure deployment run 39944086415](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/runs/39944086415)
+passed for `4398ae1`. All **108 public-site hardware cases** then passed on
+installed Chrome/Edge and both APIs, with zero retries, skips or failures,
+including isolation headers and WASM delivery. The deployed Linux-built WASM is
+3,090,705 bytes, SHA-256
+`cb51e725e89d75ce2e1a4de23fb55cd072c9add68664a6da2dcafb762cf6af54`.
+Evidence: `bench/results/p4-live-browser-tests.json` and
+`p4-deployment-integration.json`. Local hardware browser evidence is retained in
 `bench/results/p4-layer-hardware-browser-tests.json`.
 
-The earlier foundation checkpoint and its single-layer measurements remain in
-PROGRESS.md. They do not substitute for the dense-layer results above.
+[FotoEditor checks run 39944086502](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/runs/39944086502)
+passed for `4398ae1f162763631251ed769618d89cf4d7f0c3`, including the complete
+Rust/JavaScript checks and **77 software browser cases**, with zero retries,
+skips, final failures or global errors. Windows CI also built and launched
+WebView2 155.0.4283.62, passed painting/exact undo, legacy project and autosave
+restore, all 64 blend readbacks, and exact layered streamed roundtrips on both
+APIs. CI uses SwiftShader WebGPU and Microsoft Basic Render Driver/WARP WebGL2;
+these are functional checks, not hardware performance. CI release WASM measured
+3,092,274 bytes, gzip9 **1,178,061 / 1,500,000**. The downloaded phase-verification
+artifact is retained in `bench/results/p4-ci-complete`.
+
+Final single-layer regressions used the unchanged 6000×4000 PNG, 67,038,649 bytes,
+SHA-256 `809669e7f406d83b59d39fe659411b32c8d014cf6d54e189ba86165ddf82e7f5`.
+First browser-session opens measured 1.13–1.31 s; subsequent opens 0.95–1.11 s.
+The four hardware paths measured 59.998–60.000 fps for pan, zoom and mip-transition
+trials; worst presentation-period p95/p99 was 16.73/16.78 ms. After navigation
+stopped, cold mip refinement took 1.12–1.40 s while retaining its cached preview,
+improved from the earlier P4 foundation's 1.90–2.39 s. The display kernel now pins
+each gutter neighborhood once per tile. Raw evidence:
+`bench/results/p4-final-viewport-performance.json`. OS caches were not flushed.
+The earlier foundation checkpoint remains in PROGRESS.md as historical evidence.
+These single-layer regressions do not substitute for the dense-layer results.
 
 ## Deferred work and limits
 

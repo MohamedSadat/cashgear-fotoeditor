@@ -1,15 +1,15 @@
 # Progress
 
-## P4 — In progress
+## P4 — Complete
 
 Started on 2026-10-23 on clean main at `ae46c5b`, the tagged P3 completion.
 Read AGENTS.md, the phase records and original roadmap printed page 13. The user
 confirmed sRGB, default pass-through groups, after-stroke thumbnails, and the real
 50-dense-layer workload with paging and a 4 GiB streamed project cap. CPU/GPU and
 image-file budgets are unchanged. P4-DESIGN.md records the implementation and
-acceptance plan. P4 is not complete and no completion tag has been created.
+acceptance plan. P4 acceptance is complete; its completion tag is `p4-layers`.
 
-Integration implementation is pushed through `dcf33b1`. The running editor now
+The final implementation and verification are pushed through `4398ae1`. The editor now
 has paged layer/group/mask editing, active paint targets, locks, merge operations,
 thumbnails, float32 GPU composition, and streamed manual/recovery projects. See
 P4-IMPLEMENTATION.md for the contracts and resource limits. All 108 installed
@@ -17,8 +17,8 @@ Chrome/Edge hardware cases passed without failures, skips or retries; all sixtee
 modes were compared with the CPU reference on both APIs. Extended WebView2
 verification also passed: both APIs passed blend and small streamed roundtrips;
 WebGPU saved/reopened the full 2.52 GB document with identical exported PNG hash.
-The remaining gates are final remote CI/deployment and completion tag.
-No P5 work has started.
+All 108 public-site hardware tests also passed, with zero retries, skips or
+failures. No P5 work has started.
 
 All four actual dense-workload runs are complete. The 2,517,098,823-byte fixture
 has 50 distinct layer hashes and 9,600 distinct tile payload hashes. Three warm
@@ -30,11 +30,26 @@ maxima), GPU by 20.34 MiB. Working storage plus one completed recovery used
 5,034,199,330 bytes. P4-REPORT.md gives the hardware, dataset, timing method,
 per-backend results and limitations.
 
-The first integrated CI run `39939070886` passed all 77 software browser cases
-with no skips, failures or retries. Its desktop smoke then failed because its
-download hook captured a thumbnail PNG as project data. The hook now filters
-project MIME and verifies the file magic. That run is not a passing phase gate;
-final CI must include the corrected, extended desktop checks.
+[FotoEditor checks run 39944086502](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/runs/39944086502)
+and [Azure deployment run 39944086415](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/runs/39944086415)
+passed for `4398ae1f162763631251ed769618d89cf4d7f0c3`. CI passed all 77 software
+browser cases without retries, skips or failures, all required Rust/JavaScript
+checks, and the extended WebView2 smoke on both software APIs. Its artifact is
+retained under bench/results/p4-ci-complete. CI WASM is 3,092,274 bytes, gzip9
+1,178,061 / 1,500,000. These software checks establish function; hardware
+performance comes from the measured NVIDIA runs above.
+
+The earlier integrated CI run `39939070886` failed in a desktop download hook
+that captured a thumbnail PNG as project data. The corrected hook filters project
+MIME and verifies the file magic; the successful run above includes that fix.
+
+Final single-layer regression opens measured 1.13–1.31 s initially and
+0.95–1.11 s subsequently. Pan/zoom measured 59.998–60.000 fps; cold mip refinement
+after stopping took 1.12–1.40 s, improved from the earlier foundation checkpoint
+below. P4-REPORT.md contains the complete phase report, shipped behavior, limits,
+deferred physical-pen exception and raw-evidence references. No P4 feature is
+deferred. Proposed next phase: P5 selections, fills and clipboard. Stop before
+starting it.
 
 ### Earlier foundation checkpoint (`48377d6`)
 

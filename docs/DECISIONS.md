@@ -14,7 +14,10 @@
   identical shared duplicates, hidden layers, and a flattened image do not replace
   that acceptance workload. See P4-DESIGN.md for the bounded implementation plan.
 - Measure cold paging/compositing separately from warmed cached panning. The
-  60 fps target remains unverified until measured on the actual dense workload.
+  actual dense workload subsequently measured 59.73–59.99 fps across three warm
+  trials on each Chrome/Edge hardware API, meeting the warm 60 Hz target at the
+  fitted view. Cold opening took 89.47–192.15 s. P4-REPORT.md records the timing
+  method, two-frame tails, storage/memory and the limits of this measurement.
 
 ## 2026-10-23 — P3 serialization foundation
 
