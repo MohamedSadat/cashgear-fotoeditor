@@ -348,7 +348,7 @@ impl ViewportRenderer {
         let cells = ATLAS / padded;
         let slots = (cells * cells).min(4096) as usize;
         let visible: Vec<_> = doc
-            .raster
+            .raster()
             .tiles()
             .iter()
             .filter(|(c, _)| view.visible(c.0 * TILE_SIZE, c.1 * TILE_SIZE, TILE_SIZE, TILE_SIZE))
@@ -363,7 +363,7 @@ impl ViewportRenderer {
                     self.pending_regions.get(&tile.id()).copied(),
                     self.locations.get(&(tile.id(), 0)),
                 ) {
-                    let pixels = display_region(&doc.raster, **coord, rect);
+                    let pixels = display_region(doc.raster(), **coord, rect);
                     let width = rect.x1 - rect.x0;
                     let height = rect.y1 - rect.y0;
                     queue.write_texture(
@@ -457,7 +457,7 @@ impl ViewportRenderer {
             if let Some(old) = page.slots[slot] {
                 self.locations.remove(&(old, lod));
             }
-            let pixels = display_tile(&doc.raster, **coord, lod);
+            let pixels = display_tile(doc.raster(), **coord, lod);
             queue.write_texture(
                 TexelCopyTextureInfo {
                     texture: &page.texture,

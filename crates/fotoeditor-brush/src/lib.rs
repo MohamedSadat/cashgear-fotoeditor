@@ -19,6 +19,8 @@ pub struct BrushSettings {
     pub color: [u8; 4],
     pub eraser: bool,
     pub pencil: bool,
+    #[serde(skip)]
+    pub alpha_lock: bool,
     pub stabilizer: Stabilizer,
     pub strength: f64,
     pub pressure_size: bool,
@@ -43,6 +45,7 @@ impl Default for BrushSettings {
             color: [0, 0, 0, 255],
             eraser: false,
             pencil: false,
+            alpha_lock: false,
             stabilizer: Stabilizer::Off,
             strength: 0.35,
             pressure_size: true,
@@ -259,6 +262,29 @@ pub struct StrokeCommand {
 }
 impl StrokeCommand {
     pub fn new(base: &Document, settings: BrushSettings, available: u64) -> Result<Self, String> {
+        let layer = base
+            .layers
+            .first()
+            .ok_or("Choose a raster layer to paint")?
+            .id;
+        Self::for_layer(base, settings, available, layer)
+    }
+    pub fn for_layer(
+        base: &Document,
+        mut settings: BrushSettings,
+        available: u64,
+        layer: fotoeditor_core::LayerId,
+    ) -> Result<Self, String> {
+        let node = base.layer(layer)?;
+        fotoeditor_core::check_layer_edit(&base.layers, layer, false)?;
+        settings.alpha_lock = node.properties.locks.alpha;
+        node.raster_samples()?;
+        let base = Document {
+            width: base.width,
+            height: base.height,
+            dpi: base.dpi,
+            layers: vec![node.clone()],
+        };
         settings.validate()?;
         let tip_side = if settings.pencil {
             3
@@ -269,7 +295,7 @@ impl StrokeCommand {
             return Err("Not enough memory for a stroke".into());
         }
         let mut preview = base.clone();
-        preview.raster.drain_dirty();
+        preview.raster_mut().drain_dirty();
         Ok(Self {
             preview,
             applied_time: 0.0,
@@ -460,7 +486,7 @@ impl StrokeCommand {
             let mask = self.coverage.get_mut(&coord).unwrap();
             let base = self
                 .base
-                .raster
+                .raster()
                 .tiles()
                 .get(&coord)
                 .map(|tile| tile.pin())
@@ -469,7 +495,7 @@ impl StrokeCommand {
                 .x1
                 .min((coord.0 + 1) * TILE_SIZE)
                 .min(dab.x + pixels.min(TILE_SIZE as usize) as u32);
-            let mut output = self.preview.raster.edit_region(
+            let mut output = self.preview.raster_mut().edit_region(
                 coord,
                 fotoeditor_core::TileRect {
                     x0: dab.x % TILE_SIZE,
@@ -508,9 +534,9 @@ impl StrokeCommand {
             return Err("Stroke still has pending work".into());
         }
         for coord in &self.touched {
-            self.preview.raster.edit_tile(*coord);
+            self.preview.raster_mut().edit_tile(*coord);
         }
-        self.preview.raster.compact_dirty();
+        self.preview.raster_mut().compact_dirty();
         TileCommand::between(&self.base, &self.preview)
     }
 }
@@ -550,12 +576,24 @@ fn stamp_row(
         let amount = divide_unorm16(value * influence + 32767);
         mask[i] += divide_unorm16((65535 - mask[i]) * amount + 32767);
         let before = base.map_or(Rgba8::default(), |t| t.pixels[i]);
-        let after = composite_fixed(
-            before,
-            settings.color,
-            divide_unorm16(opacity * mask[i] + 32767),
-            settings.eraser,
-        );
+        let coverage = divide_unorm16(opacity * mask[i] + 32767);
+        let after = if settings.alpha_lock {
+            if before.0[3] == 0 || settings.eraser {
+                before
+            } else {
+                let mut rgba = before.0;
+                for (c, channel) in rgba[..3].iter_mut().enumerate() {
+                    *channel = divide_unorm16(
+                        settings.color[c] as u32 * coverage
+                            + before.0[c] as u32 * (65535 - coverage)
+                            + 32767,
+                    ) as u8;
+                }
+                Rgba8(rgba)
+            }
+        } else {
+            composite_fixed(before, settings.color, coverage, settings.eraser)
+        };
         changed |= after != output[i];
         output[i] = after;
     }
@@ -685,12 +723,12 @@ mod tests {
     fn opaque_row_optimization_matches_general_stamping() {
         let mut doc = Document::blank(512, 256, 72.0).unwrap();
         for coord in [(0, 0), (1, 0)] {
-            doc.raster
+            doc.raster_mut()
                 .insert(coord, vec![Rgba8([39, 79, 131, 255]); TILE_PIXELS]);
         }
         let mut general = doc.clone();
         for coord in [(0, 0), (1, 0)] {
-            general.raster.edit_tile(coord);
+            general.raster_mut().edit_tile(coord);
         }
         let settings = BrushSettings {
             size: 80.0,
@@ -716,8 +754,8 @@ mod tests {
         finish(&mut b);
         for coord in [(0, 0), (1, 0)] {
             assert_eq!(
-                a.preview.raster.tiles()[&coord].pin().unwrap().pixels,
-                b.preview.raster.tiles()[&coord].pin().unwrap().pixels
+                a.preview.raster().tiles()[&coord].pin().unwrap().pixels,
+                b.preview.raster().tiles()[&coord].pin().unwrap().pixels
             );
         }
     }
@@ -776,13 +814,13 @@ mod tests {
     #[test]
     fn fast_flick_is_contiguous_and_one_command_undoes_exactly() {
         let mut doc = Document::blank(1200, 200, 72.0).unwrap();
-        doc.raster.write(0, 0, Rgba8([99, 77, 3, 0]));
+        doc.raster_mut().write(0, 0, Rgba8([99, 77, 3, 0]));
         let mut s = StrokeCommand::new(&doc, BrushSettings::default(), CPU_BUDGET).unwrap();
         s.push(point(10.0, 100.0)).unwrap();
         s.push(point(1190.0, 100.0)).unwrap();
         finish(&mut s);
         for x in 10..1190 {
-            assert_eq!(s.preview.raster.sample(x, 100).0[3], 255);
+            assert_eq!(s.preview.raster().sample(x, 100).0[3], 255);
         }
         let mut history = History::default();
         history
@@ -790,17 +828,17 @@ mod tests {
             .unwrap();
         assert_eq!(history.depths(), (1, 0));
         assert!(history.undo(&mut doc));
-        assert_eq!(doc.raster.sample(0, 0), Rgba8([99, 77, 3, 0]));
-        assert_eq!(doc.raster.tiles().len(), 1);
+        assert_eq!(doc.raster().sample(0, 0), Rgba8([99, 77, 3, 0]));
+        assert_eq!(doc.raster().tiles().len(), 1);
         history.redo(&mut doc);
-        assert_eq!(doc.raster.sample(600, 100).0[3], 255);
+        assert_eq!(doc.raster().sample(600, 100).0[3], 255);
     }
     #[test]
     fn two_hundred_soft_strokes_obey_history_and_total_cpu_limits() {
         let mut doc = Document::blank(6000, 4000, 300.0).unwrap();
         let mut history = History::default();
         for i in 0..200 {
-            let available = CPU_BUDGET - doc.raster.bytes() - history.bytes(&doc) - 1048576;
+            let available = CPU_BUDGET - doc.raster().bytes() - history.bytes(&doc) - 1048576;
             let mut stroke = StrokeCommand::new(
                 &doc,
                 BrushSettings {
@@ -821,7 +859,7 @@ mod tests {
                 .unwrap();
             finish(&mut stroke);
             assert!(
-                doc.raster.bytes() + history.bytes(&doc) + stroke.temporary_bytes() + 1048576
+                doc.raster().bytes() + history.bytes(&doc) + stroke.temporary_bytes() + 1048576
                     <= CPU_BUDGET
             );
             history
@@ -829,7 +867,7 @@ mod tests {
                 .unwrap();
             assert!(history.bytes(&doc) <= history.limits.bytes);
             assert!(history.depths().0 <= 200);
-            assert!(doc.raster.bytes() + history.bytes(&doc) <= CPU_BUDGET);
+            assert!(doc.raster().bytes() + history.bytes(&doc) <= CPU_BUDGET);
         }
     }
     #[test]
@@ -850,7 +888,7 @@ mod tests {
             s.push(point(x, 50.0)).unwrap();
         }
         finish(&mut s);
-        let alpha = s.preview.raster.sample(50, 50).0[3];
+        let alpha = s.preview.raster().sample(50, 50).0[3];
         assert!(alpha > 90 && alpha <= 102);
         assert_eq!(
             composite(Rgba8([77, 99, 33, 255]), [1, 2, 3, 255], 1.0, true),
@@ -888,8 +926,8 @@ mod tests {
         .unwrap();
         s.push(point(3.2, 4.8)).unwrap();
         finish(&mut s);
-        assert_eq!(s.preview.raster.sample(3, 4).0[3], 255);
-        assert_eq!(s.preview.raster.sample(4, 4).0[3], 0);
+        assert_eq!(s.preview.raster().sample(3, 4).0[3], 255);
+        assert_eq!(s.preview.raster().sample(4, 4).0[3], 0);
         assert!(s
             .push(Sample {
                 x: f64::NAN,
@@ -899,7 +937,7 @@ mod tests {
         let mut limited = StrokeCommand::new(&doc, BrushSettings::default(), 200000).unwrap();
         limited.push(point(5.0, 5.0)).unwrap();
         assert!(limited.step(1000).is_err());
-        assert_eq!(doc.raster.bytes(), 0);
+        assert_eq!(doc.raster().bytes(), 0);
     }
     #[test]
     fn rotated_elliptical_tip_clips_at_canvas_edges() {
@@ -917,9 +955,9 @@ mod tests {
         .unwrap();
         stroke.push(point(5.0, 5.0)).unwrap();
         finish(&mut stroke);
-        assert_eq!(stroke.preview.raster.sample(5, 14).0[3], 255);
-        assert_eq!(stroke.preview.raster.sample(14, 5).0[3], 0);
-        assert_eq!(stroke.preview.raster.sample(5, 0).0[3], 255);
+        assert_eq!(stroke.preview.raster().sample(5, 14).0[3], 255);
+        assert_eq!(stroke.preview.raster().sample(14, 5).0[3], 0);
+        assert_eq!(stroke.preview.raster().sample(5, 0).0[3], 255);
     }
     #[test]
     fn stabilizers_and_chunk_sizes_are_deterministic() {
@@ -956,9 +994,37 @@ mod tests {
             }
             for y in 0..200 {
                 for x in 0..300 {
-                    assert_eq!(a.preview.raster.sample(x, y), b.preview.raster.sample(x, y));
+                    assert_eq!(
+                        a.preview.raster().sample(x, y),
+                        b.preview.raster().sample(x, y)
+                    );
                 }
             }
         }
+    }
+    #[test]
+    fn alpha_lock_preserves_hidden_rgb_and_partial_alpha_and_pixel_lock_refuses_a_stroke() {
+        let mut doc = Document::blank(3, 1, 72.0).unwrap();
+        doc.raster_mut().write(0, 0, Rgba8([87, 33, 19, 0]));
+        doc.raster_mut().write(1, 0, Rgba8([201, 3, 7, 1]));
+        doc.layers[0].properties.locks.alpha = true;
+        let mut stroke = StrokeCommand::new(
+            &doc,
+            BrushSettings {
+                size: 10.0,
+                color: [0, 0, 255, 255],
+                pressure_size: false,
+                ..BrushSettings::default()
+            },
+            CPU_BUDGET,
+        )
+        .unwrap();
+        stroke.push(point(1.0, 0.5)).unwrap();
+        finish(&mut stroke);
+        assert_eq!(stroke.preview.raster().sample(0, 0), Rgba8([87, 33, 19, 0]));
+        assert_eq!(stroke.preview.raster().sample(1, 0), Rgba8([0, 0, 255, 1]));
+        assert_eq!(stroke.preview.raster().sample(2, 0), Rgba8::default());
+        doc.layers[0].properties.locks.pixels = true;
+        assert!(StrokeCommand::new(&doc, BrushSettings::default(), CPU_BUDGET).is_err());
     }
 }

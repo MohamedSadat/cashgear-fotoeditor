@@ -79,15 +79,20 @@ impl<P: Pixel> Tile<P> {
 pub struct TileSurface<P: Pixel> {
     pub width: u32,
     pub height: u32,
+    pub default: P,
     tiles: HashMap<TileCoord, TileHandle<P>>,
     dirty: DirtySet,
     regions: DirtyRegions,
 }
 impl<P: Pixel> TileSurface<P> {
     pub fn new(width: u32, height: u32) -> Self {
+        Self::with_default(width, height, P::default())
+    }
+    pub fn with_default(width: u32, height: u32, default: P) -> Self {
         Self {
             width,
             height,
+            default,
             tiles: HashMap::new(),
             dirty: DirtySet::new(),
             regions: DirtyRegions::new(),
@@ -110,7 +115,7 @@ impl<P: Pixel> TileSurface<P> {
         );
         self.mark_dirty(coord, region);
         let tile = self.tiles.entry(coord).or_insert_with(|| {
-            TileHandle::new(Arc::new(Tile::new(vec![P::default(); TILE_PIXELS])))
+            TileHandle::new(Arc::new(Tile::new(vec![self.default; TILE_PIXELS])))
         });
         tile.edit().expect("hydrate before editing")
     }
@@ -121,7 +126,7 @@ impl<P: Pixel> TileSurface<P> {
                     .expect("hydrate before compacting")
                     .pixels
                     .iter()
-                    .all(|p| *p == P::default())
+                    .all(|p| *p == self.default)
             }) {
                 self.tiles.remove(coord);
             } else if let Some(tile) = self.tiles.get_mut(coord) {
@@ -165,11 +170,11 @@ impl<P: Pixel> TileSurface<P> {
     }
     pub fn sample(&self, x: u32, y: u32) -> P {
         if x >= self.width || y >= self.height {
-            return P::default();
+            return self.default;
         }
         self.tiles
             .get(&(x / TILE_SIZE, y / TILE_SIZE))
-            .map_or(P::default(), |t| {
+            .map_or(self.default, |t| {
                 t.pin().expect("hydrate before sampling").pixels
                     [((y % TILE_SIZE) * TILE_SIZE + x % TILE_SIZE) as usize]
             })
@@ -177,7 +182,7 @@ impl<P: Pixel> TileSurface<P> {
     /// Builder/command primitive. Hidden nonzero RGB must remain allocated.
     pub fn insert(&mut self, coord: TileCoord, pixels: Vec<P>) {
         assert!(coord.0 * TILE_SIZE < self.width && coord.1 * TILE_SIZE < self.height);
-        if pixels.iter().all(|p| *p == P::default()) {
+        if pixels.iter().all(|p| *p == self.default) {
             self.tiles.remove(&coord);
         } else {
             self.tiles
@@ -188,12 +193,12 @@ impl<P: Pixel> TileSurface<P> {
     pub fn write(&mut self, x: u32, y: u32, pixel: P) {
         assert!(x < self.width && y < self.height);
         let coord = (x / TILE_SIZE, y / TILE_SIZE);
-        if pixel == P::default() && !self.tiles.contains_key(&coord) {
+        if pixel == self.default && !self.tiles.contains_key(&coord) {
             return;
         }
         {
             let tile = self.tiles.entry(coord).or_insert_with(|| {
-                TileHandle::new(Arc::new(Tile::new(vec![P::default(); TILE_PIXELS])))
+                TileHandle::new(Arc::new(Tile::new(vec![self.default; TILE_PIXELS])))
             });
             tile.edit().expect("hydrate before writing")
                 [((y % TILE_SIZE) * TILE_SIZE + x % TILE_SIZE) as usize] = pixel;

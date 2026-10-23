@@ -70,7 +70,7 @@ impl ImportJob {
         })
     }
     pub fn temporary_bytes(&self) -> u64 {
-        self.samples.capacity() as u64 + self.document.raster.bytes()
+        self.samples.capacity() as u64 + self.document.raster().bytes()
     }
     pub fn step(&mut self) -> bool {
         let w = self.document.width;
@@ -90,7 +90,7 @@ impl ImportJob {
                     target.0.copy_from_slice(pixel);
                 }
             }
-            self.document.raster.insert((tx, ty), tile);
+            self.document.raster_mut().insert((tx, ty), tile);
         }
         self.next_y += TILE_SIZE;
         self.next_y >= h
@@ -123,6 +123,7 @@ pub struct ExportJob {
 }
 impl ExportJob {
     pub fn new(document: &Document, residency: Residency) -> Result<Self, String> {
+        document.single_raster()?;
         // Conservative output capacity + JS bridge copy; shared tile Arcs add no pixel copies.
         residency.check_cpu(2 * MAX_FILE_BYTES + document.width as u64 * 8 + 4 * 1024 * 1024)?;
         let out = Output(Rc::new(RefCell::new(Vec::new())));
@@ -156,7 +157,7 @@ impl ExportJob {
         for y in self.next_y..(self.next_y + 32).min(self.document.height) {
             self.row.fill(0);
             for tx in 0..self.document.width.div_ceil(TILE_SIZE) {
-                if let Some(tile) = self.document.raster.tiles().get(&(tx, y / TILE_SIZE)) {
+                if let Some(tile) = self.document.raster().tiles().get(&(tx, y / TILE_SIZE)) {
                     let tile = tile.pin()?;
                     let n = TILE_SIZE.min(self.document.width - tx * TILE_SIZE) as usize;
                     let start = ((y % TILE_SIZE) * TILE_SIZE) as usize;
@@ -200,7 +201,7 @@ mod tests {
         let mut d = Document::blank(513, 259, 300.0).unwrap();
         for y in 0..d.height {
             for x in 0..d.width {
-                d.raster.write(
+                d.raster_mut().write(
                     x,
                     y,
                     Rgba8([(x % 256) as u8, (y % 256) as u8, 79, ((x + y) % 256) as u8]),
@@ -215,7 +216,7 @@ mod tests {
         assert!((i.document.dpi - 300.0).abs() < 0.02);
         for y in 0..d.height {
             for x in 0..d.width {
-                assert_eq!(d.raster.sample(x, y), i.document.raster.sample(x, y));
+                assert_eq!(d.raster().sample(x, y), i.document.raster().sample(x, y));
             }
         }
     }

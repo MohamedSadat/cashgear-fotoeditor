@@ -1,13 +1,17 @@
 //! Straight-alpha CPU document samples. No browser or GPU types.
 mod blend;
 mod commands;
+mod composite;
 mod display;
+mod layers;
 mod paging;
 mod tiles;
 mod view;
 pub use blend::*;
 pub use commands::*;
+pub use composite::*;
 pub use display::*;
+pub use layers::*;
 pub use paging::*;
 pub use tiles::*;
 pub use view::*;
@@ -25,13 +29,13 @@ pub fn validate_size(width: u32, height: u32, dpi: f64) -> Result<(), String> {
     }
     Ok(())
 }
-/// One straight-alpha raster layer. Session mutations go through commands.
+/// Bottom-to-top layer tree. Session mutations go through commands.
 #[derive(Clone)]
 pub struct Document {
     pub width: u32,
     pub height: u32,
     pub dpi: f64,
-    pub raster: TileSurface<Rgba8>,
+    pub layers: Vec<Layer>,
 }
 impl Document {
     pub fn blank(width: u32, height: u32, dpi: f64) -> Result<Self, String> {
@@ -40,8 +44,52 @@ impl Document {
             width,
             height,
             dpi,
-            raster: TileSurface::new(width, height),
+            layers: vec![Layer::raster(
+                "Layer 1".into(),
+                TileSurface::new(width, height),
+            )],
         })
+    }
+    /// Single-raster compatibility for v1 codecs and the existing brush adapter.
+    pub fn raster(&self) -> &TileSurface<Rgba8> {
+        self.layers[0]
+            .raster_samples()
+            .expect("single-raster adapter")
+    }
+    pub fn raster_mut(&mut self) -> &mut TileSurface<Rgba8> {
+        self.layers[0]
+            .raster_samples_mut()
+            .expect("single-raster adapter")
+    }
+    pub fn single_raster(&self) -> Result<&TileSurface<Rgba8>, String> {
+        if self.layers.len() != 1
+            || self.layers[0].mask.is_some()
+            || self.layers[0].properties != LayerProperties::default()
+        {
+            return Err("Composite the layer tree before using a single-raster adapter".into());
+        }
+        self.layers[0].raster_samples()
+    }
+    pub fn layer(&self, id: LayerId) -> Result<&Layer, String> {
+        find_layer(&self.layers, id).ok_or_else(|| "Layer no longer exists".into())
+    }
+    pub fn layer_mut(&mut self, id: LayerId) -> Result<&mut Layer, String> {
+        find_layer_mut(&mut self.layers, id).ok_or_else(|| "Layer no longer exists".into())
+    }
+    pub fn visit_tiles(&self, visitor: &mut dyn FnMut(TileRef<'_>)) {
+        for layer in &self.layers {
+            layer.visit_tiles(visitor);
+        }
+    }
+    pub fn bytes(&self) -> u64 {
+        let mut seen = std::collections::HashSet::new();
+        let mut bytes = 0;
+        self.visit_tiles(&mut |tile| {
+            if seen.insert(tile.id()) {
+                bytes += tile.bytes();
+            }
+        });
+        bytes
     }
 }
 /// Live buffer allocations, excluding allocator high-water retention and driver overhead.

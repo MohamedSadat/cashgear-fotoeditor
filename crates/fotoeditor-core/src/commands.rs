@@ -1,5 +1,5 @@
 //! Reversible document commands. No browser, renderer or UI state.
-use crate::{Document, Rgba8, TileCoord, TileHandle, CPU_BUDGET};
+use crate::{Document, LayerId, Rgba8, TileCoord, TileHandle, TileRef, CPU_BUDGET};
 use std::collections::HashSet;
 
 /// Commands must apply/revert exactly, including transparent RGB and sparse tiles.
@@ -13,7 +13,7 @@ pub trait Command: std::any::Any {
     }
     fn apply(&self, document: &mut Document);
     fn revert(&self, document: &mut Document);
-    fn visit_tiles(&self, visitor: &mut dyn FnMut(&TileHandle<Rgba8>));
+    fn visit_tiles(&self, visitor: &mut dyn FnMut(TileRef<'_>));
     fn is_empty(&self) -> bool;
 }
 
@@ -25,25 +25,31 @@ struct TileChange {
 
 /// An atomic tile delta, also used by the brush's single-command stroke commit.
 pub struct TileCommand {
+    layer: LayerId,
     changes: Vec<TileChange>,
 }
 impl TileCommand {
     pub fn between(before: &Document, after: &Document) -> Result<Self, String> {
+        let layer = before.layers.first().ok_or("No raster layer")?.id;
+        Self::for_layer(before, after, layer)
+    }
+    pub fn for_layer(before: &Document, after: &Document, layer: LayerId) -> Result<Self, String> {
         if (before.width, before.height, before.dpi) != (after.width, after.height, after.dpi) {
             return Err("Tile commands cannot change document dimensions or resolution".into());
         }
-        let coordinates: HashSet<_> = before
-            .raster
+        let before_samples = before.layer(layer)?.raster_samples()?;
+        let after_samples = after.layer(layer)?.raster_samples()?;
+        let coordinates: HashSet<_> = before_samples
             .tiles()
             .keys()
-            .chain(after.raster.tiles().keys())
+            .chain(after_samples.tiles().keys())
             .copied()
             .collect();
         let changes = coordinates
             .into_iter()
             .filter_map(|coord| {
-                let old = before.raster.tiles().get(&coord);
-                let new = after.raster.tiles().get(&coord);
+                let old = before_samples.tiles().get(&coord);
+                let new = after_samples.tiles().get(&coord);
                 if old.map(|t| t.id()) == new.map(|t| t.id())
                     || old.zip(new).is_some_and(|(a, b)| match (a.pin(), b.pin()) {
                         (Ok(a), Ok(b)) => a.pixels == b.pixels,
@@ -59,24 +65,34 @@ impl TileCommand {
                 })
             })
             .collect();
-        Ok(Self { changes })
+        Ok(Self { layer, changes })
     }
 }
 impl Command for TileCommand {
     fn apply(&self, document: &mut Document) {
         for change in &self.changes {
-            document.raster.restore(change.coord, change.after.clone());
+            document
+                .layer_mut(self.layer)
+                .expect("command layer")
+                .raster_samples_mut()
+                .expect("raster command")
+                .restore(change.coord, change.after.clone());
         }
     }
     fn revert(&self, document: &mut Document) {
         for change in &self.changes {
-            document.raster.restore(change.coord, change.before.clone());
+            document
+                .layer_mut(self.layer)
+                .expect("command layer")
+                .raster_samples_mut()
+                .expect("raster command")
+                .restore(change.coord, change.before.clone());
         }
     }
-    fn visit_tiles(&self, visitor: &mut dyn FnMut(&TileHandle<Rgba8>)) {
+    fn visit_tiles(&self, visitor: &mut dyn FnMut(TileRef<'_>)) {
         for change in &self.changes {
             for tile in [&change.before, &change.after].into_iter().flatten() {
-                visitor(tile);
+                visitor(TileRef::Rgba(tile));
             }
         }
     }
@@ -101,7 +117,7 @@ impl Command for ResolutionCommand {
     fn revert(&self, document: &mut Document) {
         document.dpi = self.before;
     }
-    fn visit_tiles(&self, _: &mut dyn FnMut(&TileHandle<Rgba8>)) {}
+    fn visit_tiles(&self, _: &mut dyn FnMut(TileRef<'_>)) {}
     fn is_empty(&self) -> bool {
         self.before == self.after
     }
@@ -164,7 +180,7 @@ impl History {
         Ok(())
     }
     pub fn reserve(&mut self, document: &Document, temporary: u64) -> Result<(), String> {
-        if document.raster.bytes().saturating_add(temporary) > CPU_BUDGET {
+        if document.bytes().saturating_add(temporary) > CPU_BUDGET {
             return Err("The document and this operation exceed the 768 MiB CPU budget".into());
         }
         self.trim(document, temporary);
@@ -177,7 +193,6 @@ impl History {
                 || self.entries.len() > self.limits.steps
                 || self.bytes(document) > self.limits.bytes
                 || document
-                    .raster
                     .bytes()
                     .saturating_add(self.bytes(document))
                     .saturating_add(temporary)
@@ -203,7 +218,7 @@ impl History {
         }
         let mut candidate = document.clone();
         command.apply(&mut candidate);
-        if candidate.raster.bytes().saturating_add(temporary) > CPU_BUDGET {
+        if candidate.bytes().saturating_add(temporary) > CPU_BUDGET {
             return Err("This edit and temporary buffers exceed the 768 MiB CPU budget".into());
         }
         let merged = if self.merge_allowed && self.cursor == self.entries.len() {
@@ -253,12 +268,15 @@ impl History {
     }
 }
 fn retained_bytes<'a>(document: &Document, commands: impl Iterator<Item = &'a dyn Command>) -> u64 {
-    let mut seen: HashSet<_> = document.raster.tiles().values().map(|t| t.id()).collect();
+    let mut seen = HashSet::new();
+    document.visit_tiles(&mut |tile| {
+        seen.insert(tile.id());
+    });
     let mut bytes = 0;
     for command in commands {
         command.visit_tiles(&mut |tile| {
             if seen.insert(tile.id()) {
-                bytes += tile.resident_bytes();
+                bytes += tile.bytes();
             }
         });
     }
@@ -274,14 +292,18 @@ mod tests {
     fn paged_undo_keeps_identity_and_exact_samples_without_pin_retention() {
         use crate::{TileBacking, TilePager};
         let mut document = Document::blank(256, 1, 72.0).unwrap();
-        document.raster.write(0, 0, Rgba8([87, 33, 19, 0]));
-        let old = document.raster.tiles()[&(0, 0)].clone();
+        document.raster_mut().write(0, 0, Rgba8([87, 33, 19, 0]));
+        let old = document.raster().tiles()[&(0, 0)].clone();
         let mut history = History::default();
         let command = edit(&document, 0, [201, 3, 7, 1]);
         history.execute(&mut document, command, 0).unwrap();
-        let mut handles = vec![old.clone(), document.raster.tiles()[&(0, 0)].clone()];
+        let mut handles = vec![old.clone(), document.raster().tiles()[&(0, 0)].clone()];
         for command in &history.entries {
-            command.visit_tiles(&mut |tile| handles.push(tile.clone()));
+            command.visit_tiles(&mut |tile| {
+                if let TileRef::Rgba(tile) = tile {
+                    handles.push(tile.clone());
+                }
+            });
         }
         let mut pager = TilePager::default();
         let mut disk = std::collections::HashMap::new();
@@ -301,9 +323,9 @@ mod tests {
                 .unwrap();
         }
         assert_eq!(pager.evict_oldest(u64::MAX, &HashSet::new()), 524288);
-        assert_eq!(document.raster.bytes() + history.bytes(&document), 0);
+        assert_eq!(document.bytes() + history.bytes(&document), 0);
         assert!(history.undo(&mut document));
-        let restored = &document.raster.tiles()[&(0, 0)];
+        let restored = &document.raster().tiles()[&(0, 0)];
         assert_eq!(restored.id(), old.id());
         pager
             .hydrate(
@@ -313,9 +335,9 @@ mod tests {
                 crate::Residency::default(),
             )
             .unwrap();
-        assert_eq!(document.raster.sample(0, 0), Rgba8([87, 33, 19, 0]));
+        assert_eq!(document.raster().sample(0, 0), Rgba8([87, 33, 19, 0]));
         assert!(history.redo(&mut document));
-        let restored = &document.raster.tiles()[&(0, 0)];
+        let restored = &document.raster().tiles()[&(0, 0)];
         pager
             .hydrate(
                 restored,
@@ -324,13 +346,13 @@ mod tests {
                 crate::Residency::default(),
             )
             .unwrap();
-        assert_eq!(document.raster.sample(0, 0), Rgba8([201, 3, 7, 1]));
+        assert_eq!(document.raster().sample(0, 0), Rgba8([201, 3, 7, 1]));
     }
     fn hash(d: &Document) -> u64 {
         let mut hash = std::collections::hash_map::DefaultHasher::new();
         d.dpi.to_bits().hash(&mut hash);
         for x in 0..d.width {
-            d.raster.sample(x, 0).0.hash(&mut hash);
+            d.raster().sample(x, 0).0.hash(&mut hash);
         }
         hash.finish()
     }
@@ -339,7 +361,7 @@ mod tests {
         #[test]
         fn mixed_sequences_restore_exact_hash(actions in prop::collection::vec((0u8..6,0u32..513,any::<[u8;4]>()),1..80)) {
             let mut doc = Document::blank(513,1,72.0).unwrap();
-            doc.raster.write(255,0,Rgba8([87,33,19,0]));
+            doc.raster_mut().write(255,0,Rgba8([87,33,19,0]));
             let initial = hash(&doc);
             let mut history = History::default();
             for (kind,x,p) in actions {
@@ -381,14 +403,14 @@ mod tests {
         assert_eq!(h.depths(), (1, 0));
         assert_eq!(h.evicted, 5);
         h.undo(&mut doc);
-        assert_eq!(doc.raster.sample(0, 0).0[0], 5);
+        assert_eq!(doc.raster().sample(0, 0).0[0], 5);
         h.configure(&doc, HistoryLimits { bytes: 0, steps: 0 })
             .unwrap();
         assert_eq!(h.depths(), (0, 0));
         assert_eq!(h.bytes(&doc), 0);
         let c = edit(&doc, 256, [9, 8, 7, 1]);
         h.execute(&mut doc, c, 0).unwrap();
-        assert_eq!(doc.raster.sample(256, 0), Rgba8([9, 8, 7, 1]));
+        assert_eq!(doc.raster().sample(256, 0), Rgba8([9, 8, 7, 1]));
         assert_eq!(h.depths(), (0, 0));
     }
     #[test]
@@ -429,21 +451,21 @@ mod tests {
         let depth = h.depths();
         assert!(h.reserve(&doc, CPU_BUDGET).is_err());
         assert_eq!(h.depths(), depth);
-        h.reserve(&doc, CPU_BUDGET - doc.raster.bytes()).unwrap();
+        h.reserve(&doc, CPU_BUDGET - doc.raster().bytes()).unwrap();
         assert_eq!(h.bytes(&doc), 0);
         assert_eq!(hash(&doc), before);
         assert!(h.evicted > 0);
     }
     fn edit(doc: &Document, x: u32, pixel: [u8; 4]) -> Box<dyn Command> {
         let mut after = doc.clone();
-        after.raster.write(x, 0, Rgba8(pixel));
+        after.raster_mut().write(x, 0, Rgba8(pixel));
         Box::new(TileCommand::between(doc, &after).unwrap())
     }
     #[test]
     fn exact_undo_redo_branch_and_unique_residency() {
         let mut doc = Document::blank(600, 1, 72.0).unwrap();
-        doc.raster.write(0, 0, Rgba8([87, 33, 19, 0]));
-        let original_id = doc.raster.tiles()[&(0, 0)].id();
+        doc.raster_mut().write(0, 0, Rgba8([87, 33, 19, 0]));
+        let original_id = doc.raster().tiles()[&(0, 0)].id();
         let mut h = History::default();
         let first = edit(&doc, 0, [201, 3, 7, 1]);
         h.execute(&mut doc, first, 0).unwrap();
@@ -451,11 +473,11 @@ mod tests {
         h.execute(&mut doc, second, 0).unwrap();
         assert_eq!(h.bytes(&doc), 262144);
         assert!(h.undo(&mut doc));
-        assert_eq!(doc.raster.tiles().len(), 1);
+        assert_eq!(doc.raster().tiles().len(), 1);
         assert_eq!(h.bytes(&doc), 2 * 262144);
         assert!(h.undo(&mut doc));
-        assert_eq!(doc.raster.sample(0, 0), Rgba8([87, 33, 19, 0]));
-        assert_eq!(doc.raster.tiles()[&(0, 0)].id(), original_id);
+        assert_eq!(doc.raster().sample(0, 0), Rgba8([87, 33, 19, 0]));
+        assert_eq!(doc.raster().tiles()[&(0, 0)].id(), original_id);
         assert!(h.redo(&mut doc));
         let branch = edit(&doc, 1, [1, 2, 3, 255]);
         assert!(h.execute(&mut doc, branch, 0).unwrap());
@@ -463,7 +485,7 @@ mod tests {
         assert!(!h.redo(&mut doc));
         let refused = edit(&doc, 511, [4, 5, 6, 255]);
         assert!(h.execute(&mut doc, refused, CPU_BUDGET).is_err());
-        assert_eq!(doc.raster.sample(511, 0), Rgba8::default());
+        assert_eq!(doc.raster().sample(511, 0), Rgba8::default());
         assert_eq!(h.depths(), (2, 0));
     }
     #[test]
@@ -473,17 +495,17 @@ mod tests {
         let command = edit(&doc, 256, [1, 2, 3, 1]);
         history.execute(&mut doc, command, 0).unwrap();
         assert!(history.undo(&mut doc));
-        doc.raster.drain_dirty();
+        doc.raster_mut().drain_dirty();
         let empty = Box::new(TileCommand::between(&doc, &doc).unwrap());
         assert!(!history.execute(&mut doc, empty, 0).unwrap());
         let rejected = edit(&doc, 0, [4, 5, 6, 0]);
         assert!(history.execute(&mut doc, rejected, CPU_BUDGET).is_err());
         assert_eq!(history.depths(), (0, 1));
-        assert!(doc.raster.drain_dirty().is_empty());
-        assert_eq!(doc.raster.bytes(), 0);
+        assert!(doc.raster_mut().drain_dirty().is_empty());
+        assert_eq!(doc.raster().bytes(), 0);
         assert!(history.redo(&mut doc));
-        assert_eq!(doc.raster.sample(256, 0), Rgba8([1, 2, 3, 1]));
-        assert!(doc.raster.drain_dirty().contains(&(1, 0)));
+        assert_eq!(doc.raster().sample(256, 0), Rgba8([1, 2, 3, 1]));
+        assert!(doc.raster_mut().drain_dirty().contains(&(1, 0)));
         history.clear();
         assert_eq!(history.bytes(&doc), 0);
     }
@@ -502,13 +524,13 @@ mod tests {
                 );
                 h.execute(&mut doc, c, 0).unwrap();
             }
-            let final_pixels: Vec<_> = (0..513).map(|x| doc.raster.sample(x, 0)).collect();
+            let final_pixels: Vec<_> = (0..513).map(|x| doc.raster().sample(x, 0)).collect();
             while h.undo(&mut doc) {}
-            assert_eq!(doc.raster.tiles().len(), 0);
+            assert_eq!(doc.raster().tiles().len(), 0);
             while h.redo(&mut doc) {}
             assert_eq!(
                 (0..513)
-                    .map(|x| doc.raster.sample(x, 0))
+                    .map(|x| doc.raster().sample(x, 0))
                     .collect::<Vec<_>>(),
                 final_pixels
             );

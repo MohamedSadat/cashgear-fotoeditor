@@ -63,7 +63,7 @@ mod bridge {
         }
         fn residency(&self) -> Residency {
             Residency {
-                document: self.document.as_ref().map_or(0, |d| d.raster.bytes()),
+                document: self.document.as_ref().map_or(0, |d| d.bytes()),
                 history: self.document.as_ref().map_or(0, |d| self.history.bytes(d)),
                 temporary: self.import.as_ref().map_or(0, |j| j.temporary_bytes())
                     + self.external_bytes
@@ -145,8 +145,8 @@ mod bridge {
                 .map(|s| &mut s.preview)
                 .or(self.document.as_mut());
             if let Some(doc) = document {
-                let regions = doc.raster.drain_regions();
-                self.renderer.invalidate_tiles(&doc.raster, &regions);
+                let regions = doc.raster_mut().drain_regions();
+                self.renderer.invalidate_tiles(doc.raster(), &regions);
             }
             self.renderer
                 .frame(
@@ -286,7 +286,7 @@ mod bridge {
                 .as_ref()
                 .map(|s| &s.preview)
                 .or(self.document.as_ref())
-                .is_some_and(|d| d.raster.has_dirty())
+                .is_some_and(|d| d.raster().has_dirty())
         }
         pub fn stroke_cancel(&mut self) {
             if self.stroke.take().is_some() {
@@ -322,7 +322,7 @@ mod bridge {
                     p.0 >= 0.0 && p.1 >= 0.0 && p.0 < d.width as f64 && p.1 < d.height as f64
                 })
                 .map_or_else(Vec::new, |d| {
-                    d.raster
+                    d.raster()
                         .sample(p.0.floor() as u32, p.1.floor() as u32)
                         .0
                         .to_vec()
@@ -428,7 +428,7 @@ mod bridge {
                 .document
                 .as_ref()
                 .ok_or_else(|| JsValue::from_str("No document"))?;
-            let size = 40 + doc.raster.tiles().len() as u64 * (262144 + 8);
+            let size = 40 + doc.raster().tiles().len() as u64 * (262144 + 8);
             if size > fotoeditor_io::MAX_FILE_BYTES {
                 return Err(JsValue::from_str("Project exceeds the 128 MiB file limit"));
             }
@@ -492,7 +492,7 @@ mod bridge {
         pub fn snapshot(&self) -> String {
             let r = self.residency();
             let v = &self.view;
-            serde_json::json!({"document":self.document.as_ref().map(|d|serde_json::json!({"width":d.width,"height":d.height,"dpi":d.dpi,"tiles":d.raster.tiles().len()})),
+            serde_json::json!({"document":self.document.as_ref().map(|d|serde_json::json!({"width":d.width,"height":d.height,"dpi":d.dpi,"tiles":d.raster().tiles().len()})),
                 "view":{"zoom":v.zoom,"rotation":v.rotation,"flipped":v.flipped,"panX":v.pan_x,"panY":v.pan_y},
                 "memory":{"document":r.document,"history":r.history,"temporary":r.temporary,"gpu":r.gpu},
                 "history":{"undo":self.history.depths().0,"redo":self.history.depths().1,"labels":self.history.labels(),"bytesLimit":self.history.limits.bytes,"stepsLimit":self.history.limits.steps,"evicted":self.history.evicted},

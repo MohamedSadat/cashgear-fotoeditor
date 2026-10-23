@@ -19,7 +19,13 @@ pub struct ProjectWriter {
 }
 impl ProjectWriter {
     pub fn new(document: &Document, residency: Residency) -> Result<Self, String> {
-        let length = HEADER + document.raster.tiles().len() * RECORD + 4;
+        document
+            .single_raster()
+            .map_err(|_| "Layered projects require the v2 stream document adapter")?;
+        if document.layers[0].name != "Layer 1" {
+            return Err("Named layers require the v2 stream document adapter".into());
+        }
+        let length = HEADER + document.raster().tiles().len() * RECORD + 4;
         if length as u64 > MAX_FILE_BYTES {
             return Err("Project exceeds the 128 MiB file limit".into());
         }
@@ -32,8 +38,8 @@ impl ProjectWriter {
         bytes.extend_from_slice(&document.height.to_le_bytes());
         bytes.extend_from_slice(&document.dpi.to_le_bytes());
         bytes.extend_from_slice(&TILE_SIZE.to_le_bytes());
-        bytes.extend_from_slice(&(document.raster.tiles().len() as u32).to_le_bytes());
-        let mut coordinates: Vec<_> = document.raster.tiles().keys().copied().collect();
+        bytes.extend_from_slice(&(document.raster().tiles().len() as u32).to_le_bytes());
+        let mut coordinates: Vec<_> = document.raster().tiles().keys().copied().collect();
         coordinates.sort_unstable();
         let mut checksum = crc32fast::Hasher::new();
         checksum.update(&bytes);
@@ -50,7 +56,7 @@ impl ProjectWriter {
     }
     pub fn step(&mut self) -> bool {
         if let Some(coord) = self.coordinates.get(self.next) {
-            let tile = self.document.raster.tiles()[coord]
+            let tile = self.document.raster().tiles()[coord]
                 .pin()
                 .expect("hydrate project tile");
             let start = self.bytes.len();
@@ -145,7 +151,7 @@ impl ProjectReader {
         })
     }
     pub fn temporary_bytes(&self) -> u64 {
-        self.bytes.capacity() as u64 + self.document.raster.bytes()
+        self.bytes.capacity() as u64 + self.document.raster().bytes()
     }
     pub fn step(&mut self) -> Result<bool, String> {
         if self.next < self.count {
@@ -165,7 +171,7 @@ impl ProjectReader {
                     .iter()
                     .map(|p| Rgba8(*p))
                     .collect();
-                self.document.raster.insert(coord, pixels);
+                self.document.raster_mut().insert(coord, pixels);
             }
             self.checksum.update(record);
             self.next += 1;
@@ -209,27 +215,27 @@ mod tests {
             (255, 256, [201, 3, 7, 1]),
             (512, 258, [3, 4, 5, 255]),
         ] {
-            d.raster.write(x, y, Rgba8(p));
+            d.raster_mut().write(x, y, Rgba8(p));
         }
         let bytes = encode(&d);
         let reopened = decode(&bytes).unwrap();
         assert_eq!(reopened.dpi.to_bits(), d.dpi.to_bits());
-        assert_eq!(reopened.raster.tiles().len(), 3);
+        assert_eq!(reopened.raster().tiles().len(), 3);
         assert_eq!(bytes, encode(&reopened));
         for y in 0..259 {
             for x in 0..513 {
-                assert_eq!(d.raster.sample(x, y), reopened.raster.sample(x, y));
+                assert_eq!(d.raster().sample(x, y), reopened.raster().sample(x, y));
             }
         }
         let empty = encode(&Document::blank(16384, 16384, 72.0).unwrap());
         assert_eq!(empty.len(), HEADER + 4);
-        assert_eq!(decode(&empty).unwrap().raster.bytes(), 0);
+        assert_eq!(decode(&empty).unwrap().raster().bytes(), 0);
     }
     #[test]
     fn invalid_projects_never_complete() {
         let mut d = Document::blank(257, 1, 72.0).unwrap();
-        d.raster.write(0, 0, Rgba8([4, 5, 6, 0]));
-        d.raster.write(256, 0, Rgba8([7, 8, 9, 1]));
+        d.raster_mut().write(0, 0, Rgba8([4, 5, 6, 0]));
+        d.raster_mut().write(256, 0, Rgba8([7, 8, 9, 1]));
         let bytes = encode(&d);
         for n in [0, 7, 35, 36, 100, bytes.len() - 1] {
             assert!(decode(&bytes[..n]).is_err());

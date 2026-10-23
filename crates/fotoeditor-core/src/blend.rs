@@ -3,7 +3,8 @@
 //! Equations: https://www.w3.org/TR/compositing-1/#blending
 use crate::Rgba8;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
 #[repr(u32)]
 pub enum BlendMode {
     #[default]
