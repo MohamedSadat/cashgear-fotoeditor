@@ -88,6 +88,10 @@
   margin-right: 6px;
   background: #bbb;
 }
+.layer-mask[aria-pressed='true'] {
+  border-color: #ffab75;
+  box-shadow: 0 0 0 1px #ffab75;
+}
 :root {
   font-family: Inter, 'Segoe UI', sans-serif;
   color: #e9ecf0;

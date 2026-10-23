@@ -175,6 +175,8 @@ export function LayerPanel({ api, disabled }: { api?: EngineApi; disabled: boole
             <button
               title="Select mask · Alt-click to view mask"
               aria-label={'Mask of ' + node.name}
+              aria-pressed={layers?.active === node.id && layers.maskTarget}
+              className="layer-mask"
               disabled={blocked}
               onClick={(event) => void select(node, false, true, event.altKey)}
             >
@@ -398,6 +400,12 @@ export function LayerPanel({ api, disabled }: { api?: EngineApi; disabled: boole
         </fieldset>
       )}
       <p className="layer-help">Ctrl/Shift-click to select several layers. Drag to reorder.</p>
+      {layers?.maskTarget && (
+        <p className="layer-help">
+          {layers.maskView ? 'Viewing mask' : 'Painting mask'} · Click the layer name to return to
+          pixels.
+        </p>
+      )}
       {error && <p role="alert">{error}</p>}
     </section>
   );
