@@ -1,21 +1,22 @@
 # CashGear FotoEditor
 
 A focused photo editing and painting workspace. Open PNG, JPEG and WebP images,
-create transparent canvases, paint with procedural brushes, and export lossless
+create transparent canvases, paint on layers and masks, and export lossless
 RGBA8 PNG. Save editable `.cgfoto` projects and recover completed browser autosaves.
-The worker-owned Rust engine processes sparse tiles and displays them
-through WebGPU or WebGL2.
+The worker-owned Rust engine processes paged tiles and displays them through
+WebGPU or WebGL2.
 
-P4 layer controls and paged multi-layer project integration are in progress. The
-Rust foundations are being built first; see [progress](docs/PROGRESS.md) and the
-[P4 design](docs/P4-DESIGN.md) for implemented components and remaining acceptance.
+P4 adds layer controls, groups, masks, sixteen sRGB blend modes and streamed
+multi-layer projects. See [progress](docs/PROGRESS.md) and the
+[P4 report](docs/P4-REPORT.md) for acceptance evidence and measured limits.
 
 Use New canvas or Open image, or drop an image into the viewport. Wheel/two-finger
 gestures scroll; Ctrl/Cmd+wheel or trackpad pinch zooms around the pointer.
 Space+drag or middle mouse pans; R+drag rotates. The left rail fits, resets to
 100%, rotates, flips and resets rotation. View changes never modify export pixels.
 The document limit is 16,384 pixels per side; dense images also have a memory
-admission limit. Image/project files and PNG exports are capped at 128 MiB.
+admission limit. Image files and PNG exports are capped at 128 MiB. Streamed v2
+projects have a 4 GiB total-file cap and also require enough local disk storage.
 16-bit input and color-profile conversion remain later-phase work.
 
 B selects brush, E eraser, I eyedropper, Alt temporarily samples a document pixel,
@@ -36,9 +37,17 @@ to make room. Zero disables retained undo; an edit larger than the history cap c
 complete without an undo step. Resolution changes use commands and merge within a
 single focus/pointer gesture; they change DPI metadata without resampling pixels.
 
-Save project downloads a versioned `.cgfoto` file preserving sparse straight RGBA8
-samples, hidden RGB and exact DPI. Open project or drop the file to reopen it with
-fresh undo history. Project files store the document only, not history or view state.
+The Layers panel adds, duplicates, renames, reorders and groups layers. Ctrl/Shift
+selects several rows; new groups default to pass-through. Select a mask to paint
+it, or Alt-click to view it. Click the layer name to return to its pixels. Layer
+properties include blend mode, opacity, fill, visibility, clipping and locks.
+Mask and merge operations are undoable; thumbnails update after a stroke.
+
+Save project preserves layers, masks, groups, straight RGBA8 samples, hidden RGB
+and exact DPI in a versioned `.cgfoto` file. Layered/large saves use a streamed
+writable file destination; small default single-raster projects can download in
+the legacy format. Open project or drop the file to reopen with fresh undo
+history. Project files store the document only, not history or view state.
 
 Recovery saves changed, completed documents every 30 seconds and on tab hide when
 idle. Tab-hide saves are best effort: startup asks to restore the last completed

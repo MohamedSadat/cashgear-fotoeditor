@@ -45,10 +45,10 @@ No subagents or worktrees. Commit only passing increments directly on main.
   Layer edits invalidate affected composite regions. A cold composite must actually
   read every contributing visible layer; report that cost separately. Never claim
   that blending 2.4 GB of source data occurs every 16.67 ms.
-- Disk backing and recovery generations share immutable tile records where safe.
-  Retain records referenced by live document, undo, pending candidates or completed
-  snapshots. Garbage collection cannot remove a committed generation's samples.
-  Web Locks and session ownership remain part of the recovery contract.
+- Disk backing shares immutable tile records across document, undo and pending
+  candidates. Completed recovery generations are self-contained streams, so their
+  samples remain independent of working-file collection. Web Locks and session
+  ownership remain part of the recovery contract.
 
 ## Project and recovery format
 
@@ -91,9 +91,13 @@ residency. Use installed Chrome/Edge on both real hardware backends; retain
 p50/p95/p99 timings and machine/browser/adapter data. Software results prove
 function only. Keep ports 4187/4188 isolated and freeze dist while tests serve it.
 
-All acceptance items remain open until implementation and measured verification.
+Acceptance was open when this design was written. P4-REPORT.md and PROGRESS.md
+record the subsequent implementation and measured verification.
 
-## Foundation checkpoint
+## Earlier foundation checkpoint (`48377d6`)
+
+This section records the pre-integration state. P4-IMPLEMENTATION.md describes
+the integrated engine; PROGRESS.md records current acceptance evidence.
 
 Core surfaces/history now use pageable generation handles, with RGBA/Gray8 shared
 accounting and COW layer-tree commands. The CPU tile plan and all sixteen blend

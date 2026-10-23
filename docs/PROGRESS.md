@@ -9,7 +9,36 @@ confirmed sRGB, default pass-through groups, after-stroke thumbnails, and the re
 image-file budgets are unchanged. P4-DESIGN.md records the implementation and
 acceptance plan. P4 is not complete and no completion tag has been created.
 
-Foundation checkpoint (implementation through `48377d6`):
+Integration implementation is pushed through `dcf33b1`. The running editor now
+has paged layer/group/mask editing, active paint targets, locks, merge operations,
+thumbnails, float32 GPU composition, and streamed manual/recovery projects. See
+P4-IMPLEMENTATION.md for the contracts and resource limits. All 108 installed
+Chrome/Edge hardware cases passed without failures, skips or retries; all sixteen
+modes were compared with the CPU reference on both APIs. Extended WebView2
+verification also passed: both APIs passed blend and small streamed roundtrips;
+WebGPU saved/reopened the full 2.52 GB document with identical exported PNG hash.
+The remaining gates are final remote CI/deployment and completion tag.
+No P5 work has started.
+
+All four actual dense-workload runs are complete. The 2,517,098,823-byte fixture
+has 50 distinct layer hashes and 9,600 distinct tile payload hashes. Three warm
+pan trials per browser/API measured 59.73–59.99 fps at fitted 16.4667% zoom, with
+period p95/p99 tails up to 33.40 ms. Cold copy/validation/composition took
+89.47–192.15 seconds; thumbnails and first recovery extended setup to
+202.73–330.41 seconds. Logical CPU was bounded by 368.25 MiB (sum of category
+maxima), GPU by 20.34 MiB. Working storage plus one completed recovery used
+5,034,199,330 bytes. P4-REPORT.md gives the hardware, dataset, timing method,
+per-backend results and limitations.
+
+The first integrated CI run `39939070886` passed all 77 software browser cases
+with no skips, failures or retries. Its desktop smoke then failed because its
+download hook captured a thumbnail PNG as project data. The hook now filters
+project MIME and verifies the file magic. That run is not a passing phase gate;
+final CI must include the corrected, extended desktop checks.
+
+### Earlier foundation checkpoint (`48377d6`)
+
+The following evidence records that earlier checkpoint, before integration:
 
 - Pageable immutable tile-generation handles now back the existing document,
   brush and history surfaces. Pins prevent eviction; validated immutable backing
@@ -88,14 +117,15 @@ checks only. CI WASM is 2,741,881 bytes, gzip9 1,048,449 / 1,500,000. Its artifa
 is retained under bench/results/p4-ci. No P4 completion acceptance, tag or dense
 layer performance result is claimed by this foundation checkpoint.
 
-Outstanding within P4 (not deferred to P5): worker OPFS tile backing and eviction,
+Outstanding at that foundation checkpoint were worker OPFS tile backing and eviction,
 streamed manual project and recovery integration, GPU compositor execution and
 CPU/GPU golden readbacks, incremental composite caching, layer controls/selection/
 drag reorder, mask painting/view/apply, merge operations and thumbnails. The live
 application still exposes its single-raster controls and v1 128 MiB project path;
 the approved 4 GiB layered format is a Rust adapter, not a shipped UI feature yet.
-The actual distinct dense 50-layer workload and its cold/warm hardware measurements
-remain unverified. No sparse/shared fixture substitutes for that acceptance target.
+The actual distinct dense 50-layer workload was then unverified. No sparse/shared
+fixture substitutes for that acceptance target. Current integration work and
+verification are recorded above.
 
 ## P3 — Complete
 
