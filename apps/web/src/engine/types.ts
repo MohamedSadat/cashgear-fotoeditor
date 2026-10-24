@@ -24,6 +24,14 @@ export interface FrameResult extends PhysicalSize {
   snapshot?: DocumentSnapshot;
 }
 export interface DocumentSnapshot {
+  selection: {
+    active: boolean;
+    quickMask: boolean;
+    busy: boolean;
+    lastWandPixels: number;
+    clipboard: { width: number; height: number } | null;
+    timing?: { kernelMs: number; totalMs: number; stages?: number[] };
+  };
   layers: {
     nodes: LayerNode[];
     active?: number;
@@ -33,10 +41,19 @@ export interface DocumentSnapshot {
   };
   projectTiming?: { copyMs: number; validateMs: number; compositeMs: number };
   revision: number;
+  contentRevision: number;
   operation?: string;
   recovery?: RecoveryStatus;
   document: { width: number; height: number; dpi: number; tiles: number } | null;
-  view: { zoom: number; rotation: number; flipped: boolean; panX: number; panY: number };
+  view: {
+    zoom: number;
+    rotation: number;
+    flipped: boolean;
+    panX: number;
+    panY: number;
+    screenWidth: number;
+    screenHeight: number;
+  };
   memory: { document: number; history: number; temporary: number; gpu: number };
   visibleTiles: number;
   refining: number;
@@ -83,6 +100,11 @@ export interface Interaction {
   sample?: [number, number, number, number, number, number];
 }
 export interface EngineApi {
+  diagnosticSelectionFault(fault: 'pause-before-commit' | 'budget'): Promise<void>;
+  selectionAction(action: SelectionAction): Promise<DocumentSnapshot>;
+  quickMask(enabled: boolean): Promise<DocumentSnapshot>;
+  clipboardPng(): Promise<Uint8Array>;
+  clipboardImport(bytes: ArrayBuffer): Promise<void>;
   thumbnail(target: number): Promise<Uint8Array>;
   compareCompositors(): Promise<number[]>;
   selectLayer(target: number, mask?: boolean, view?: boolean): Promise<DocumentSnapshot>;
@@ -122,6 +144,31 @@ export interface EngineApi {
   exportPng(): Promise<Uint8Array>;
   cancelJob(): boolean | Promise<boolean>;
 }
+export type SelectionMode = 'new' | 'add' | 'subtract' | 'intersect';
+export type SelectionShape =
+  | { kind: 'rectangle' | 'ellipse'; x0: number; y0: number; x1: number; y1: number }
+  | { kind: 'polygon'; points: [number, number][] };
+export interface WandOptions {
+  seed: [number, number];
+  tolerance: number;
+  contiguous: boolean;
+  antialias: boolean;
+  mode: SelectionMode;
+  color?: Rgba;
+}
+export type SelectionAction =
+  | { kind: 'all' | 'none' }
+  | { kind: 'shape'; shape: SelectionShape; mode: SelectionMode; antialias: boolean }
+  | {
+      kind: 'modify';
+      operation: 'invert' | 'feather' | 'grow' | 'shrink' | 'border' | 'smooth';
+      radius: number;
+    }
+  | { kind: 'wand'; options: WandOptions; allLayers: boolean }
+  | { kind: 'bucket'; options: WandOptions; allLayers: boolean; color: Rgba }
+  | { kind: 'fill'; color: Rgba; clear?: boolean }
+  | { kind: 'copy' | 'cut'; allLayers: boolean }
+  | { kind: 'paste'; inPlace: boolean };
 export interface LayerProperties {
   visible: boolean;
   opacity: number;

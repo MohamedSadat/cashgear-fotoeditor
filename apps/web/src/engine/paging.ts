@@ -73,7 +73,18 @@ export class PagingStore {
     const handle = (await this.directory!.getFileHandle(id, { create: true })) as SyncHandle;
     return { id, handle };
   }
-  async hydrate(engine: Engine, scope: 'active' | 'render' | 'write' | 'thumbnail') {
+  async hydrate(
+    engine: Engine,
+    scope:
+      | 'active'
+      | 'render'
+      | 'write'
+      | 'thumbnail'
+      | 'selection'
+      | 'selection-seed'
+      | 'selection-mask'
+      | 'export',
+  ) {
     if (this.loadedSinceEviction >= 32 * CHUNK) {
       engine.page_evict(256 * CHUNK, '[]');
       this.loadedSinceEviction = 0;

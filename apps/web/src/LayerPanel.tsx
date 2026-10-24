@@ -22,9 +22,10 @@ const modes = [
 ];
 export function LayerPanel({ api, disabled }: { api?: EngineApi; disabled: boolean }) {
   const layers = useWorkspace((s) => s.snapshot?.layers);
-  const revision = useWorkspace((s) => s.snapshot?.revision);
+  const revision = useWorkspace((s) => s.snapshot?.contentRevision);
   const painting = useWorkspace((s) => s.snapshot?.painting);
   const [thumbnails, setThumbnails] = useState<Record<number, string>>({});
+  const thumbnailRevisions = useRef(new Map<number, number | undefined>());
   const urls = useRef(new Map<number, string>());
   const [selected, setSelected] = useState<number[]>([]);
   const [error, setError] = useState('');
@@ -48,12 +49,14 @@ export function LayerPanel({ api, disabled }: { api?: EngineApi; disabled: boole
       if (!live.has(id)) {
         URL.revokeObjectURL(url);
         urls.current.delete(id);
+        thumbnailRevisions.current.delete(id);
       }
     const targets = all.filter(
       (node) =>
         !urls.current.has(node.id) ||
-        node.id === activeId ||
-        flatten(node.children ?? []).some((child) => child.id === activeId),
+        (thumbnailRevisions.current.get(node.id) !== revision &&
+          (node.id === activeId ||
+            flatten(node.children ?? []).some((child) => child.id === activeId))),
     );
     void (async () => {
       for (const node of targets) {
@@ -67,6 +70,7 @@ export function LayerPanel({ api, disabled }: { api?: EngineApi; disabled: boole
           const old = urls.current.get(node.id);
           if (old) URL.revokeObjectURL(old);
           urls.current.set(node.id, url);
+          thumbnailRevisions.current.set(node.id, revision);
           setThumbnails((previous) => ({
             ...Object.fromEntries(Object.entries(previous).filter(([id]) => live.has(Number(id)))),
             [node.id]: url,

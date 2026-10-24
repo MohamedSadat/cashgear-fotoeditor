@@ -35,6 +35,9 @@ let savedRevision = -1;
 let recoveryFault: RecoveryFault | undefined;
 let externalBytes = 0;
 let thumbnailRunning = false;
+let selectionTiming: DocumentSnapshot['selection']['timing'];
+let selectionFault: 'pause-before-commit' | 'budget' | undefined;
+let releaseSelectionPause: (() => void) | undefined;
 function beginJob() {
   cancelAllowed = true;
   return ++job;
@@ -49,6 +52,7 @@ function snapshot(): DocumentSnapshot {
   const state = JSON.parse(engine!.snapshot()) as DocumentSnapshot;
   return {
     ...state,
+    selection: { ...state.selection, timing: selectionTiming },
     operation,
     projectTiming,
     recovery,
@@ -254,6 +258,136 @@ function replaced(fileName: string) {
   sampledColor = undefined;
 }
 const api: EngineApi = {
+  async diagnosticSelectionFault(fault) {
+    if (!diagnostic) throw new Error('Diagnostics are disabled');
+    selectionFault = fault;
+  },
+  async selectionAction(action) {
+    const e = requireIdle();
+    busy = true;
+    operation = 'Updating selection…';
+    const token = beginJob();
+    const start = performance.now();
+    let kernelMs = 0;
+    const stages = [0, 0, 0, 0, 0];
+    const maskView = e.mask_view_enabled();
+    const fault = selectionFault;
+    selectionFault = undefined;
+    const priorExternal = externalBytes;
+    try {
+      if (fault === 'budget') {
+        const memory = JSON.parse(e.snapshot()).memory as DocumentSnapshot['memory'];
+        external(
+          priorExternal + 768 * 1048576 - memory.document - memory.history - memory.temporary,
+        );
+      }
+      if ('allLayers' in action && action.allLayers && maskView) {
+        e.preview_mask(false);
+        await recompose(token);
+      }
+      const encoded = JSON.stringify(action);
+      if (action.kind === 'fill' || action.kind === 'bucket') {
+        if (e.quick_mask_enabled()) await pages.hydrate(e, 'selection-mask');
+        else if (snapshot().layers.maskTarget) await pages.hydrate(e, 'active');
+      }
+      e.selection_prepare(encoded);
+      if (action.kind === 'wand' || action.kind === 'bucket')
+        await pages.hydrate(e, 'selection-seed');
+      cancelled(token);
+      e.selection_begin(encoded);
+      let sliceStart = performance.now();
+      for (;;) {
+        cancelled(token);
+        if (e.selection_cold()) await pages.hydrate(e, 'selection');
+        cancelled(token);
+        const stepStart = performance.now();
+        const phase = e.selection_phase();
+        if (fault === 'pause-before-commit' && phase === 3) {
+          operation = 'Selection ready to commit (diagnostic)…';
+          await new Promise<void>((resolve) => {
+            releaseSelectionPause = resolve;
+          });
+          cancelled(token);
+        }
+        const done = e.selection_step();
+        const elapsed = performance.now() - stepStart;
+        kernelMs += elapsed;
+        stages[phase] += elapsed;
+        if (done) break;
+        if (performance.now() - sliceStart >= 4) {
+          await yieldProjectTask();
+          sliceStart = performance.now();
+        }
+      }
+      cancelAllowed = false;
+      await recompose(token);
+      selectionTiming = { kernelMs, totalMs: performance.now() - start, stages };
+      dirty = true;
+      return snapshot();
+    } finally {
+      if (token === job) {
+        external(priorExternal);
+        releaseSelectionPause = undefined;
+        e.selection_cancel();
+        if (maskView && action.kind !== 'paste') {
+          e.preview_mask(true);
+          await recompose(token);
+        }
+        busy = false;
+        operation = undefined;
+      }
+    }
+  },
+  async quickMask(enabled) {
+    const e = requireIdle();
+    e.quick_mask(enabled);
+    dirty = true;
+    return snapshot();
+  },
+  async clipboardPng() {
+    const e = requireIdle();
+    busy = true;
+    operation = 'Copying PNG to clipboard…';
+    const token = beginJob();
+    try {
+      e.clipboard_export_begin();
+      for (;;) {
+        cancelled(token);
+        await pages.hydrate(e, 'export');
+        if (e.export_step()) break;
+        await yieldProjectTask();
+      }
+      const bytes = e.finish_export();
+      return transfer(bytes, [bytes.buffer]);
+    } finally {
+      if (token === job) {
+        e.cancel_job();
+        busy = false;
+        operation = undefined;
+      }
+    }
+  },
+  async clipboardImport(bytes) {
+    const e = requireIdle();
+    busy = true;
+    operation = 'Reading clipboard image…';
+    const token = beginJob();
+    try {
+      e.begin_import(new Uint8Array(bytes));
+      bytes = new ArrayBuffer(0);
+      for (;;) {
+        cancelled(token);
+        if (e.clipboard_import_step()) break;
+        await yieldProjectTask();
+      }
+    } finally {
+      if (token === job) {
+        e.cancel_job();
+        busy = false;
+        operation = undefined;
+      }
+    }
+  },
   async thumbnail(target) {
     const e = requireEngine();
     if (busy || thumbnailRunning || e.painting())
@@ -525,7 +659,7 @@ const api: EngineApi = {
     )
       return;
     const state = snapshot();
-    if (!state.document || state.revision === savedRevision) return;
+    if (!state.document || state.contentRevision === savedRevision) return;
     const e = requireEngine();
     busy = true;
     operation = 'Autosaving…';
@@ -541,7 +675,7 @@ const api: EngineApi = {
             writeRecoveryStream(handle, token, fault),
           );
       if (disposed || token !== job) return;
-      savedRevision = state.revision;
+      savedRevision = state.contentRevision;
       recovery = {
         ...recovery,
         state: 'saved',
@@ -664,6 +798,7 @@ const api: EngineApi = {
         const wasPainting = engine.painting();
         engine.stroke_step();
         if (wasPainting && !engine.painting()) {
+          dirty = true;
           busy = true;
           try {
             if (!engine.legacy_project()) await pages.persist(engine);
@@ -685,10 +820,25 @@ const api: EngineApi = {
       dirty = true;
     }
     const painted = performance.now();
+    if (!busy) {
+      try {
+        if (engine.selection_active() || engine.quick_mask_enabled())
+          await pages.hydrate(engine, 'selection-mask');
+        engine.selection_overlay_prepare();
+      } catch (error) {
+        editError = String(error);
+        engine.selection_overlay_clear();
+      }
+    }
     // Input gets first use of the frame slot. A later preview request keeps an
     // active stroke on the display cadence even between spaced dabs.
     const presented =
-      dirty || refining || (preview && engine.painting()) || engine.needs_render()
+      dirty ||
+      refining ||
+      engine.selection_active() ||
+      engine.quick_mask_enabled() ||
+      (preview && engine.painting()) ||
+      engine.needs_render()
         ? engine.frame()
         : false;
     if (presented) dirty = false;
@@ -773,10 +923,10 @@ const api: EngineApi = {
           if (busy) throw new Error('Finish the current operation first');
           if (input.kind === 'stroke-begin') {
             editError = undefined;
-            if (e.active_cold()) {
+            if (e.quick_mask_enabled() || e.active_cold()) {
               busy = true;
               try {
-                await pages.hydrate(e, 'active');
+                await pages.hydrate(e, e.quick_mask_enabled() ? 'selection-mask' : 'active');
               } finally {
                 busy = false;
               }
@@ -862,11 +1012,11 @@ const api: EngineApi = {
         e.preview_mask(false);
         await recompose(token);
       }
-      if (e.export_original() && e.active_cold()) await pages.hydrate(e, 'active');
       e.begin_export();
       while (true) {
         await yieldTask();
         if (token !== job || disposed) throw new Error('Operation cancelled');
+        await pages.hydrate(e, 'export');
         if (e.export_step()) break;
       }
       const bytes = e.finish_export();
@@ -893,6 +1043,8 @@ const api: EngineApi = {
     )
       return false;
     ++job;
+    releaseSelectionPause?.();
+    releaseSelectionPause = undefined;
     requireEngine().cancel_job();
     external(0);
     operation = undefined;
