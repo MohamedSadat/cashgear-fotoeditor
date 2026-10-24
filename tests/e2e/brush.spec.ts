@@ -227,27 +227,72 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       // Lifecycle actions must stay blocked while that edit is still waiting.
       await range(page, 'Brush size', 2048);
       await range(page, 'Brush spacing', 0.01);
-      const boundary = await page.evaluateHandle(() => {
-        const canvas = document.querySelector<HTMLCanvasElement>('[data-testid="gpu-canvas"]')!;
-        const states: { undo: number; painting: boolean; queued: boolean }[] = [];
-        let starts = 0;
-        const started = () => {
-          starts++;
-        };
-        canvas.addEventListener('pointerdown', started);
-        const observer = new MutationObserver(() => {
-          const s = JSON.parse(canvas.dataset.snapshot!);
-          states.push({ undo: s.history.undo, painting: s.painting, queued: starts >= 2 });
-        });
-        observer.observe(canvas, { attributes: true, attributeFilter: ['data-snapshot'] });
-        return { states, observer, started };
-      });
+      const software = process.env.GPU_TEST_SOFTWARE === '1';
+      const boundary = await page.evaluateHandle(
+        ({ cx, cy, software }) => {
+          const canvas = document.querySelector<HTMLCanvasElement>('[data-testid="gpu-canvas"]')!;
+          const states: { undo: number; painting: boolean; queued: boolean }[] = [];
+          let starts = 0;
+          const started = () => {
+            starts++;
+          };
+          canvas.addEventListener('pointerdown', started);
+          const observer = new MutationObserver(() => {
+            const s = JSON.parse(canvas.dataset.snapshot!);
+            states.push({ undo: s.history.undo, painting: s.painting, queued: starts >= 2 });
+          });
+          observer.observe(canvas, { attributes: true, attributeFilter: ['data-snapshot'] });
+          if (software)
+            canvas.addEventListener(
+              'pointerdown',
+              (event) => {
+                // Submit both stroke boundaries in one task. Separate protocol
+                // calls can stall until the first stroke has already completed,
+                // leaving no queued edit for this assertion to observe.
+                const pointer = event as PointerEvent;
+                let serial = 0;
+                const send = (type: string, x: number, buttons: number) => {
+                  const input = new PointerEvent(type, {
+                    pointerId: pointer.pointerId,
+                    pointerType: 'mouse',
+                    isPrimary: true,
+                    clientX: x,
+                    clientY: cy,
+                    buttons,
+                    button: type === 'pointermove' ? -1 : 0,
+                    bubbles: true,
+                  });
+                  Object.defineProperty(input, 'timeStamp', {
+                    value: pointer.timeStamp + ++serial,
+                  });
+                  canvas.dispatchEvent(input);
+                };
+                send('pointermove', cx + 220, 1);
+                send('pointerup', cx + 220, 0);
+                const color = document.querySelector<HTMLInputElement>('#color-hex')!;
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(
+                  color,
+                  '#00ff00',
+                );
+                color.dispatchEvent(new Event('input', { bubbles: true }));
+                send('pointerdown', cx, 1);
+                send('pointerup', cx, 0);
+              },
+              { once: true },
+            );
+          return { states, observer, started };
+        },
+        { cx, cy, software },
+      );
       await page.mouse.move(cx - 220, cy);
       await page.mouse.down();
-      await page.mouse.move(cx + 220, cy);
-      await page.mouse.up();
-      await page.getByRole('textbox', { name: 'Color hex' }).fill('#00ff00');
-      await page.mouse.click(cx, cy);
+      if (software) await page.mouse.up();
+      else {
+        await page.mouse.move(cx + 220, cy);
+        await page.mouse.up();
+        await page.getByRole('textbox', { name: 'Color hex' }).fill('#00ff00');
+        await page.mouse.click(cx, cy);
+      }
       await idle(page, 5);
       const intermediate = await boundary.evaluate(({ states, observer, started }) => {
         observer.disconnect();

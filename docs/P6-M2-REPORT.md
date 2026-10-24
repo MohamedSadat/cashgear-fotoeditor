@@ -158,6 +158,12 @@ scanout and physical pen latency. Raw results are
 - Fast worker startup/retry exposed null UI snapshots in new tests. Their helper
   now waits for the first published snapshot; command-returned history is used
   for the immutable baseline. The corrected full and final targeted runs pass.
+- A superseded remote run passed the 137 browser cases but retried one software
+  brush case: protocol stalls allowed its long stroke to finish before the click
+  meant to queue behind it. That fixture now submits two finite stroke boundaries
+  in one task on software drivers. Its intermediate painting/history assertions
+  remain intact; hardware retains native input. All nine repeated software
+  cases and four installed-browser hardware cases pass after this correction.
 - WebView2 exposed preview cleanup running while the panel did not own a preview.
   Cleanup now follows UI ownership. Queue generations and explicit GPU-wait
   cancellation cover replacement/cancellation during asynchronous initialization.

@@ -17,6 +17,9 @@ The final clipping-base correction also passes 36 hardware feature/compositor
 cases, including 400 adjustment scenes per browser/API. An adjustment clipping
 base now inherits backdrop alpha and retains its blend function.
 The corresponding six software compositor cases also pass.
+A superseded CI run retried a software brush-boundary fixture after protocol
+stalls. Its finite queued-input correction passes nine software repeats and
+four installed-browser hardware cases; P6-M2-REPORT.md records the evidence.
 Final pushed CI runs the 137 software cases together and both software WebView2
 APIs; green CI/deployment are required before the task reports M2 accepted. The
 task completion message names their immutable run links. The earlier layer
