@@ -159,7 +159,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
         }),
       );
       expect((await exported(page)).data.equals(saved.data)).toBe(true);
-      expect((await state(page)).canFade).toBe(false);
+      await expect.poll(async () => (await state(page)).canFade).toBe(false);
     },
   );
   test(

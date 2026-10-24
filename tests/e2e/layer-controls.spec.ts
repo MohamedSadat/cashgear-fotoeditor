@@ -6,6 +6,13 @@ import type { Page } from '@playwright/test';
 const snap = async (page: Page) =>
   JSON.parse((await page.getByTestId('gpu-canvas').getAttribute('data-snapshot'))!);
 async function exported(page: Page) {
+  // Mask/view metadata can arrive before recomposition releases worker admission.
+  await expect
+    .poll(async () => {
+      const state = await snap(page);
+      return !state.operation && !state.painting;
+    })
+    .toBe(true);
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export PNG', exact: true }).click();
   return PNG.sync.read(await readFile((await (await download).path())!));
