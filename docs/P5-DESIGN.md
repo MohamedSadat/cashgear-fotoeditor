@@ -53,9 +53,10 @@ No selection overlay appears in image export or thumbnails.
 
 ## Integration and clipboard
 
-React/zustand owns active tools, settings, pending geometric gestures and Quick
-Mask display mode. Worker/WASM owns committed selection, pixel candidates and
-clipboard samples. Pointer coordinates use the existing document transform.
+React/zustand owns active tools, settings and pending geometric gestures. The
+worker/WASM owns committed selection, Quick Mask view mode, pixel candidates and
+clipboard samples. Pointer coordinates use the existing document transform,
+including the worker's logical viewport dimensions at fractional DPR.
 M/L/W/G/Q and standard select/edit shortcuts coexist with painting/navigation.
 
 System image transfer uses Clipboard API PNG bytes. Encoding/decoding, selection
@@ -80,7 +81,7 @@ cold paged inputs, cancellation and budget refusal. Browser/desktop tests must
 inspect rendered overlays and exported samples on both GPU APIs, including
 selection clipping under rotated/flipped views and clipboard failure fallback.
 
-Use the existing 6000×4000 fixture for measured wand trials, recording source,
+Use the credited NASA 6000×4000 photo fixture for measured wand trials, recording source,
 tolerance, selected pixels, warm/cold state, end-to-end and kernel time, logical
 residency, browser/adapter and p50/p95/p99. The under-200 ms criterion cannot be
 replaced by a software result or a tiny connected region without disclosure.
@@ -90,3 +91,55 @@ edge fixture and record the comparison as pending until a reference is obtained.
 
 Only publish p5-select after all acceptance checks, remote checks and deployment
 pass. Report shipped/deferred work and measurements; propose P6 and stop.
+
+## Bounded integration details
+
+The wand matches into packed bitplanes, floods four-connected scanline spans,
+then converts coverage one tile at a time. Opaque WASM membership uses SIMD128;
+translucent samples use the same scalar visible-color distance. A packed 3×3
+Gaussian edge pass is checked independently against its scalar formula at word,
+tile and canvas seams. Tolerance 255 with no domain has an exact sparse all-canvas
+shortcut; report that case separately from matching/traversal. Bucket traversal
+treats zero selection coverage as a connectivity boundary, then applies partial
+selection coverage once when filling.
+
+Each worker slice runs resident bounded steps for approximately four milliseconds,
+then yields to cancellation and presentation. Cold source handles are hydrated
+before sampling. Before a wand job, the WASM bridge admits and releases up to
+32 MiB of temporary allocator capacity to avoid repeated small memory-growth
+calls while retaining selection history. It counts against CPU admission during
+that call, but sampled frame residency may miss it. Retained linear-memory pages
+and browser/driver allocations are outside the logical residency contract.
+
+GPU ants/Quick Mask use a screen mirror limited to 2048 pixels per side, RG8
+coverage plus inside-canvas data (at most 8 MiB each on CPU/GPU). The mirror is
+resampled in Rust only after view, selection or Quick Mask stroke changes;
+the GPU animates the contour. Large/high-DPR display mirrors can approximate a
+thin contour while authoritative selection/edit samples remain exact Gray8.
+Preparation admits overlapping old/new buffers before allocation.
+
+The worker distinguishes session revision from persisted content revision.
+Selection-only history navigation preserves the composite cache, thumbnails
+and recovery timestamp. Projects/recovery omit active selections; selection
+history remains usable during the current session. Copy/cut targets layer pixels;
+the UI asks the user to return from a layer mask or Quick Mask first. Fills and
+brushes can edit those mask targets. Own-origin system clipboard PNGs carry a
+custom token when supported, allowing exact internal samples to be reused;
+external PNGs go through the bounded Rust decoder and always paste a new layer.
+
+Geometric outlines are capped at 4096 points. Reaching the cap cancels visibly;
+Escape, blur, capture loss, tool changes or document revision changes discard
+unfinished gestures. Enter or double-click completes a polygon.
+
+## Feather comparison preparation
+
+Run `cargo run --release -p fotoeditor-io --example feather_fixture` to produce
+513×321 Gray8 PNGs in `bench/results/feather/`. The input combines a rectangle
+[0,80,260,240] and an anti-aliased ellipse [300,40,490,280], covering canvas-edge
+and 256-pixel tile-seam cases. Input SHA-256:
+`88b41ebca2ccbef2a1042efe77c9c53dfbaf6b5d24823e6494bf0d31df24eb8e`.
+Independent outputs use radii 1, 3, 8 and 24. Load the input as a Photoshop
+selection channel and export the feathered mask at each named radius with the
+Photoshop version and canvas-boundary option recorded. Compare aligned raw
+coverage, edge profiles and visual overlays. No Photoshop output is currently
+available; the prepared FotoEditor images do not satisfy that comparison.

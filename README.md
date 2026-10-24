@@ -6,9 +6,10 @@ RGBA8 PNG. Save editable `.cgfoto` projects and recover completed browser autosa
 The worker-owned Rust engine processes paged tiles and displays them through
 WebGPU or WebGL2.
 
-P4 adds layer controls, groups, masks, sixteen sRGB blend modes and streamed
-multi-layer projects. See [progress](docs/PROGRESS.md) and the
-[P4 report](docs/P4-REPORT.md) for acceptance evidence and measured limits.
+P5 adds selections, Quick Mask, fill/bucket and image clipboard editing on top
+of P4's layers, groups, masks and streamed projects. P5 acceptance is still in
+progress; the Photoshop feather comparison is pending. See
+[progress](docs/PROGRESS.md) and [selection contracts](docs/P5-DESIGN.md).
 
 Use New canvas or Open image, or drop an image into the viewport. Wheel/two-finger
 gestures scroll; Ctrl/Cmd+wheel or trackpad pinch zooms around the pointer.
@@ -42,6 +43,23 @@ selects several rows; new groups default to pass-through. Select a mask to paint
 it, or Alt-click to view it. Click the layer name to return to its pixels. Layer
 properties include blend mode, opacity, fill, visibility, clipping and locks.
 Mask and merge operations are undoable; thumbnails update after a stroke.
+
+M selects rectangle, Shift+M ellipse, L freehand lasso, Shift+L polygonal lasso,
+W magic wand and G paint bucket. Shift adds, Alt subtracts and both intersect;
+the toolbar also offers explicit modes, anti-aliasing, tolerance, contiguous
+matching and all-layer sampling. Enter/double-click completes a polygon;
+Escape cancels it. The Select menu includes all/none/inverse, feather, grow,
+shrink, border, smooth and foreground color range. Q toggles Quick Mask: black
+removes selected coverage, white or eraser adds it, and red marks excluded pixels.
+Brushes, erasers and fills respect the selection, including partial coverage.
+
+The Edit menu offers foreground/background Fill, Clear, Cut, Copy, Copy merged,
+Paste and Paste in place. Standard Ctrl/Cmd+C/X/V shortcuts work; Shift+V pastes
+in place. Paste creates a raster layer. The internal clipboard preserves exact
+straight samples and source position. System PNG clipboard access depends on
+browser permissions; failures are visible and the internal copy remains usable.
+External clipboard conversions may normalize transparent RGB. Active selections
+are session state and are omitted from project/recovery files.
 
 Save project preserves layers, masks, groups, straight RGBA8 samples, hidden RGB
 and exact DPI in a versioned `.cgfoto` file. Layered/large saves use a streamed

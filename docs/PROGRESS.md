@@ -31,6 +31,23 @@ production build pass. WASM is 3,093,875 bytes / gzip9 1,178,626 bytes; these
 processing jobs are not bridged into that WASM build yet. No P5 browser,
 clipboard, overlay, hardware or Photoshop acceptance is claimed by this checkpoint.
 
+The integrated engine and UI now include the P5 tool set, bounded fill/clipboard
+jobs, Quick Mask and GPU ants, session-only selection history, exact clipboard
+tokens and visible system-API fallback. All 79 Rust tests, native/WASM clippy,
+formatting, TypeScript, ESLint, 16 Vitest tests and licenses pass. Release WASM
+is 3,229,550 bytes / gzip9 1,231,998. Windows/WebView2 passes both APIs, including
+the new selection/fill/cut/paste/undo and Quick Mask pixel-isolation workflow.
+
+The final 6000×4000 NASA-photo wand workload passes on all four Chrome/Edge
+hardware APIs: maximum API return 164.42 ms, visible acknowledgement 188.20 ms,
+2,364,448 connected / 2,970,734 global matches at tolerance 32, AA on. Independent
+navigation and 300-pixel brush regression measurements are recorded in
+P5-REPORT.md. All 144 local installed Chrome/Edge hardware tests pass, with no
+failures, skips or retries, including all 36 P5 cases. The implementation and
+verification are pushed through `b26ef9c`; remote verification is linked from
+the phase report. The unavailable Photoshop feather comparison is still pending;
+prepared deterministic reference-input masks do not close that acceptance item.
+
 ## P4 — Complete
 
 Started on 2026-10-23 on clean main at `ae46c5b`, the tagged P3 completion.
