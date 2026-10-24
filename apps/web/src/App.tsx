@@ -4,6 +4,8 @@ import { CanvasHost } from './CanvasHost';
 import { BrushPanel } from './BrushPanel';
 import { HistoryPanel } from './HistoryPanel';
 import { LayerPanel } from './LayerPanel';
+import { SelectionControls } from './SelectionControls';
+import { useSelection } from './selection-state';
 import { useBrush } from './brush-state';
 import { updateWorkspace, useWorkspace } from './state';
 import type { EngineApi, Interaction } from './engine/types';
@@ -53,8 +55,10 @@ export function App() {
   const { status, backend, adapter, error, size, snapshot } = useWorkspace();
   const doc = snapshot?.document;
   const tool = useBrush((state) => state.tool);
+  const selectionBusy = useSelection((state) => state.busy);
+  const selectionNotice = useSelection((state) => state.notice);
   const painting = !!snapshot?.painting;
-  const working = !!busy || !!snapshot?.operation;
+  const working = !!busy || !!snapshot?.operation || selectionBusy;
   const recovery = snapshot?.recovery;
   const recoverable = recovery?.candidates[0];
   useEffect(() => {
@@ -297,17 +301,33 @@ export function App() {
           }}
         />
       </header>
+      <SelectionControls
+        api={engineApi}
+        disabled={!doc || status !== 'ready' || working || painting}
+      />
       <main className="workspace">
         <aside className="rail" aria-label="Tools">
-          {(['brush', 'eraser', 'eyedropper'] as const).map((t, i) => (
+          {(
+            [
+              'brush',
+              'eraser',
+              'eyedropper',
+              'rectangle',
+              'ellipse',
+              'lasso',
+              'polygon',
+              'wand',
+              'bucket',
+            ] as const
+          ).map((t, i) => (
             <button
               key={t}
               aria-label={t[0].toUpperCase() + t.slice(1)}
               aria-pressed={tool === t}
-              title={`${t} · ${['B', 'E', 'I'][i]}`}
+              title={`${t} · ${['B', 'E', 'I', 'M', 'Shift+M', 'L', 'Shift+L', 'W', 'G'][i]}`}
               onClick={() => useBrush.setState({ tool: t })}
             >
-              {['B', 'E', 'I'][i]}
+              {['B', 'E', 'I', '▭', '◯', 'L', '⌁', 'W', 'G'][i]}
             </button>
           ))}
           <span className="rail-line" />
@@ -594,14 +614,19 @@ export function App() {
             {busy ||
               snapshot?.operation ||
               snapshot?.editError ||
+              selectionNotice ||
               notice ||
               (painting ? 'Painting…' : 'B brush · E eraser · Alt sample · Ctrl+Z undo')}
           </span>
-          {busy && (
+          {(busy || selectionBusy) && (
             <button
               onClick={() => {
                 const token = operation.current;
-                void Promise.resolve(!workerJobStarted.current || api.current?.cancelJob())
+                void Promise.resolve(
+                  selectionBusy
+                    ? api.current?.cancelJob()
+                    : !workerJobStarted.current || api.current?.cancelJob(),
+                )
                   .then((cancelled) => {
                     if (cancelled && token === operation.current) {
                       ++operation.current;

@@ -89,7 +89,16 @@ export const presets: Record<string, Partial<BrushSettings>> = {
   },
 };
 interface BrushState {
-  tool: 'brush' | 'eraser' | 'eyedropper';
+  tool:
+    | 'brush'
+    | 'eraser'
+    | 'eyedropper'
+    | 'rectangle'
+    | 'ellipse'
+    | 'lasso'
+    | 'polygon'
+    | 'wand'
+    | 'bucket';
   settings: BrushSettings;
   primary: Rgba;
   secondary: Rgba;

@@ -6,6 +6,14 @@ import type { BackendPreference, EngineApi, Interaction } from './engine/types';
 import { updateWorkspace, useWorkspace } from './state';
 import { evaluateCurve, setBrush, useBrush } from './brush-state';
 import type { BrushSettings } from './brush-state';
+import {
+  useSelection,
+  performSelection,
+  selectionMode,
+  copySelection,
+  pasteSelection,
+} from './selection-state';
+import type { SelectionAction } from './engine/types';
 
 interface Props {
   generation: number;
@@ -31,6 +39,11 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
     outline.hidden = true;
     outline.setAttribute('aria-hidden', 'true');
     container.appendChild(outline);
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.classList.add('selection-gesture');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    svg.appendChild(path);
+    container.appendChild(svg);
     let disposed = false;
     let animation = 0;
     let pump: FramePump | undefined;
@@ -46,6 +59,82 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
     let lastSampleTime = -1;
     let lastScreen: [number, number] | undefined;
     let spray: ReturnType<typeof setInterval> | undefined;
+    let selectionDrag:
+      | {
+          pointer: number;
+          tool: 'rectangle' | 'ellipse' | 'lasso';
+          points: [number, number][];
+          mode: ReturnType<typeof selectionMode>;
+        }
+      | undefined;
+    let polygon: [number, number][] = [];
+    let gestureRevision: number | undefined;
+    let polygonMode: ReturnType<typeof selectionMode> = 'new';
+    const isSelecting = () => !['brush', 'eraser', 'eyedropper'].includes(useBrush.getState().tool);
+    const documentPoint = (x: number, y: number): [number, number] => {
+      const s = useWorkspace.getState().snapshot!;
+      const d = s.document!;
+      const qx = (x - s.view.screenWidth / 2 - s.view.panX) / s.view.zoom;
+      const qy = (y - s.view.screenHeight / 2 - s.view.panY) / s.view.zoom;
+      const c = Math.cos(s.view.rotation),
+        sn = Math.sin(s.view.rotation);
+      return [
+        (qx * c + qy * sn) * (s.view.flipped ? -1 : 1) + d.width / 2,
+        -qx * sn + qy * c + d.height / 2,
+      ];
+    };
+    const screenPoint = (p: [number, number]): [number, number] => {
+      const s = useWorkspace.getState().snapshot!;
+      const d = s.document!;
+      const x = (p[0] - d.width / 2) * (s.view.flipped ? -1 : 1),
+        y = p[1] - d.height / 2;
+      const c = Math.cos(s.view.rotation),
+        sn = Math.sin(s.view.rotation);
+      return [
+        s.view.screenWidth / 2 + s.view.panX + (x * c - y * sn) * s.view.zoom,
+        s.view.screenHeight / 2 + s.view.panY + (x * sn + y * c) * s.view.zoom,
+      ];
+    };
+    const drawGesture = (points: [number, number][]) => {
+      path.setAttribute(
+        'd',
+        points
+          .map((p, i) => {
+            const q = screenPoint(p);
+            return (i ? 'L' : 'M') + q.join(' ');
+          })
+          .join(' '),
+      );
+    };
+    const clearSelectionGesture = () => {
+      selectionDrag = undefined;
+      polygon = [];
+      gestureRevision = undefined;
+      path.setAttribute('d', '');
+    };
+    const gestureCurrent = () => {
+      if (gestureRevision === useWorkspace.getState().snapshot?.revision) return true;
+      clearSelectionGesture();
+      return false;
+    };
+    const tooManyPoints = () => {
+      clearSelectionGesture();
+      useSelection.setState({ notice: 'Selection cancelled: use at most 4096 outline points' });
+    };
+    function select(action: SelectionAction) {
+      void performSelection(client.api, action);
+    }
+    function finishPolygon() {
+      if (!gestureCurrent()) return;
+      if (polygon.length >= 3)
+        select({
+          kind: 'shape',
+          shape: { kind: 'polygon', points: polygon },
+          mode: polygonMode,
+          antialias: useSelection.getState().antialias,
+        });
+      clearSelectionGesture();
+    }
     const send = (value: Interaction) => pump?.input(value);
     const endSpray = () => {
       clearInterval(spray);
@@ -62,7 +151,12 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       const settings = strokeSettings ?? brush.settings;
       const snapshot = useWorkspace.getState().snapshot;
       outline.hidden =
-        !lastScreen || !snapshot?.document || space || rotate || brush.tool === 'eyedropper';
+        !lastScreen ||
+        !snapshot?.document ||
+        space ||
+        rotate ||
+        brush.tool === 'eyedropper' ||
+        isSelecting();
       canvas.style.cursor = outline.hidden ? 'crosshair' : 'none';
       if (!lastScreen || !snapshot) return;
       const pressure = strokePointer !== undefined ? (lastSample?.[2] ?? 1) : 1;
@@ -85,7 +179,10 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
           (snapshot.view.flipped ? -1 : 1) * settings.angle) +
         'deg)';
     }
-    const unsubscribeBrush = useBrush.subscribe(refreshOutline);
+    const unsubscribeBrush = useBrush.subscribe((state, previous) => {
+      if (state.tool !== previous.tool) clearSelectionGesture();
+      refreshOutline();
+    });
     function key(event: KeyboardEvent) {
       if (event.type === 'keyup') {
         if (event.code === 'Space') space = false;
@@ -106,8 +203,72 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       }
       if (event.code === 'KeyR') rotate = event.type === 'keydown';
       const modifier = event.ctrlKey || event.metaKey;
+      if (event.code === 'Escape') clearSelectionGesture();
+      if (event.code === 'Enter' && polygon.length) {
+        event.preventDefault();
+        finishPolygon();
+        return;
+      }
+      if (
+        !useSelection.getState().busy &&
+        !useWorkspace.getState().snapshot?.painting &&
+        useWorkspace.getState().snapshot?.document
+      ) {
+        if (modifier && ['KeyA', 'KeyD', 'KeyI', 'KeyC', 'KeyX', 'KeyV'].includes(event.code)) {
+          event.preventDefault();
+          if (event.code === 'KeyA') select({ kind: 'all' });
+          else if (event.code === 'KeyD') select({ kind: 'none' });
+          else if (event.code === 'KeyI' && event.shiftKey)
+            select({ kind: 'modify', operation: 'invert', radius: 0 });
+          else if (event.code === 'KeyC' || event.code === 'KeyX')
+            void copySelection(
+              client.api,
+              event.code === 'KeyX',
+              event.shiftKey && event.code === 'KeyC',
+            );
+          else if (event.code === 'KeyV') void pasteSelection(client.api, event.shiftKey);
+          return;
+        }
+        if (event.code === 'Delete' || event.code === 'Backspace') {
+          event.preventDefault();
+          select({ kind: 'fill', color: useBrush.getState().primary, clear: true });
+          return;
+        }
+        if (!modifier && event.code === 'KeyQ') {
+          event.preventDefault();
+          void client.api
+            .quickMask(!useWorkspace.getState().snapshot?.selection.quickMask)
+            .then((snapshot) => updateWorkspace({ snapshot }))
+            .catch((e) => useSelection.setState({ notice: String(e) }));
+          return;
+        }
+        if (!modifier && ['KeyM', 'KeyL', 'KeyW', 'KeyG'].includes(event.code)) {
+          event.preventDefault();
+          clearSelectionGesture();
+          useBrush.setState({
+            tool:
+              event.code === 'KeyM'
+                ? event.shiftKey
+                  ? 'ellipse'
+                  : 'rectangle'
+                : event.code === 'KeyL'
+                  ? event.shiftKey
+                    ? 'polygon'
+                    : 'lasso'
+                  : event.code === 'KeyW'
+                    ? 'wand'
+                    : 'bucket',
+          });
+          refreshOutline();
+          return;
+        }
+      }
       if (modifier && ['KeyZ', 'KeyY'].includes(event.code)) {
         event.preventDefault();
+        if (selectionDrag || polygon.length) {
+          clearSelectionGesture();
+          return;
+        }
         if (strokePointer !== undefined) cancelStroke();
         else
           send({
@@ -138,6 +299,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       refreshOutline();
     }
     function resetKeys() {
+      clearSelectionGesture();
       space = false;
       rotate = false;
       drag = undefined;
@@ -153,7 +315,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       'wheel',
       (event) => {
         event.preventDefault();
-        if (strokePointer !== undefined) return;
+        if (strokePointer !== undefined || selectionDrag || polygon.length) return;
         const rect = canvas.getBoundingClientRect();
         const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rect.height : 1;
         if (event.ctrlKey || event.metaKey)
@@ -181,13 +343,59 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       } else if (
         (event.button === 0 || event.button === 5) &&
         useWorkspace.getState().snapshot?.document &&
-        !useWorkspace.getState().snapshot?.operation
+        !useWorkspace.getState().snapshot?.operation &&
+        !useSelection.getState().busy
       ) {
         event.preventDefault();
         const brush = useBrush.getState();
         const rect = canvas.getBoundingClientRect();
         const x = event.clientX - rect.left,
           y = event.clientY - rect.top;
+        if (isSelecting()) {
+          const p = documentPoint(x, y),
+            settings = useSelection.getState();
+          const mode = selectionMode(event.shiftKey, event.altKey);
+          if (brush.tool === 'wand' || brush.tool === 'bucket') {
+            const doc = useWorkspace.getState().snapshot!.document!;
+            if (p[0] < 0 || p[1] < 0 || p[0] >= doc.width || p[1] >= doc.height) return;
+            const options = {
+              seed: [Math.floor(p[0]), Math.floor(p[1])] as [number, number],
+              tolerance: settings.tolerance,
+              contiguous: settings.contiguous,
+              antialias: settings.antialias,
+              mode,
+            };
+            select(
+              brush.tool === 'wand'
+                ? { kind: 'wand', options, allLayers: settings.allLayers }
+                : { kind: 'bucket', options, allLayers: settings.allLayers, color: brush.primary },
+            );
+          } else if (brush.tool === 'polygon') {
+            if (polygon.length === 0) {
+              polygonMode = mode;
+              gestureRevision = useWorkspace.getState().snapshot!.revision;
+            } else if (!gestureCurrent()) return;
+            if (event.detail >= 2) {
+              finishPolygon();
+              return;
+            }
+            if (polygon.length >= 4096) {
+              tooManyPoints();
+              return;
+            }
+            polygon.push(p);
+            drawGesture(polygon);
+          } else if (
+            brush.tool === 'rectangle' ||
+            brush.tool === 'ellipse' ||
+            brush.tool === 'lasso'
+          ) {
+            selectionDrag = { pointer: event.pointerId, tool: brush.tool, points: [p, p], mode };
+            gestureRevision = useWorkspace.getState().snapshot!.revision;
+            canvas.setPointerCapture(event.pointerId);
+          }
+          return;
+        }
         if (event.altKey || brush.tool === 'eyedropper') {
           send({ kind: 'sample-color', x, y, amount: 0 });
           return;
@@ -231,15 +439,55 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       }
     });
     function strokeSamples(event: PointerEvent) {
-      if (strokePointer !== event.pointerId) return;
       const rect = canvas.getBoundingClientRect();
-      for (const p of pointerSamples(event, rect, lastSampleTime)) {
-        lastSample = p;
-        lastSampleTime = p[5];
-        send({ kind: 'stroke-sample', x: 0, y: 0, amount: 0, sample: lastSample });
+      if (strokePointer === event.pointerId) {
+        for (const p of pointerSamples(event, rect, lastSampleTime)) {
+          lastSample = p;
+          lastSampleTime = p[5];
+          send({ kind: 'stroke-sample', x: 0, y: 0, amount: 0, sample: lastSample });
+        }
       }
       lastScreen = [event.clientX - rect.left, event.clientY - rect.top];
       refreshOutline();
+      if ((selectionDrag || polygon.length) && !gestureCurrent()) return;
+      if (selectionDrag?.pointer === event.pointerId) {
+        const p = documentPoint(event.clientX - rect.left, event.clientY - rect.top);
+        if (selectionDrag.tool === 'lasso') {
+          const last = selectionDrag.points[selectionDrag.points.length - 1];
+          if (
+            Math.hypot(p[0] - last[0], p[1] - last[1]) *
+              useWorkspace.getState().snapshot!.view.zoom >=
+            1
+          ) {
+            if (selectionDrag.points.length >= 4096) {
+              tooManyPoints();
+              return;
+            }
+            selectionDrag.points.push(p);
+          }
+          drawGesture(selectionDrag.points);
+        } else {
+          selectionDrag.points[1] = p;
+          const a = selectionDrag.points[0];
+          if (selectionDrag.tool === 'rectangle')
+            drawGesture([a, [p[0], a[1]], p, [a[0], p[1]], a]);
+          else {
+            const pts: [number, number][] = [];
+            for (let i = 0; i <= 64; i++) {
+              const angle = (i * Math.PI) / 32;
+              pts.push([
+                (a[0] + p[0]) / 2 + ((p[0] - a[0]) * Math.cos(angle)) / 2,
+                (a[1] + p[1]) / 2 + ((p[1] - a[1]) * Math.sin(angle)) / 2,
+              ]);
+            }
+            drawGesture(pts);
+          }
+        }
+      } else if (polygon.length)
+        drawGesture([
+          ...polygon,
+          documentPoint(event.clientX - rect.left, event.clientY - rect.top),
+        ]);
     }
     if (rawInput)
       canvas.addEventListener('pointerrawupdate', (event) => {
@@ -261,6 +509,30 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
     });
     canvas.addEventListener('pointerup', (event) => {
       drag = undefined;
+      if (selectionDrag?.pointer === event.pointerId) {
+        if (!gestureCurrent()) return;
+        const gesture = selectionDrag;
+        const rect = canvas.getBoundingClientRect();
+        const end = documentPoint(event.clientX - rect.left, event.clientY - rect.top);
+        const start = gesture.points[0];
+        if (gesture.tool === 'lasso') {
+          if (gesture.points.length >= 3)
+            select({
+              kind: 'shape',
+              shape: { kind: 'polygon', points: gesture.points },
+              mode: gesture.mode,
+              antialias: useSelection.getState().antialias,
+            });
+        } else
+          select({
+            kind: 'shape',
+            shape: { kind: gesture.tool, x0: start[0], y0: start[1], x1: end[0], y1: end[1] },
+            mode: gesture.mode,
+            antialias: useSelection.getState().antialias,
+          });
+        clearSelectionGesture();
+        return;
+      }
       if (strokePointer === event.pointerId) {
         const rect = canvas.getBoundingClientRect();
         endSpray();
@@ -277,11 +549,19 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
         strokeSettings = undefined;
       }
     });
+    canvas.addEventListener('dblclick', (event) => {
+      if (useBrush.getState().tool === 'polygon') {
+        event.preventDefault();
+        finishPolygon();
+      }
+    });
     canvas.addEventListener('pointercancel', () => {
+      clearSelectionGesture();
       drag = undefined;
       cancelStroke();
     });
     canvas.addEventListener('lostpointercapture', () => {
+      if (selectionDrag) clearSelectionGesture();
       drag = undefined;
       cancelStroke();
     });
@@ -432,6 +712,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       client.dispose();
       canvas.remove();
       outline.remove();
+      svg.remove();
     };
   }, [generation, diagnostic, onFaultReady, onApiReady]);
   return <div className="canvas-host" ref={host} />;
