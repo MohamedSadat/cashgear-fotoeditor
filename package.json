@@ -22,6 +22,7 @@
     "bench:viewport": "pnpm test:fixtures && node scripts/viewport-bench.mjs",
     "bench:brush": "pnpm test:fixtures && node scripts/brush-bench.mjs",
     "bench:history": "pnpm test:fixtures && node scripts/history-bench.mjs",
+    "bench:selection": "node scripts/selection-bench.mjs",
     "desktop:dev": "pnpm --filter @fotoeditor/desktop dev",
     "desktop:build": "pnpm build && pnpm --filter @fotoeditor/desktop build",
     "licenses:update": "node scripts/licenses.mjs",

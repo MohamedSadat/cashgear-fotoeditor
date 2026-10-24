@@ -47,6 +47,11 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       await expect
         .poll(async () => (await snap(page)).layers.nodes[1].properties.locks.pixels)
         .toBe(false);
+      // Both rows must remain visible while a native drag starts. Scrolling the
+      // destination after pointer-down can move the source out from under it.
+      await page
+        .getByRole('group', { name: 'Layer stack', exact: true })
+        .evaluate((stack) => stack.scrollIntoView({ block: 'center' }));
       await page
         .locator('.layer-name')
         .filter({ hasText: 'Ink' })

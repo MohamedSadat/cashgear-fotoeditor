@@ -318,6 +318,49 @@ try {
         JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot)
           .visibleTiles > 0,
     );
+    result.selection = await page.evaluate(async () => {
+      const api = Reflect.get(window, '__fotoeditor');
+      const hash = async () =>
+        Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', await api.exportPng())))
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('');
+      await api.newDocument(520, 64, 72);
+      await api.selectionAction({
+        kind: 'shape',
+        shape: { kind: 'rectangle', x0: 255, y0: 4, x1: 258, y1: 44 },
+        mode: 'new',
+        antialias: false,
+      });
+      await api.selectionAction({ kind: 'fill', color: [255, 0, 0, 255] });
+      const before = await hash();
+      await api.quickMask(true);
+      await api.selectionAction({ kind: 'fill', color: [255, 255, 255, 255] });
+      const quickMaskPreservesPixels = before === (await hash());
+      await api.historyJump(2);
+      await api.quickMask(false);
+      await api.selectionAction({ kind: 'cut', allLayers: false });
+      const cut = await hash();
+      const pasted = await api.selectionAction({ kind: 'paste', inPlace: true });
+      const exactPaste = before === (await hash());
+      await api.historyJump(2);
+      const restoredSelection = await api.quickMask(false);
+      return {
+        quickMaskPreservesPixels,
+        cutChangesPixels: before !== cut,
+        exactPaste,
+        layers: pasted.layers.nodes.length,
+        exactUndo: before === (await hash()),
+        selectionRestored: restoredSelection.selection.active,
+      };
+    });
+    expect(result.selection).toEqual({
+      quickMaskPreservesPixels: true,
+      cutChangesPixels: true,
+      exactPaste: true,
+      layers: 2,
+      exactUndo: true,
+      selectionRestored: true,
+    });
     if (process.env.P4_DESKTOP_DENSE === '1' && backend === 'WebGPU') {
       page.setDefaultTimeout(360000);
       const started = performance.now();
