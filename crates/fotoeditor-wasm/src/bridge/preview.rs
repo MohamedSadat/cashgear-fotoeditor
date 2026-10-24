@@ -213,17 +213,17 @@ impl Engine {
         encoded: &str,
         tile: u32,
     ) -> Result<js_sys::Promise, JsValue> {
-        if encoded.len() > 4096 || tile >= 6 {
+        if encoded.len() > 4096 || tile >= 9 {
             return Err(js("Invalid filter golden request"));
         }
         self.residency().check_cpu(32 * 1024 * 1024).map_err(js)?;
         let filter: Filter = serde_json::from_str(encoded).map_err(js)?;
         filter.validate().map_err(js)?;
-        let mut doc = Document::blank(513, 259, 72.0).map_err(js)?;
+        let mut doc = Document::blank(513, 513, 72.0).map_err(js)?;
         let target = doc.layers[0].id;
         doc.layers[0].properties.locks.alpha = tile % 2 == 1;
-        let mut selection = TileSurface::new(513, 259);
-        for y in 0..259 {
+        let mut selection = TileSurface::new(513, 513);
+        for y in 0..513 {
             for x in 0..513 {
                 doc.raster_mut().write(
                     x,
@@ -232,21 +232,30 @@ impl Engine {
                         (x * 31 + y * 7) as u8,
                         (x * 13 + y * 19) as u8,
                         (x * 3 + y * 43) as u8,
-                        [0, 1, 128, 255][(x + y) as usize % 4],
+                        if x < 512 && y < 512 {
+                            255
+                        } else {
+                            [0, 1, 128, 255][(x + y) as usize % 4]
+                        },
                     ]),
                 );
                 selection.write(x, y, Gray8([0, 128, 255][(x / 7 + y / 11) as usize % 3]));
             }
         }
-        doc.selection = Some(std::sync::Arc::new(selection));
+        doc.raster_mut().compact_dirty();
+        doc.selection = if tile.is_multiple_of(2) {
+            None
+        } else {
+            Some(std::sync::Arc::new(selection))
+        };
         let view = View {
             width: 513.0,
-            height: 259.0,
+            height: 513.0,
             document_width: 513.0,
-            document_height: 259.0,
+            document_height: 513.0,
             ..View::default()
         };
-        let mut job = ViewportPreviewJob::new(&doc, view, 513, 259).map_err(js)?;
+        let mut job = ViewportPreviewJob::new(&doc, view, 513, 513).map_err(js)?;
         job.clamp_target(target).map_err(js)?;
         while !job.step().map_err(js)? {}
         let runtime = PreviewRuntime {
@@ -256,7 +265,7 @@ impl Engine {
             settings: None,
             next: tile,
             view,
-            size: (513, 259),
+            size: (513, 513),
             filter_mode: true,
             filter: Some(filter.clone()),
         };

@@ -463,7 +463,7 @@ const api: EngineApi = {
         { kind: 'median', radius: 1 },
         { kind: 'gaussian', radius: 0 },
       ]) {
-        for (let tile = 0; tile < 6; tile++) {
+        for (let tile = 0; tile < 9; tile++) {
           const bytes = (await e.filter_golden_begin(JSON.stringify(filter), tile)) as Uint8Array;
           errors.push(e.golden_compare(bytes));
           await yieldProjectTask();
