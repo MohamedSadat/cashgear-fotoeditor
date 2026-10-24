@@ -164,6 +164,11 @@ scanout and physical pen latency. Raw results are
   in one task on software drivers. Its intermediate painting/history assertions
   remain intact; hardware retains native input. All nine repeated software
   cases and four installed-browser hardware cases pass after this correction.
+- A subsequent full local software run passed 136 cases and exposed an early
+  lock-test click. Its trace shows the property already applied while layer
+  recomposition still blocked canvas input. The test now waits for operation
+  completion before checking lock rejection and continuing the layer sequence.
+  All 12 software repeats and four installed-browser hardware cases pass.
 - WebView2 exposed preview cleanup running while the panel did not own a preview.
   Cleanup now follows UI ownership. Queue generations and explicit GPU-wait
   cancellation cover replacement/cancellation during asynchronous initialization.

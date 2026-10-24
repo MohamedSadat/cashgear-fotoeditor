@@ -39,6 +39,9 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       await expect
         .poll(async () => (await snap(page)).layers.nodes[1].properties.locks.pixels)
         .toBe(true);
+      // Metadata can be published before recomposition releases the operation.
+      // Wait until the canvas accepts input before testing lock rejection.
+      await expect.poll(async () => (await snap(page)).operation).toBeUndefined();
       const history = (await snap(page)).history.undo;
       await page.mouse.click(box.x + box.width / 2 + 30, box.y + box.height / 2);
       await expect.poll(async () => (await snap(page)).editError).toMatch(/locked|Unlock/i);
@@ -47,6 +50,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       await expect
         .poll(async () => (await snap(page)).layers.nodes[1].properties.locks.pixels)
         .toBe(false);
+      await expect.poll(async () => (await snap(page)).operation).toBeUndefined();
       // Both rows must remain visible while a native drag starts. Scrolling the
       // destination after pointer-down can move the source out from under it.
       await page
