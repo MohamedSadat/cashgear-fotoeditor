@@ -277,8 +277,54 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       await range(page, 'Brush opacity', 0.4);
       await range(page, 'Brush flow', 0.2);
       await page.mouse.move(cx - 30, cy);
+      if (process.env.GPU_TEST_SOFTWARE === '1')
+        await page.getByTestId('gpu-canvas').evaluate((canvas) => {
+          canvas.addEventListener(
+            'pointerdown',
+            (event) => {
+              const p = event as PointerEvent;
+              Reflect.set(window, 'opacityPointer', { id: p.pointerId, time: p.timeStamp });
+            },
+            { once: true },
+          );
+        });
       await page.mouse.down();
-      for (const x of [30, -30, 30, -30, 30]) await page.mouse.move(cx + x, cy, { steps: 3 });
+      if (process.env.GPU_TEST_SOFTWARE === '1') {
+        // Keep this finite overlap fixture at 15 samples on software drivers.
+        // Slow compositor acknowledgements can otherwise extend a native move
+        // into a long stationary spray. Native input and timed spray have their
+        // own cases; every pixel/history assertion below still runs here.
+        await page.getByTestId('gpu-canvas').evaluate(
+          (canvas, { cx, cy }) => {
+            const pointer = Reflect.get(window, 'opacityPointer') as { id: number; time: number };
+            let previous = -30,
+              serial = 0;
+            const send = (type: string, x: number, buttons: number) => {
+              const event = new PointerEvent(type, {
+                pointerId: pointer.id,
+                pointerType: 'mouse',
+                isPrimary: true,
+                clientX: x,
+                clientY: cy,
+                buttons,
+                button: buttons ? -1 : 0,
+                bubbles: true,
+              });
+              Object.defineProperty(event, 'timeStamp', { value: pointer.time + ++serial });
+              canvas.dispatchEvent(event);
+            };
+            for (const target of [30, -30, 30, -30, 30]) {
+              for (let step = 1; step <= 3; step++)
+                send('pointermove', cx + previous + ((target - previous) * step) / 3, 1);
+              previous = target;
+            }
+            send('pointerup', cx + previous, 0);
+          },
+          { cx, cy },
+        );
+      } else {
+        for (const x of [30, -30, 30, -30, 30]) await page.mouse.move(cx + x, cy, { steps: 3 });
+      }
       await page.mouse.up();
       await idle(page, 1);
       const painted = await exportImage(page);
