@@ -3,6 +3,8 @@
 use fotoeditor_core::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
+use std::sync::Arc;
+type PinnedTiles = HashMap<TileCoord, Arc<Tile<Rgba8>>>;
 
 pub const FILTER_SCRATCH: u64 = 8 * 1024 * 1024;
 pub const FILTER_ALLOCATION_CHUNK: u64 = 16 * 1024 * 1024;
@@ -281,6 +283,67 @@ impl FilterJob {
         let height = TILE_SIZE.min(self.before.height - c.1 * TILE_SIZE) as usize;
         let stride = width + 2 * r;
         let rows = height + 2 * r;
+        let selection = self.before.selection.as_ref();
+        let mask = selection
+            .and_then(|s| s.tiles().get(&c))
+            .map(|t| t.pin())
+            .transpose()?;
+        let full_coverage = mask.as_ref().map_or_else(
+            || selection.is_none_or(|s| s.default.0 == 255),
+            |m| {
+                (0..height).all(|y| {
+                    m.pixels[y * 256..y * 256 + width]
+                        .iter()
+                        .all(|p| p.0 == 255)
+                })
+            },
+        );
+        let complete = ((x1 / 256 - x0 / 256 + 1) * (y1 / 256 - y0 / 256 + 1)) as usize;
+        if full_coverage
+            && matches!(
+                self.filter,
+                Filter::Gaussian { .. } | Filter::BoxBlur { .. }
+            )
+            && pinned.len() == complete
+            && pinned.values().all(|t| t.known_opaque)
+        {
+            gather_opaque_rgb(
+                &pinned,
+                (
+                    i64::from(c.0) * 256 - r as i64,
+                    i64::from(c.1) * 256 - r as i64,
+                ),
+                (self.before.width, self.before.height),
+                (stride, rows),
+                &mut self.workspace.packed,
+            );
+            separable_into(
+                &self.workspace.packed,
+                3,
+                stride,
+                width,
+                height,
+                &self.weights,
+                &mut self.workspace.result,
+                &mut self.workspace.horizontal,
+            );
+            let mut pixels = pinned[&c].pixels.clone();
+            let changed = apply_opaque_rgb(&mut pixels, &self.workspace.result, width, height);
+            if changed {
+                self.candidate
+                    .layer_mut(self.layer)?
+                    .raster_samples_mut()?
+                    .insert(c, pixels);
+                let tile = self.candidate.layer(self.layer)?.raster_samples()?.tiles()[&c].clone();
+                self.full
+                    .layer_mut(self.layer)?
+                    .raster_samples_mut()?
+                    .insert_handle(c, tile)?;
+                self.allocated += (TILE_PIXELS * 4) as u64;
+            }
+            self.next += 1;
+            return Ok(self.done());
+        }
         let input = &mut self.workspace.input;
         resize_scratch(input, stride * rows, [0.0; 4]);
         for y in 0..rows {
@@ -305,8 +368,13 @@ impl FilterJob {
                     if repeated {
                         row.fill(premul(tile.pixels[start]));
                     } else {
-                        for (out, &p) in row.iter_mut().zip(&tile.pixels[start..start + count]) {
-                            *out = premul(p);
+                        let source = &tile.pixels[start..start + count];
+                        if tile.known_opaque || source.iter().all(|p| p.0[3] == 255) {
+                            copy_opaque_rgba(row, source);
+                        } else {
+                            for (out, &p) in row.iter_mut().zip(source) {
+                                *out = premul(p);
+                            }
                         }
                     }
                 } else {
@@ -326,25 +394,10 @@ impl FilterJob {
             opaque,
         );
         let output = &self.workspace.output;
-        let selection = self.before.selection.as_ref();
-        let mask = selection
-            .and_then(|s| s.tiles().get(&c))
-            .map(|t| t.pin())
-            .transpose()?;
         let mut pixels = pinned
             .get(&c)
             .map_or_else(|| vec![surface.default; TILE_PIXELS], |t| t.pixels.clone());
         let alpha_lock = self.before.layer(self.layer)?.properties.locks.alpha;
-        let full_coverage = mask.as_ref().map_or_else(
-            || selection.is_none_or(|s| s.default.0 == 255),
-            |m| {
-                (0..height).all(|y| {
-                    m.pixels[y * 256..y * 256 + width]
-                        .iter()
-                        .all(|p| p.0 == 255)
-                })
-            },
-        );
         let mut full = (!full_coverage).then(|| pixels.clone());
         let mut changed = false;
         if opaque && full_coverage {
@@ -409,6 +462,140 @@ impl FilterJob {
             TileCommand::for_layer(&self.before, &self.candidate, self.layer)?
                 .named(self.filter.label()),
         )
+    }
+}
+
+#[inline(never)]
+fn gather_opaque_rgb(
+    pinned: &PinnedTiles,
+    origin: (i64, i64),
+    canvas: (u32, u32),
+    size: (usize, usize),
+    out: &mut Vec<f32>,
+) {
+    let (stride, rows) = size;
+    resize_scratch(out, stride * rows * 3, 0.0);
+    for y in 0..rows {
+        let sy = (origin.1 + y as i64).clamp(0, i64::from(canvas.1) - 1) as u32;
+        let mut x = 0;
+        while x < stride {
+            let raw = origin.0 + x as i64;
+            let sx = raw.clamp(0, i64::from(canvas.0) - 1) as u32;
+            let repeated = raw < 0 || raw >= i64::from(canvas.0);
+            let count = if raw < 0 {
+                (-raw) as usize
+            } else if repeated {
+                stride - x
+            } else {
+                (256 - sx % 256).min(canvas.0 - sx) as usize
+            }
+            .min(stride - x);
+            let tile = &pinned[&(sx / 256, sy / 256)];
+            let start = ((sy % 256) * 256 + sx % 256) as usize;
+            let target = &mut out[(y * stride + x) * 3..(y * stride + x + count) * 3];
+            if repeated {
+                let p = tile.pixels[start].0;
+                for rgb in target.as_chunks_mut::<3>().0 {
+                    *rgb = [f32::from(p[0]), f32::from(p[1]), f32::from(p[2])];
+                }
+            } else {
+                copy_opaque_rgb(target, &tile.pixels[start..start + count]);
+            }
+            x += count;
+        }
+    }
+}
+#[inline(never)]
+fn apply_opaque_rgb(pixels: &mut [Rgba8], input: &[f32], width: usize, height: usize) -> bool {
+    let mut changed = false;
+    for y in 0..height {
+        for (old, p) in pixels[y * 256..y * 256 + width]
+            .iter_mut()
+            .zip(input[y * width * 3..(y + 1) * width * 3].as_chunks::<3>().0)
+        {
+            let after = Rgba8([quantize(p[0]), quantize(p[1]), quantize(p[2]), 255]);
+            changed |= *old != after;
+            *old = after;
+        }
+    }
+    changed
+}
+#[inline(never)]
+fn copy_opaque_rgb(out: &mut [f32], pixels: &[Rgba8]) {
+    assert_eq!(out.len(), pixels.len() * 3);
+    #[cfg(target_arch = "wasm32")]
+    let copied = {
+        use std::arch::wasm32::*;
+        let mut i = 0;
+        // Each load contains four complete RGBA8 samples. Unsigned extension
+        // produces positive i32 lanes; shuffles remove only the opaque alpha.
+        unsafe {
+            while i + 4 <= pixels.len() {
+                let bytes = v128_load(pixels.as_ptr().add(i).cast());
+                let lo = u16x8_extend_low_u8x16(bytes);
+                let hi = u16x8_extend_high_u8x16(bytes);
+                let a = f32x4_convert_i32x4(u32x4_extend_low_u16x8(lo));
+                let b = f32x4_convert_i32x4(u32x4_extend_high_u16x8(lo));
+                let c = f32x4_convert_i32x4(u32x4_extend_low_u16x8(hi));
+                let d = f32x4_convert_i32x4(u32x4_extend_high_u16x8(hi));
+                let dst = out.as_mut_ptr().add(i * 3);
+                v128_store(dst.cast(), i32x4_shuffle::<0, 1, 2, 4>(a, b));
+                v128_store(dst.add(4).cast(), i32x4_shuffle::<1, 2, 4, 5>(b, c));
+                v128_store(dst.add(8).cast(), i32x4_shuffle::<2, 4, 5, 6>(c, d));
+                i += 4;
+            }
+        }
+        i
+    };
+    #[cfg(not(target_arch = "wasm32"))]
+    let copied = 0;
+    for (rgb, p) in out[copied * 3..]
+        .as_chunks_mut::<3>()
+        .0
+        .iter_mut()
+        .zip(&pixels[copied..])
+    {
+        *rgb = [f32::from(p.0[0]), f32::from(p.0[1]), f32::from(p.0[2])];
+    }
+}
+#[inline(never)]
+fn copy_opaque_rgba(out: &mut [[f32; 4]], pixels: &[Rgba8]) {
+    assert_eq!(out.len(), pixels.len());
+    #[cfg(target_arch = "wasm32")]
+    let copied = {
+        use std::arch::wasm32::*;
+        let mut i = 0;
+        // Equal slice lengths above bound every unaligned vector access.
+        unsafe {
+            while i + 4 <= pixels.len() {
+                let bytes = v128_load(pixels.as_ptr().add(i).cast());
+                let lo = u16x8_extend_low_u8x16(bytes);
+                let hi = u16x8_extend_high_u8x16(bytes);
+                v128_store(
+                    out.as_mut_ptr().add(i).cast(),
+                    f32x4_convert_i32x4(u32x4_extend_low_u16x8(lo)),
+                );
+                v128_store(
+                    out.as_mut_ptr().add(i + 1).cast(),
+                    f32x4_convert_i32x4(u32x4_extend_high_u16x8(lo)),
+                );
+                v128_store(
+                    out.as_mut_ptr().add(i + 2).cast(),
+                    f32x4_convert_i32x4(u32x4_extend_low_u16x8(hi)),
+                );
+                v128_store(
+                    out.as_mut_ptr().add(i + 3).cast(),
+                    f32x4_convert_i32x4(u32x4_extend_high_u16x8(hi)),
+                );
+                i += 4;
+            }
+        }
+        i
+    };
+    #[cfg(not(target_arch = "wasm32"))]
+    let copied = 0;
+    for (out, p) in out[copied..].iter_mut().zip(&pixels[copied..]) {
+        *out = p.0.map(f32::from);
     }
 }
 
@@ -1283,5 +1470,77 @@ mod tests {
                     * 4;
             assert!(capacity as u64 + 3 * (TILE_PIXELS * 4) as u64 <= FILTER_SCRATCH);
         }
+    }
+    #[test]
+    fn opaque_simd_copies_preserve_channels_and_tails() {
+        for length in [1, 3, 4, 5, 127, 256, 259] {
+            let pixels: Vec<_> = (0..length)
+                .map(|i| Rgba8([(i * 17) as u8, (i * 37) as u8, (i * 71) as u8, 255]))
+                .collect();
+            let mut rgb = vec![0.0; length * 3];
+            let mut rgba = vec![[0.0; 4]; length];
+            copy_opaque_rgb(&mut rgb, &pixels);
+            copy_opaque_rgba(&mut rgba, &pixels);
+            for i in 0..length {
+                assert_eq!(rgba[i], pixels[i].0.map(f32::from));
+                assert_eq!(&rgb[i * 3..i * 3 + 3], &rgba[i][..3]);
+            }
+        }
+    }
+    #[test]
+    fn complete_opaque_halos_match_independent_gaussian_and_preserve_canvas_padding() {
+        let mut d = Document::blank(513, 513, 72.0).unwrap();
+        for cy in 0..3 {
+            for cx in 0..3 {
+                d.raster_mut().insert(
+                    (cx, cy),
+                    (0..TILE_PIXELS)
+                        .map(|i| {
+                            let x = cx * 256 + i as u32 % 256;
+                            let y = cy * 256 + i as u32 / 256;
+                            Rgba8([
+                                (x * 31 + y * 7) as u8,
+                                (x * 13 + y * 19) as u8,
+                                (x * 3 + y * 43) as u8,
+                                255,
+                            ])
+                        })
+                        .collect(),
+                );
+            }
+        }
+        let j = run(&d, Filter::Gaussian { radius: 20 });
+        let sigma = 20.0f64 / 3.0;
+        let weights: Vec<_> = (-20..=20)
+            .map(|k| (-f64::from(k * k) / (2.0 * sigma * sigma)).exp())
+            .collect();
+        let sum: f64 = weights.iter().sum();
+        for y in [0, 255, 256, 511, 512] {
+            for x in [0, 255, 256, 511, 512] {
+                let mut rgb = [0.0; 3];
+                for dy in -20..=20 {
+                    for dx in -20..=20 {
+                        let p = d
+                            .raster()
+                            .sample((x + dx).clamp(0, 512) as u32, (y + dy).clamp(0, 512) as u32);
+                        for (c, value) in rgb.iter_mut().enumerate() {
+                            *value += f64::from(p.0[c])
+                                * weights[(dx + 20) as usize]
+                                * weights[(dy + 20) as usize]
+                                / (sum * sum);
+                        }
+                    }
+                }
+                let p = j.candidate.raster().sample(x as u32, y as u32);
+                assert_eq!(p.0[3], 255);
+                for (c, expected) in rgb.into_iter().enumerate() {
+                    assert!(p.0[c].abs_diff((expected + 0.5) as u8) <= 1);
+                }
+            }
+        }
+        assert_eq!(
+            j.candidate.raster().tiles()[&(2, 2)].pin().unwrap().pixels[1],
+            d.raster().tiles()[&(2, 2)].pin().unwrap().pixels[1]
+        );
     }
 }
