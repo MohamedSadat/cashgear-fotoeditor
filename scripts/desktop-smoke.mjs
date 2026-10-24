@@ -361,6 +361,51 @@ try {
       exactUndo: true,
       selectionRestored: true,
     });
+    result.adjustments = await page.evaluate(async () => {
+      const api = Reflect.get(window, '__fotoeditor');
+      const hash = async () =>
+        Array.from(
+          new Uint8Array(await crypto.subtle.digest('SHA-256', await api.exportPng())),
+        ).join(',');
+      await api.newDocument(513, 3, 72);
+      await api.selectionAction({ kind: 'fill', color: [128, 64, 0, 128] });
+      await api.selectionAction({
+        kind: 'shape',
+        shape: { kind: 'rectangle', x0: 255.5, y0: 0, x1: 257.5, y1: 3 },
+        mode: 'new',
+        antialias: true,
+      });
+      const before = await hash();
+      await api.applyAdjustment({
+        kind: 'curves',
+        points: [
+          [0, 1],
+          [1, 0],
+        ],
+      });
+      const after = await hash();
+      await api.historyJump(2);
+      const exactUndo = before === (await hash());
+      await api.historyJump(3);
+      const exactRedo = after === (await hash());
+      const h = await api.histogram(
+        (await api.selectionAction({ kind: 'none' })).layers.nodes[0].id,
+      );
+      return {
+        changed: before !== after,
+        exactUndo,
+        exactRedo,
+        pixels: h.pixels,
+        weight: h.weight,
+      };
+    });
+    expect(result.adjustments).toEqual({
+      changed: true,
+      exactUndo: true,
+      exactRedo: true,
+      pixels: 1539,
+      weight: 197376,
+    });
     if (process.env.P4_DESKTOP_DENSE === '1' && backend === 'WebGPU') {
       page.setDefaultTimeout(360000);
       const started = performance.now();
