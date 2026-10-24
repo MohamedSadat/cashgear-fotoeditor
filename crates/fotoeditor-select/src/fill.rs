@@ -120,6 +120,11 @@ impl FillJob {
     }
     pub fn visit_candidates(&self, visitor: &mut dyn FnMut(TileRef<'_>)) {
         self.candidate.visit_tiles(visitor);
+        if let Some(s) = &self.region {
+            for t in s.tiles().values() {
+                visitor(TileRef::Gray(t));
+            }
+        }
     }
     pub fn temporary_bytes(&self) -> u64 {
         let mut seen = HashSet::new();
