@@ -5,6 +5,9 @@ import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import os from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
+const viewMode = process.env.PERF_VIEW ?? 'fit';
+if (!['fit', 'actual'].includes(viewMode)) throw new Error('PERF_VIEW must be fit or actual');
+const actualPixels = viewMode === 'actual';
 const base = process.env.PERF_BASE_URL ?? 'http://127.0.0.1:4188';
 const server = process.env.PERF_BASE_URL
   ? undefined
@@ -76,6 +79,18 @@ try {
           throw new Error('Hardware GPU required');
         await page.getByTestId('open-image').setInputFiles(fixture);
         await expect(page.getByTestId('operation-status')).toHaveText(/Opened in/);
+        if (actualPixels) {
+          await page.getByRole('button', { name: 'Actual pixels', exact: true }).click();
+          await expect(page.getByTestId('zoom')).toHaveText('100.0%');
+          await expect
+            .poll(() =>
+              page.getByTestId('gpu-canvas').evaluate((canvas) => {
+                const s = JSON.parse(canvas.dataset.snapshot);
+                return s.view.zoom === 1 && s.refining === 0 && s.visibleTiles > 0;
+              }),
+            )
+            .toBe(true);
+        }
         await page.getByRole('button', { name: 'Show filters section' }).click();
         const controls = [];
         for (const scenario of [
@@ -166,10 +181,10 @@ try {
           });
         }
         await page.screenshot({
-          path: `bench/results/p6-m3-${channel}-${backend.toLowerCase()}-preview.png`,
+          path: `bench/results/p6-m3-${channel}-${backend.toLowerCase()}-${actualPixels ? 'actual-' : ''}preview.png`,
         });
         await page.getByRole('checkbox', { name: 'Live filter preview' }).uncheck();
-        const api = await page.evaluate(async () => {
+        const api = await page.evaluate(async (actualPixels) => {
           const api = Reflect.get(window, '__fotoeditor');
           await api.endAdjustmentPreview();
           const canvas = document.querySelector('[data-testid="gpu-canvas"]');
@@ -178,9 +193,9 @@ try {
             throw new Error('24 MP source required');
           const target = state.layers.active ?? state.layers.nodes[0].id;
           const configurations = [
-            { kind: 'gaussian', radius: 20 },
-            { kind: 'box-blur', radius: 20 },
-            { kind: 'unsharp-mask', radius: 3, amount: 1.3, threshold: 7 },
+            { kind: 'gaussian', radius: actualPixels ? 64 : 20 },
+            { kind: 'box-blur', radius: actualPixels ? 64 : 20 },
+            { kind: 'unsharp-mask', radius: actualPixels ? 64 : 3, amount: 1.3, threshold: 7 },
             { kind: 'sharpen', amount: 1.2 },
             { kind: 'median', radius: 5 },
           ];
@@ -205,7 +220,7 @@ try {
             await api.endAdjustmentPreview();
           }
           return { scenarios, memories, history: JSON.parse(canvas.dataset.snapshot).history };
-        });
+        }, actualPixels);
         for (const scenario of api.scenarios) {
           scenario.warmApiMs = summary(scenario.trials.slice(1).map((t) => t.apiMs));
           scenario.warmPresentedMs = summary(scenario.trials.slice(1).map((t) => t.updateMs));
@@ -239,12 +254,13 @@ try {
   const assets = resolve('apps/web/dist/assets');
   const wasm = (await readdir(assets)).find((p) => p.endsWith('.wasm'));
   await writeFile(
-    'bench/results/p6-m3-preview-performance.json',
+    process.env.PERF_OUTPUT ??
+      `bench/results/p6-m3-preview-${actualPixels ? 'actual-' : ''}performance.json`,
     JSON.stringify(
       {
         measuredAt: new Date().toISOString(),
         machine: { os: os.version(), cpu: os.cpus()[0].model, ram: os.totalmem() },
-        viewport: { width: 1280, height: 850, dpr: 1 },
+        viewport: { width: 1280, height: 850, dpr: 1, viewMode },
         wasm: { file: wasm, sha256: hash(await readFile(resolve(assets, wasm))) },
         dataset: {
           path: fixture,
@@ -253,7 +269,7 @@ try {
           credit: 'NASA/JPL-Caltech/IPGP',
         },
         method:
-          'Hardware only. Resident 6000×4000 source, fitted view. Five filter controls run first: initial preparation and first render/GPU initialization are recorded separately, then 20 DOM slider input events per control are measured through completed React status and the following UI frame. Five filters then each have one first and ten warm API/present trials, reusing the visible source cache. Rust nearest-samples the visible source at bounded display resolution; final Apply uses full document resolution. Logical residency excludes allocator/browser/driver overhead.',
+          'Hardware only. Resident 6000×4000 source at the recorded view mode. Five filter controls run first: initial preparation and first render/GPU initialization are recorded separately, then 20 DOM slider input events per control are measured through completed React status and the following UI frame. Five filters then each have one first and ten warm API/present trials, reusing the visible source cache. Actual-pixel API cases use maximum convolution/median radii. Rust nearest-samples the visible source at bounded display resolution; final Apply uses full document resolution. Logical residency excludes allocator/browser/driver overhead.',
         results,
       },
       null,
