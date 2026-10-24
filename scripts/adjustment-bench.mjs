@@ -186,7 +186,7 @@ try {
   const assets = resolve('apps/web/dist/assets');
   const wasm = (await readdir(assets)).find((p) => p.endsWith('.wasm'));
   await writeFile(
-    'bench/results/p6-m1-performance.json',
+    'bench/results/p6-m1-adjustment-performance.json',
     JSON.stringify(
       {
         measuredAt: new Date().toISOString(),

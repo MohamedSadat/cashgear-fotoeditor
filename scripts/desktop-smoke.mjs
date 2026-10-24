@@ -404,7 +404,7 @@ try {
       exactUndo: true,
       exactRedo: true,
       pixels: 1539,
-      weight: 197376,
+      weight: 1539 * 128,
     });
     if (process.env.P4_DESKTOP_DENSE === '1' && backend === 'WebGPU') {
       page.setDefaultTimeout(360000);
