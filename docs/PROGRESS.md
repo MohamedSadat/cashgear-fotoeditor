@@ -13,6 +13,16 @@ available; its visual feather acceptance remains pending, without an exception.
 P5-DESIGN.md records the implementation and validation contracts. P5 is not
 complete and `p5-select` has not been created.
 
+The first Rust foundation adds shared Gray8 selection state to document/history
+residency and paging enumeration, exact selection commands, rectangle/ellipse/
+polygon masks, coverage algebra and selection-clipped brush/eraser strokes.
+The native/WASM clippy checks, all 65 Rust tests, TypeScript, ESLint, 14 Vitest
+tests, formatting, the 450-expression license inventory and production build
+passed. Release WASM is 3,093,861 bytes / gzip9 1,178,584 bytes. This is an
+internal foundation; selection UI, overlays, fill/clipboard and P5 browser/
+hardware/desktop acceptance remain unfinished. Existing generated benchmark
+output is now excluded from ESLint as it already is from Git and Prettier.
+
 ## P4 — Complete
 
 Started on 2026-10-23 on clean main at `ae46c5b`, the tagged P3 completion.

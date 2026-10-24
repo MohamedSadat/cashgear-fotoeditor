@@ -285,6 +285,7 @@ mod tests {
     }
     fn result(layers: Vec<Layer>) -> Rgba8 {
         let document = Document {
+            selection: None,
             width: 1,
             height: 1,
             dpi: 72.0,

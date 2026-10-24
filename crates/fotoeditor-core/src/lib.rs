@@ -6,6 +6,7 @@ mod display;
 mod layer_jobs;
 mod layers;
 mod paging;
+mod selection;
 mod tiles;
 mod view;
 pub use blend::*;
@@ -15,6 +16,7 @@ pub use display::*;
 pub use layer_jobs::*;
 pub use layers::*;
 pub use paging::*;
+pub use selection::*;
 pub use tiles::*;
 pub use view::*;
 pub const MAX_SIDE: u32 = 16_384;
@@ -38,6 +40,8 @@ pub struct Document {
     pub height: u32,
     pub dpi: f64,
     pub layers: Vec<Layer>,
+    /// Session selection: None is unrestricted; an active zero mask blocks edits.
+    pub selection: Option<std::sync::Arc<TileSurface<Gray8>>>,
 }
 impl Document {
     pub fn blank(width: u32, height: u32, dpi: f64) -> Result<Self, String> {
@@ -50,6 +54,7 @@ impl Document {
                 "Layer 1".into(),
                 TileSurface::new(width, height),
             )],
+            selection: None,
         })
     }
     /// Single-raster compatibility for v1 codecs and the existing brush adapter.
@@ -90,6 +95,11 @@ impl Document {
         find_layer_mut(&mut self.layers, id).ok_or_else(|| "Layer no longer exists".into())
     }
     pub fn visit_tiles(&self, visitor: &mut dyn FnMut(TileRef<'_>)) {
+        if let Some(selection) = &self.selection {
+            for tile in selection.tiles().values() {
+                visitor(TileRef::Gray(tile));
+            }
+        }
         for layer in &self.layers {
             layer.visit_tiles(visitor);
         }

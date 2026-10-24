@@ -280,6 +280,7 @@ impl StrokeCommand {
         settings.alpha_lock = node.properties.locks.alpha;
         node.raster_samples()?;
         let base = Document {
+            selection: base.selection.clone(),
             width: base.width,
             height: base.height,
             dpi: base.dpi,
@@ -491,6 +492,12 @@ impl StrokeCommand {
                 .get(&coord)
                 .map(|tile| tile.pin())
                 .transpose()?;
+            let selection = self.base.selection.as_ref();
+            let clip = selection
+                .and_then(|s| s.tiles().get(&coord))
+                .map(|t| t.pin())
+                .transpose()?;
+            let clip_default = selection.map_or(255, |s| s.default.0);
             let end = dab
                 .x1
                 .min((coord.0 + 1) * TILE_SIZE)
@@ -508,7 +515,7 @@ impl StrokeCommand {
                 dab,
                 &self.tip,
                 &self.settings,
-                base.as_deref(),
+                (base.as_deref(), clip.as_deref(), clip_default),
                 mask,
                 &mut output,
                 end,
@@ -546,13 +553,23 @@ fn stamp_row(
     dab: &Dab,
     tip: &Tip,
     settings: &BrushSettings,
-    base: Option<&fotoeditor_core::Tile<Rgba8>>,
+    source: (
+        Option<&fotoeditor_core::Tile<Rgba8>>,
+        Option<&fotoeditor_core::Tile<fotoeditor_core::Gray8>>,
+        u8,
+    ),
     mask: &mut [u32],
     output: &mut [Rgba8],
     end: u32,
 ) -> bool {
+    let (base, selection, clip_default) = source;
     let scale = tip.radius / dab.radius;
-    if scale == 1.0 && !settings.eraser && base.is_some_and(|tile| tile.known_opaque) {
+    if selection.is_none()
+        && clip_default == 255
+        && scale == 1.0
+        && !settings.eraser
+        && base.is_some_and(|tile| tile.known_opaque)
+    {
         return stamp_opaque_row(dab, tip, settings, base.unwrap(), mask, output, end);
     }
     let sy = (dab.y as f64 + 0.5 - dab.p.y) * scale + tip.radius + 0.5;
@@ -573,10 +590,14 @@ fn stamp_row(
             continue;
         }
         let i = ((dab.y % TILE_SIZE) * TILE_SIZE + x % TILE_SIZE) as usize;
+        let clip = selection.map_or(clip_default, |t| t.pixels[i].0) as u32;
+        if clip == 0 {
+            continue;
+        }
         let amount = divide_unorm16(value * influence + 32767);
         mask[i] += divide_unorm16((65535 - mask[i]) * amount + 32767);
         let before = base.map_or(Rgba8::default(), |t| t.pixels[i]);
-        let coverage = divide_unorm16(opacity * mask[i] + 32767);
+        let coverage = (divide_unorm16(opacity * mask[i] + 32767) * clip + 127) / 255;
         let after = if settings.alpha_lock {
             if before.0[3] == 0 || settings.eraser {
                 before
@@ -706,6 +727,61 @@ pub fn composite(base: Rgba8, color: [u8; 4], coverage: f64, eraser: bool) -> Rg
 mod tests {
     use super::*;
     use fotoeditor_core::{History, CPU_BUDGET};
+    #[test]
+    fn selection_clips_paint_and_eraser_once_and_undo_restores_exact_hidden_samples() {
+        use fotoeditor_core::{Gray8, TileSurface};
+        use std::sync::Arc;
+        for eraser in [false, true] {
+            let mut doc = Document::blank(260, 2, 72.0).unwrap();
+            for x in 0..260 {
+                doc.raster_mut()
+                    .write(x, 0, Rgba8([87, 33, 19, if x % 2 == 0 { 0 } else { 255 }]));
+            }
+            let mut selection = TileSurface::new(260, 2);
+            selection.write(255, 0, Gray8(128));
+            selection.write(256, 0, Gray8(255));
+            doc.selection = Some(Arc::new(selection));
+            let mut stroke = StrokeCommand::new(
+                &doc,
+                BrushSettings {
+                    size: 100.0,
+                    color: [0, 0, 255, 255],
+                    eraser,
+                    pressure_size: false,
+                    ..BrushSettings::default()
+                },
+                CPU_BUDGET,
+            )
+            .unwrap();
+            for _ in 0..5 {
+                stroke.push(point(255.5, 0.5)).unwrap();
+            }
+            finish(&mut stroke);
+            for x in 0..260 {
+                if x != 255 && x != 256 {
+                    assert_eq!(
+                        stroke.preview.raster().sample(x, 0),
+                        doc.raster().sample(x, 0)
+                    );
+                }
+            }
+            let partial = stroke.preview.raster().sample(255, 0);
+            if eraser {
+                assert_eq!(partial, Rgba8([87, 33, 19, 127]));
+            } else {
+                assert_eq!(partial, Rgba8([43, 16, 137, 255]));
+            }
+            let mut history = History::default();
+            history
+                .execute(&mut doc, Box::new(stroke.finish().unwrap()), 0)
+                .unwrap();
+            assert!(history.undo(&mut doc));
+            assert_eq!(doc.raster().sample(256, 0), Rgba8([87, 33, 19, 0]));
+            assert_eq!(doc.raster().sample(255, 0), Rgba8([87, 33, 19, 255]));
+            assert!(history.redo(&mut doc));
+            assert_eq!(doc.raster().sample(255, 0), partial);
+        }
+    }
     #[test]
     fn fixed_coverage_division_is_exact_over_its_product_domain() {
         let limit = 65535_u32 * 65535 + 32767;

@@ -501,6 +501,7 @@ impl LayerProjectReader {
             node: 0,
         };
         let document = Document {
+            selection: None,
             width: manifest.width,
             height: manifest.height,
             dpi: manifest.dpi,

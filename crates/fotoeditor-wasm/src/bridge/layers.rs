@@ -233,6 +233,7 @@ impl Engine {
         let mut layer = Layer::raster("Mask stroke".into(), samples);
         layer.id = target;
         Ok(Document {
+            selection: doc.selection.clone(),
             width: doc.width,
             height: doc.height,
             dpi: doc.dpi,
@@ -614,6 +615,7 @@ impl Engine {
             vec![bottom, top]
         };
         let doc = Document {
+            selection: None,
             width: TILE_SIZE,
             height: TILE_SIZE,
             dpi: 72.0,

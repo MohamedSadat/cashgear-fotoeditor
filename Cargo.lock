@@ -995,6 +995,10 @@ dependencies = [
 [[package]]
 name = "fotoeditor-select"
 version = "0.1.0"
+dependencies = [
+ "fotoeditor-core",
+ "serde",
+]
 
 [[package]]
 name = "fotoeditor-wasm"

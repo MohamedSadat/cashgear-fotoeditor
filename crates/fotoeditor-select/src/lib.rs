@@ -1,1 +1,3 @@
-//! Browser-independent select foundation. Pixel editing begins after P0.
+//! Browser-independent tiled selections, fills and clipboard processing.
+mod shapes;
+pub use shapes::*;
