@@ -476,6 +476,73 @@ try {
       offset: 0,
       gamma: 1,
     });
+    result.filters = await page.evaluate(async () => {
+      const api = Reflect.get(window, '__fotoeditor');
+      const hash = async () =>
+        Array.from(
+          new Uint8Array(await crypto.subtle.digest('SHA-256', await api.exportPng())),
+        ).join(',');
+      const s = await api.newDocument(513, 3, 72);
+      await api.selectionAction({ kind: 'fill', color: [64, 64, 64, 255] });
+      await api.selectionAction({
+        kind: 'shape',
+        shape: { kind: 'rectangle', x0: 255, y0: 0, x1: 256, y1: 3 },
+        mode: 'new',
+        antialias: false,
+      });
+      await api.selectionAction({ kind: 'fill', color: [128, 128, 128, 255] });
+      const baseline = await api.selectionAction({ kind: 'none' });
+      const original = await hash();
+      const checks = [];
+      for (const filter of [
+        { kind: 'gaussian', radius: 20 },
+        { kind: 'box-blur', radius: 3 },
+        { kind: 'unsharp-mask', radius: 3, amount: 1, threshold: 0 },
+        { kind: 'sharpen', amount: 1 },
+        { kind: 'median', radius: 1 },
+      ]) {
+        await api.previewFilter(filter, s.layers.nodes[0].id);
+        const previewDoesNotMutate = (await hash()) === original;
+        await api.endAdjustmentPreview();
+        const applied = await api.applyFilter(filter);
+        const filtered = await hash();
+        await api.fadeFilter(0, 'normal');
+        const exactFadeZero = (await hash()) === original;
+        await api.fadeFilter(1, 'normal');
+        const exactFadeOne = (await hash()) === filtered;
+        await api.historyJump(baseline.history.undo);
+        const exactUndo = (await hash()) === original;
+        checks.push({
+          kind: filter.kind,
+          previewDoesNotMutate,
+          changed: filtered !== original,
+          canFade: applied.canFade,
+          exactFadeZero,
+          exactFadeOne,
+          exactUndo,
+        });
+      }
+      await api.applyFilter({ kind: 'gaussian', radius: 3 });
+      await api.fadeFilter(0.5, 'multiply');
+      const faded = await hash();
+      const bytes = await api.saveProject();
+      const reopened = await api.openProject(bytes.slice().buffer, 'desktop-filters.cgfoto');
+      return { checks, exactRoundtrip: (await hash()) === faded, clearedFade: !reopened.canFade };
+    });
+    expect(result.filters.checks).toHaveLength(5);
+    for (const check of result.filters.checks) {
+      for (const key of [
+        'previewDoesNotMutate',
+        'changed',
+        'canFade',
+        'exactFadeZero',
+        'exactFadeOne',
+        'exactUndo',
+      ])
+        expect(check[key], check.kind + ' ' + key).toBe(true);
+    }
+    expect(result.filters.exactRoundtrip).toBe(true);
+    expect(result.filters.clearedFade).toBe(true);
     if (process.env.P4_DESKTOP_DENSE === '1' && backend === 'WebGPU') {
       page.setDefaultTimeout(360000);
       const started = performance.now();
