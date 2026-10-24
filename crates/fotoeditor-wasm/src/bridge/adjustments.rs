@@ -4,17 +4,20 @@ use fotoeditor_filters::*;
 
 #[derive(Default)]
 pub(super) struct AdjustmentRuntime {
+    pub filter: super::filters::FilterRuntime,
     pub apply: Option<AdjustmentJob>,
     pub histogram: Option<HistogramJob>,
     pub preview: Option<super::preview::PreviewRuntime>,
 }
 impl AdjustmentRuntime {
     pub fn scratch_bytes(&self) -> u64 {
-        u64::from(self.apply.is_some()) * ADJUSTMENT_SCRATCH
+        self.filter.scratch_bytes()
+            + u64::from(self.apply.is_some()) * ADJUSTMENT_SCRATCH
             + u64::from(self.histogram.is_some()) * HISTOGRAM_SCRATCH
             + u64::from(self.preview.is_some()) * PREVIEW_SCRATCH
     }
     pub fn visit_tiles(&self, visitor: &mut dyn FnMut(TileRef<'_>)) {
+        self.filter.visit_tiles(visitor);
         if let Some(j) = &self.apply {
             j.visit_tiles(visitor);
         }

@@ -2,6 +2,10 @@
 #[cfg(target_arch = "wasm32")]
 mod compositor;
 #[cfg(target_arch = "wasm32")]
+mod filter;
+#[cfg(target_arch = "wasm32")]
+pub use filter::FilterTileInput;
+#[cfg(target_arch = "wasm32")]
 mod preview;
 #[cfg(target_arch = "wasm32")]
 mod renderer;
@@ -14,6 +18,16 @@ mod viewport;
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn filter_shader_is_valid_portable_wgsl() {
+        let m = naga::front::wgsl::parse_str(include_str!("filter.wgsl")).expect("filter WGSL");
+        naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::empty(),
+        )
+        .validate(&m)
+        .expect("portable filter shader");
+    }
     #[test]
     fn preview_shader_is_valid_portable_wgsl() {
         let module =

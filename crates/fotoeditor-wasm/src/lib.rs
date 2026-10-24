@@ -2,6 +2,7 @@
 #[cfg(target_arch = "wasm32")]
 mod bridge {
     mod adjustments;
+    mod filters;
     mod layers;
     mod preview;
     mod selection;
@@ -168,6 +169,15 @@ mod bridge {
             self.view.height = self.renderer.height() as f64 / self.dpr;
         }
         pub fn frame(&mut self) -> Result<bool, JsValue> {
+            // Rendering may prepare display/selection scratch. Refresh the
+            // filter's incremental residency bound after every UI frame.
+            if self.adjusted.filter.scratch_bytes() > 0 {
+                self.layered.invalidate_memory();
+            }
+            if self.adjusted.filter.last.is_some() && !self.filter_can_fade() {
+                self.adjusted.filter.last = None;
+                self.refresh_pages();
+            }
             if self.adjusted.preview.is_some() && !self.preview_valid() {
                 self.preview_cancel();
             }
@@ -549,6 +559,7 @@ mod bridge {
                 .map_err(|e| JsValue::from_str(&e))
         }
         pub fn cancel_job(&mut self) {
+            self.filter_cancel();
             self.adjusted.apply = None;
             self.adjusted.histogram = None;
             self.selected.cancel();
@@ -674,7 +685,8 @@ mod bridge {
             let r = self.residency();
             let v = &self.view;
             serde_json::json!({"document":self.document.as_ref().map(|d|serde_json::json!({"width":d.width,"height":d.height,"dpi":d.dpi,"tiles":d.tile_count()})),
-                "adjustmentPreview":{"cached":self.preview_ready(),"active":self.preview_valid() && self.adjusted.preview.as_ref().is_some_and(|p| p.settings.is_some() && p.next == p.job.output.width.div_ceil(256)*p.job.output.height.div_ceil(256))},
+                "canFade":self.filter_can_fade(),
+                "adjustmentPreview":{"cached":self.preview_ready(),"active":self.preview_valid() && self.adjusted.preview.as_ref().is_some_and(|p| (p.settings.is_some() || p.filter.is_some()) && p.next == p.job.output.width.div_ceil(256)*p.job.output.height.div_ceil(256))},
                 "layers":self.layer_json(),
                 "selection":self.selection_json(),
                 "view":{"zoom":v.zoom,"rotation":v.rotation,"flipped":v.flipped,"panX":v.pan_x,"panY":v.pan_y,"screenWidth":v.width,"screenHeight":v.height},

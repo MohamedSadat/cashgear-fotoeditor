@@ -211,9 +211,11 @@ pub struct ViewportPreviewJob {
     pub source: Document,
     pub output: Document,
     pub view: View,
+    clamp_raster: Option<LayerId>,
     tasks: Vec<(Target, TileCoord)>,
     next: usize,
     mapping_coord: Option<TileCoord>,
+    mapping_clamped: bool,
     mapping: BTreeMap<TileCoord, Vec<(usize, usize)>>,
     coordinates: Vec<TileCoord>,
     group: usize,
@@ -262,9 +264,11 @@ impl ViewportPreviewJob {
             source: source.clone(),
             output,
             view,
+            clamp_raster: None,
             tasks,
             next: 0,
             mapping_coord: None,
+            mapping_clamped: false,
             mapping: BTreeMap::new(),
             coordinates: Vec::new(),
             group: 0,
@@ -272,6 +276,13 @@ impl ViewportPreviewJob {
         };
         job.prepare()?;
         Ok(job)
+    }
+    /// Filter halos sample the target's clamped canvas boundary; other layers
+    /// retain transparent outside-canvas samples for composition.
+    pub fn clamp_target(&mut self, target: LayerId) -> Result<(), String> {
+        self.clamp_raster = Some(target);
+        self.mapping_coord = None;
+        self.prepare()
     }
     pub fn done(&self) -> bool {
         self.next == self.tasks.len()
@@ -334,7 +345,8 @@ impl ViewportPreviewJob {
         let Some((target, coord)) = self.tasks.get(self.next).copied() else {
             return Ok(());
         };
-        if self.mapping_coord != Some(coord) {
+        let clamped = matches!(target, Target::Raster(id) if Some(id) == self.clamp_raster);
+        if self.mapping_coord != Some(coord) || self.mapping_clamped != clamped {
             self.mapping.clear();
             for y in 0..TILE_SIZE {
                 for x in 0..TILE_SIZE {
@@ -343,10 +355,14 @@ impl ViewportPreviewJob {
                     if sx >= self.output.width || sy >= self.output.height {
                         continue;
                     }
-                    let (dx, dy) = self.view.screen_to_document(
+                    let (mut dx, mut dy) = self.view.screen_to_document(
                         (f64::from(sx) + 0.5) * self.view.width / f64::from(self.output.width),
                         (f64::from(sy) + 0.5) * self.view.height / f64::from(self.output.height),
                     );
+                    if clamped {
+                        dx = dx.clamp(0.0, f64::from(self.source.width) - 1.0);
+                        dy = dy.clamp(0.0, f64::from(self.source.height) - 1.0);
+                    }
                     if dx < 0.0
                         || dy < 0.0
                         || dx >= f64::from(self.source.width)
@@ -367,6 +383,7 @@ impl ViewportPreviewJob {
             }
             self.coordinates = self.mapping.keys().copied().collect();
             self.mapping_coord = Some(coord);
+            self.mapping_clamped = clamped;
         }
         self.group = 0;
         self.pixels = Some(match target {

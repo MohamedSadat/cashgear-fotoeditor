@@ -22,7 +22,7 @@ pub(super) struct LayerRuntime {
     write: Option<LayerProjectWriter>,
     pages: HashMap<u64, StoredProjectTile>,
     gpu_coord: Option<TileCoord>,
-    golden: Option<Vec<Rgba8>>,
+    pub(super) golden: Option<Vec<Rgba8>>,
     thumbnail: Option<ThumbnailJob>,
     memory: Option<Residency>,
 }
@@ -34,6 +34,11 @@ impl LayerRuntime {
     }
     pub fn invalidate_memory(&mut self) {
         self.memory = None;
+    }
+    pub fn account_temporary_allocations(&mut self, bytes: u64) {
+        if let Some(memory) = &mut self.memory {
+            memory.temporary += bytes;
+        }
     }
     pub fn invalidate_display(&mut self) {
         self.display_revision = None;
@@ -54,6 +59,7 @@ impl LayerRuntime {
             && adjustment.apply.is_none()
             && adjustment.histogram.is_none()
             && adjustment.preview.is_none()
+            && !adjustment.filter.has_tiles()
         {
             return 0;
         }
@@ -174,7 +180,7 @@ impl Engine {
         self.layered.memory = Some(memory);
         Ok(ticket)
     }
-    fn paging_residency(&mut self) -> Residency {
+    pub(super) fn paging_residency(&mut self) -> Residency {
         if let Some(memory) = self.layered.memory {
             return memory;
         }
@@ -268,6 +274,9 @@ impl Engine {
         }
     }
     pub(super) fn refresh_pages(&mut self) {
+        if !self.filter_can_fade() {
+            self.adjusted.filter.last = None;
+        }
         self.layered.memory = None;
         let mut pages = HashMap::new();
         let mut add = |t: TileRef<'_>| {
@@ -747,6 +756,7 @@ impl Engine {
             }
         };
         match scope {
+            "filter" => self.adjusted.filter.needed(&mut add),
             "preview" => {
                 if let Some(p) = &self.adjusted.preview {
                     p.job.needed(&mut add).map_err(js)?;
@@ -754,6 +764,7 @@ impl Engine {
             }
             "preview-render" => {
                 if let Some(p) = &self.adjusted.preview {
+                    p.filter_needed(&mut add).map_err(js)?;
                     if let Some((_, plan)) = p.plan().map_err(js)? {
                         plan.visit_tiles(&mut add);
                     }

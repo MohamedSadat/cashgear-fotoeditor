@@ -288,6 +288,15 @@ impl Compositor {
         queue: &Queue,
         plan: &CompositePlan,
     ) -> Result<Texture, String> {
+        self.compose_texture_with_source(device, queue, plan, None)
+    }
+    pub fn compose_texture_with_source(
+        &mut self,
+        device: &Device,
+        queue: &Queue,
+        plan: &CompositePlan,
+        replacement: Option<(u32, &Texture)>,
+    ) -> Result<Texture, String> {
         let count = plan.stack_depth + 3;
         if (count as u64 + 1) * FLOAT_BYTES + 397376 > COMPOSITE_RESERVE {
             return Err("Composite stack exceeds the GPU scratch budget".into());
@@ -323,6 +332,7 @@ impl Compositor {
                     current = next;
                 }
                 CompositeStep::Raster {
+                    id,
                     source,
                     mask,
                     properties,
@@ -330,22 +340,27 @@ impl Compositor {
                     adjustment,
                     ..
                 } => {
-                    let Some(source) = source else {
-                        continue;
-                    };
-                    let source = source.pin()?;
-                    self.upload(
-                        queue,
-                        &self.source,
-                        &source.pixels.iter().flat_map(|p| p.0).collect::<Vec<_>>(),
-                        TILE_SIZE * 4,
-                    );
+                    let replacement = replacement
+                        .filter(|(target, _)| target == id)
+                        .map(|(_, t)| t);
+                    if replacement.is_none() {
+                        let Some(source) = source else {
+                            continue;
+                        };
+                        let source = source.pin()?;
+                        self.upload(
+                            queue,
+                            &self.source,
+                            &source.pixels.iter().flat_map(|p| p.0).collect::<Vec<_>>(),
+                            TILE_SIZE * 4,
+                        );
+                    }
                     let next = free(usize::MAX);
                     self.pass(
                         device,
                         queue,
                         current,
-                        &self.source,
+                        replacement.unwrap_or(&self.source),
                         next,
                         properties,
                         u32::from(*clipped),
@@ -409,6 +424,13 @@ impl Compositor {
         plan: &CompositePlan,
     ) -> Result<js_sys::Promise, String> {
         let texture = self.compose_texture(device, queue, plan)?;
+        Self::readback(device, queue, &texture)
+    }
+    pub fn readback(
+        device: &Device,
+        queue: &Queue,
+        texture: &Texture,
+    ) -> Result<js_sys::Promise, String> {
         let buffer = device.create_buffer(&BufferDescriptor {
             label: Some("One composite readback"),
             size: FLOAT_BYTES,

@@ -72,7 +72,7 @@ impl PreviewFrame {
             .into_iter()
             .flat_map(f32::to_le_bytes)
             .collect::<Vec<_>>(),
-            usage: BufferUsages::UNIFORM,
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         });
         let bind = |source: &Texture| {
             device.create_bind_group(&BindGroupDescriptor {
@@ -148,6 +148,22 @@ impl PreviewFrame {
     }
     pub fn bytes(&self) -> u64 {
         u64::from(self.texture.width()) * u64::from(self.texture.height()) * 4 + 16
+    }
+    pub fn crop(&self, queue: &Queue, margin: u32) {
+        let values = [
+            (self.width - 2 * margin) as f32 / self.texture.width() as f32,
+            (self.height - 2 * margin) as f32 / self.texture.height() as f32,
+            margin as f32 / self.texture.width() as f32,
+            margin as f32 / self.texture.height() as f32,
+        ];
+        queue.write_buffer(
+            &self.uniform,
+            0,
+            &values
+                .into_iter()
+                .flat_map(f32::to_le_bytes)
+                .collect::<Vec<_>>(),
+        );
     }
     pub fn accept(
         &self,

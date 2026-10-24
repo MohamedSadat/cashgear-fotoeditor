@@ -22,6 +22,7 @@ pub struct Renderer {
     compositor: Option<crate::compositor::Compositor>,
     selection: crate::selection::SelectionRenderer,
     preview: Option<crate::preview::PreviewFrame>,
+    filter: Option<crate::filter::FilterTile>,
     preview_visible: bool,
     preview_cancelled: Arc<std::sync::atomic::AtomicBool>,
 }
@@ -208,6 +209,7 @@ impl Renderer {
             compositor: None,
             selection,
             preview: None,
+            filter: None,
             preview_visible: false,
             preview_cancelled: Arc::new(std::sync::atomic::AtomicBool::new(true)),
         };
@@ -272,6 +274,7 @@ impl Renderer {
             + self.compositor.as_ref().map_or(0, |c| c.bytes())
             + self.selection.gpu_bytes()
             + self.preview.as_ref().map_or(0, |p| p.bytes())
+            + self.filter.as_ref().map_or(0, |p| p.bytes())
     }
     pub fn selection_cpu_bytes(&self) -> u64 {
         self.selection.cpu_bytes()
@@ -292,7 +295,8 @@ impl Renderer {
                     .map_or(0, |_| crate::compositor::COMPOSITE_RESERVE)
                     + 8 * 1024 * 1024
                     + 32
-                    + self.preview.as_ref().map_or(0, |p| p.bytes()),
+                    + self.preview.as_ref().map_or(0, |p| p.bytes())
+                    + self.filter.as_ref().map_or(0, |p| p.bytes()),
             ),
         );
         self.selection.prepare(
@@ -312,6 +316,7 @@ impl Renderer {
             fotoeditor_core::GPU_BUDGET
                 - crate::compositor::COMPOSITE_RESERVE
                 - self.selection.gpu_bytes()
+                - self.filter.as_ref().map_or(0, |p| p.bytes())
                 - self.preview.as_ref().map_or(0, |p| p.bytes()),
         );
         self.compositor
@@ -322,6 +327,7 @@ impl Renderer {
         self.preview_cancelled
             .store(true, std::sync::atomic::Ordering::Relaxed);
         self.preview = None;
+        self.filter = None;
         self.preview_visible = false;
         self.viewport.budget(
             fotoeditor_core::GPU_BUDGET
@@ -369,8 +375,73 @@ impl Renderer {
         frame.accept(&self.device, &self.queue, coord, &texture);
         Ok(())
     }
+    pub fn filter_preview_begin(&mut self, width: u32, height: u32) -> Result<(), String> {
+        self.preview_begin(width, height)?;
+        let bytes = self.preview.as_ref().unwrap().bytes();
+        self.viewport.budget(
+            fotoeditor_core::GPU_BUDGET
+                - crate::compositor::COMPOSITE_RESERVE
+                - 16 * 1024 * 1024
+                - bytes,
+        );
+        Ok(())
+    }
     pub fn preview_present(&mut self) {
         self.preview_visible = self.preview.is_some();
+    }
+    pub fn preview_crop(&self, margin: u32) {
+        if let Some(frame) = &self.preview {
+            frame.crop(&self.queue, margin);
+        }
+    }
+    pub fn filter_preview_tile(
+        &mut self,
+        coord: fotoeditor_core::TileCoord,
+        plan: &fotoeditor_core::CompositePlan,
+        input: &crate::filter::FilterTileInput,
+    ) -> Result<(), String> {
+        let frame = self.preview.as_ref().ok_or("No filter preview")?;
+        let filtered = self
+            .filter
+            .get_or_insert_with(|| crate::filter::FilterTile::new(&self.device))
+            .render(&self.device, &self.queue, input)?;
+        let texture = self
+            .compositor
+            .get_or_insert_with(|| crate::compositor::Compositor::new(&self.device))
+            .compose_texture_with_source(
+                &self.device,
+                &self.queue,
+                plan,
+                Some((input.target, &filtered)),
+            )?;
+        frame.accept(&self.device, &self.queue, coord, &texture);
+        Ok(())
+    }
+    pub fn filter_golden(
+        &mut self,
+        plan: &fotoeditor_core::CompositePlan,
+        input: &crate::filter::FilterTileInput,
+    ) -> Result<js_sys::Promise, String> {
+        self.viewport.budget(
+            fotoeditor_core::GPU_BUDGET
+                - crate::compositor::COMPOSITE_RESERVE
+                - 16 * 1024 * 1024
+                - self.preview.as_ref().map_or(0, |p| p.bytes()),
+        );
+        let filtered = self
+            .filter
+            .get_or_insert_with(|| crate::filter::FilterTile::new(&self.device))
+            .render(&self.device, &self.queue, input)?;
+        let texture = self
+            .compositor
+            .get_or_insert_with(|| crate::compositor::Compositor::new(&self.device))
+            .compose_texture_with_source(
+                &self.device,
+                &self.queue,
+                plan,
+                Some((input.target, &filtered)),
+            )?;
+        crate::compositor::Compositor::readback(&self.device, &self.queue, &texture)
     }
     /// Initial pipeline work must finish before controls report ready. No image
     /// readback is needed; WebGL2 progresses its queue fence by async polling.
