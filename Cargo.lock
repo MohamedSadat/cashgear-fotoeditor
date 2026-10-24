@@ -966,6 +966,10 @@ dependencies = [
 [[package]]
 name = "fotoeditor-filters"
 version = "0.1.0"
+dependencies = [
+ "fotoeditor-core",
+ "serde",
+]
 
 [[package]]
 name = "fotoeditor-gpu"
@@ -1007,6 +1011,7 @@ version = "0.1.0"
 dependencies = [
  "fotoeditor-brush",
  "fotoeditor-core",
+ "fotoeditor-filters",
  "fotoeditor-gpu",
  "fotoeditor-io",
  "fotoeditor-select",

@@ -19,3 +19,4 @@ js-sys.workspace = true
 web-sys = { workspace = true, features = ["OffscreenCanvas"] }
 fotoeditor-brush = { version = "0.1.0", path = "../fotoeditor-brush" }
 fotoeditor-select = { version = "0.1.0", path = "../fotoeditor-select" }
+fotoeditor-filters = { path = "../fotoeditor-filters" }

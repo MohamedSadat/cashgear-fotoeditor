@@ -45,11 +45,14 @@ impl LayerRuntime {
         history: &History,
         preview: Option<&Document>,
         selection: &super::selection::SelectionRuntime,
+        adjustment: &super::adjustments::AdjustmentRuntime,
     ) -> u64 {
         if self.render.is_none()
             && self.thumbnail.is_none()
             && self.display.is_none()
             && !selection.has_tiles()
+            && adjustment.apply.is_none()
+            && adjustment.histogram.is_none()
         {
             return 0;
         }
@@ -84,6 +87,7 @@ impl LayerRuntime {
             display.visit_tiles(&mut count);
         }
         selection.visit_tiles(&mut count);
+        adjustment.visit_tiles(&mut count);
         bytes
     }
     pub fn cancel(&mut self) {
@@ -282,6 +286,7 @@ impl Engine {
             job.source.visit_tiles(&mut add);
         }
         self.selected.visit_tiles(&mut add);
+        self.adjusted.visit_tiles(&mut add);
         self.layered.pages = pages;
     }
     pub(super) fn layer_json(&self) -> serde_json::Value {
@@ -702,6 +707,16 @@ impl Engine {
             }
         };
         match scope {
+            "adjustment" => {
+                if let Some(j) = &self.adjusted.apply {
+                    j.needed(&mut add);
+                }
+            }
+            "histogram" => {
+                if let Some(j) = &self.adjusted.histogram {
+                    j.needed(&mut add);
+                }
+            }
             "export" => {
                 if let Some(j) = &self.export {
                     j.needed(&mut add);
