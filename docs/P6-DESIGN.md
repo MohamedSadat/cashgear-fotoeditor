@@ -145,3 +145,63 @@ and autosave read only committed content. A layer-command JSON bridge is bounded
 to 16 KiB before parsing. New manifest schema 3 stores adjustment settings and
 sparse mask defaults inside the unchanged bounded v2 stream framing; missing
 schema means legacy schema 2. Legacy single-raster v1 input is still supported.
+
+## M3 implementation contract
+
+M3 contains Gaussian blur, box blur, unsharp mask, sharpen and median, plus Fade
+Last Filter. These destructive operations target raster layer pixels. Every Apply
+builds an immutable-input candidate and commits one tile command. Pixel/all and
+ancestor locks reject editing; alpha lock preserves the original alpha plane.
+No smart-filter metadata or project schema change is introduced.
+
+Gaussian has integer support `[-radius,+radius]`, sigma `radius / 3`, normalized
+finite exponential weights, and separable horizontal/vertical passes. Radius zero
+is identity. Box blur is a uniform square over the same support. Unsharp mask uses
+the Gaussian result, adds `amount * (original - blurred)` to straight sRGB, and
+changes a channel only when its absolute difference reaches the byte threshold.
+Sharpen uses the same detail formula with a radius-one box. These two preserve
+the original alpha. Median selects each premultiplied component's middle order
+statistic in the square neighborhood. Radius limits are 64 for convolution and 5
+for median; sharpen amount is 0–5 and threshold is 0–255.
+
+Convolution/median temporaries are premultiplied floating-point sRGB. Halo samples
+come from the immutable layer across tile borders, including unselected pixels;
+canvas boundaries clamp. Output interpolates original and filtered premultiplied
+samples by selection coverage once, then quantizes straight RGBA8. Zero coverage
+returns the exact original. If output alpha rounds to zero, original hidden RGB
+is retained. Sparse neighboring output tiles are included when blur can spread
+alpha. Unchanged tiles retain their generations. Eight MiB covers bounded kernel
+scratch. A temporary allocator reservation of at most 16 MiB, released at each
+32-tile batch boundary, batches WASM heap growth within the remaining CPU room.
+Unique source/candidate/history generations use shared residency and the
+existing pager. Cancellation/refusal cannot partially commit or clear redo.
+
+Fade retains immutable before, selected-result and full-filter samples and applies
+opacity plus one of the existing 16 sRGB blend functions through the captured
+selection. Normal fades interpolate the exact before/selected endpoints; other
+blend modes use the full-filter samples and apply selection coverage once. Hidden
+backdrop RGB never tints newly spread alpha. Zero opacity restores
+exact pre-filter samples; Normal/100% restores the exact full result. Repeated
+Fade values recompute from those endpoints. Each Fade is itself undoable. A
+subsequent document mutation, history navigation, target change or replacement
+ends availability. Export, project save and viewport navigation do not edit the
+document. Retained Fade generations are included in residency/paging.
+
+GPU preview reuses the visible-source compositor cache, extends it by 64 sampled
+pixels on each side, and filters the active raster before its compositor step.
+The target samples clamp at canvas boundaries; other layers keep transparent
+outside-canvas samples. The GPU clips outside-canvas output, applies sampled
+selection coverage and alpha lock, and composites the complete layer tree. The
+presentation crops away the halo. GPU scratch uses one 384-square input, a float
+horizontal pass, one 256-square output and selection tile. Median finds the exact
+order statistic of byte premultiplied products with 16 bounded integer bisections.
+Warm changes reuse sources and coalesce controls. Initial source/GPU preparation
+is measured separately. Document pixels never cross JavaScript for processing.
+
+The sampled interior is at most 1920 per side and never denser than roughly one
+sample per document pixel when zoomed in. Filter radii scale to the sampled view
+and round to whole sampled pixels. As with M2, fitted/rotated/resampled preview is
+an interactive approximation; final Apply uses full-resolution document samples.
+The two panels share preview ownership. Document/view changes, cancellation and
+worker replacement release or rebuild temporary state; export/autosave only see
+committed content. CPU and GPU budgets include preview resources.

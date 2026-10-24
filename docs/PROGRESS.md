@@ -1,5 +1,46 @@
 # Progress
 
+## P6 — M3 implementation and local acceptance complete; phase in progress
+
+Started 2026-10-24 in the explicitly requested fresh session, on clean synchronized
+main at `77ec974`. M2's final CI 40115430175 and deployment 40115430197 both passed.
+Read the phase records and original roadmap P6 section on printed pages 14–15.
+Existing product decisions apply; no worktree or agents were created.
+
+Gaussian/box blur, unsharp mask, sharpen and median now have independent Rust
+kernels, bounded tile halos, selection clipping, exact commands and Fade jobs.
+GPU viewport preview, controls and worker/paging integration are implemented.
+Fade retains separate full and selected endpoints so blend changes apply
+fractional selection coverage once. The final 16 hardware feature cases pass,
+including 56 complete CPU/GPU tile comparisons per browser/backend. All 107 Rust
+tests, native/WASM clippy, Rust/JS formatting, TypeScript, ESLint, 16 Vitest cases
+and the 450-expression license inventory pass.
+
+All 24 measured Gaussian radius-20 applications on the resident 6000×4000 photo
+pass: worst API-return p95 1.389 seconds; visible p95 at most 1.564 seconds.
+All 800 fitted/actual-pixel warm slider events pass 100 ms, with worst p95
+48.48 ms and maximum 64.50 ms. Actual-pixel API cases include maximum convolution
+and median radii. Initial source/GPU preparation is recorded separately. Logical CPU
+peak is 304 MiB for Apply; preview peaks at 105.063 MiB CPU / 26.616 MiB GPU.
+These are serial hardware measurements on verified NVIDIA APIs, not software
+results. Release WASM is 3,485,650 bytes / gzip9 1,318,701 bytes.
+
+The initial 3.1–4.0-second Gaussian misses, WASM heap-growth profiling, later
+2.17-second Edge miss and opaque/SIMD correction are disclosed in P6-M3-REPORT.md.
+That report also records the corrected WebGL2 median translation and stale test
+baseline. Superseded raw evidence remains under `bench/results/p6-m3-*`.
+
+The full 204-case hardware and 149-case software regressions pass without
+failures, skips or retries, as do both hardware WebView2 APIs. Presentation and
+export-admission timing corrections pass 18 repeated software and eight hardware
+follow-ups; the first full software run's two failures are disclosed in the report.
+Final pushed CI/deployment and verification-artifact inspection are the remaining
+milestone gates; the completion message names their immutable run links.
+P6 is in progress without `p6-filters`; M4 is not started. Its
+proposed scope is the remaining seven adjustments and five filters, followed by
+phase-wide validation. Stop before M4. The P5 Photoshop feather comparison and
+physical pen deferral retain their existing status.
+
 ## P6 — M2 implementation complete; phase in progress
 
 Resumed 2026-10-24 at the user's request. The five priority adjustments now have

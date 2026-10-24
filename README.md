@@ -25,8 +25,15 @@ reuse the visible source cache. Preview samples the visible view at a maximum
 2048 pixels per side. Final Apply processes the full-resolution selection.
 Uncheck preview to cancel; saving pixels/projects always uses committed content.
 Adjustment layers work with groups, masks, clipping, opacity and blend modes and
-remain editable in project/recovery files. Filters and the other adjustments
-remain later P6 milestones; see [milestone contracts](docs/P6-DESIGN.md).
+remain editable in project/recovery files.
+
+Use Filters in the inspector for Gaussian blur, box blur, unsharp mask, sharpen
+and median. Live filter preview covers the visible area; Apply filter processes
+the full selected area as one undoable edit. Fade last filter changes opacity and
+blend from the original filter endpoints, until another document edit or history
+navigation. Destructive filter results persist in projects and recovery. See the
+[M3 report](docs/P6-M3-REPORT.md). The remaining adjustments/filters and phase-wide
+acceptance belong to M4. See [milestone contracts](docs/P6-DESIGN.md).
 
 Use New canvas or Open image, or drop an image into the viewport. Wheel/two-finger
 gestures scroll; Ctrl/Cmd+wheel or trackpad pinch zooms around the pointer.
@@ -101,6 +108,7 @@ operations briefly pause editing and report their current operation.
 - On Windows: Visual Studio C++ x64/x86 tools, Windows SDK, and WebView2 Runtime.
   Rust procedural macros also require the native linker when building WASM.
 - Chrome and Edge for hardware browser tests.
+- Current browser/WebView2 WASM SIMD and Relaxed SIMD support for the engine.
 
 The desktop runtime is separate from Microsoft Edge itself. On Windows, run
 scripts/setup-webview2.ps1 to detect it and install Microsoft's signed Evergreen
