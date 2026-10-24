@@ -1,5 +1,18 @@
 # Progress
 
+## P5 — In progress
+
+Started 2026-10-24 on clean main at `9b03c160`, the accepted `p4-layers` tag.
+Verified the remote branch and tag, plus green checks/deployment for that commit
+(runs 39946444773 / 39946444912). Read AGENTS.md, all phase records, P4-REPORT.md
+and original roadmap printed page 14. No worktree or agents were created.
+
+The user confirmed Quick Mask, anti-aliasing on by default, AI Select Subject
+outside v1 and new-layer paste. No Photoshop reference/installation is currently
+available; its visual feather acceptance remains pending, without an exception.
+P5-DESIGN.md records the implementation and validation contracts. P5 is not
+complete and `p5-select` has not been created.
+
 ## P4 — Complete
 
 Started on 2026-10-23 on clean main at `ae46c5b`, the tagged P3 completion.

@@ -152,3 +152,38 @@ see DECISIONS.md and P4-DESIGN.md.
 3. Fifty dense layers; paging and 4 GiB streamed projects approved within unchanged
    CPU/GPU budgets and unchanged image-file limits.
 4. Thumbnails after the stroke ends.
+
+## P5 acceptance
+
+The detailed source requirements are on printed page 14 of the original roadmap.
+All four product choices were answered on 2026-10-24; see DECISIONS.md.
+
+- Gray8 tiled selections with new/add/subtract/intersect and Shift/Alt modifiers.
+- Rectangle, ellipse, freehand/polygonal lasso, magic wand with tolerance,
+  contiguous and sample-all-layers controls; anti-aliasing defaults on.
+- Select all/none/invert/feather/grow/shrink/border/smooth/color range.
+- GPU mask-edge marching ants and editable red-overlay Quick Mask.
+- Brush, eraser and fill clip through selection coverage. Establish a reusable
+  Rust clipping contract for P6 filters without starting P6.
+- Paint bucket and Edit Fill; exact command undo/redo for every mutation.
+- Copy/cut/paste/paste in place, with new-layer paste, internal exact samples and
+  system image clipboard access through the Clipboard API.
+- Magic wand on a 6000×4000 photo completes in under 200 ms on measured hardware;
+  specify tolerance, connected extent, sampling source and cold/warm conditions.
+- Painting does not change any sample outside the selection. Compare feathering
+  visually with an identifiable Photoshop reference and record radius/fixture.
+- Preserve paging, CPU/GPU budgets, straight alpha/hidden RGB, file caps and
+  atomic, bounded/cancellable candidate jobs. Selection buffers and clipboard
+  samples must be included in residency accounting.
+- Full repository checks, installed Chrome/Edge on both APIs, Windows/WebView2,
+  size/license gates, hardware measurements, remote CI/deployment green, then
+  publish p5-select. Do not declare the unavailable feather comparison passed.
+- Named selection channels are optional in the source roadmap and remain a
+  follow-up. Stop before P6.
+
+## P5 product questions (answered 2026-10-24)
+
+1. Quick Mask in v1: yes.
+2. Anti-aliased edges by default: yes.
+3. AI Select Subject outside v1: confirmed.
+4. Paste behavior: always a new layer.

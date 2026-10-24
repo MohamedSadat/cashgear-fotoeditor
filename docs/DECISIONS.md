@@ -1,5 +1,16 @@
 # Decisions
 
+## 2026-10-24 — P5 user choices
+
+- Include Quick Mask in v1: brush/eraser editing of the selection with a red overlay.
+- Anti-aliased selection edges are enabled by default, with a hard-edge option.
+- AI Select Subject remains outside v1 scope.
+- Paste always creates a new raster layer; Paste in place retains the source origin.
+- No Photoshop installation or feather reference is currently available from the
+  user. Prepare a deterministic comparison fixture; the Photoshop visual acceptance
+  remains pending until an identifiable reference is available. This is not an
+  approved exception or a passed comparison.
+
 ## 2026-10-23 — P4 user choices and residency boundary
 
 - Blend in sRGB. New groups default to pass-through; isolated Normal groups remain
