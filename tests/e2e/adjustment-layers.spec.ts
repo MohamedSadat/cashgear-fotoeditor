@@ -12,6 +12,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
     async ({ page }) => {
       await page.goto(query);
       await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');
+      await expect(page.getByTestId('gpu-backend')).toHaveText(backend);
       await page.evaluate(async () => {
         const api = Reflect.get(window, '__fotoeditor') as EngineApi;
         await api.newDocument(513, 3, 72);
@@ -123,6 +124,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
     async ({ page }) => {
       await page.goto(query);
       await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');
+      await expect(page.getByTestId('gpu-backend')).toHaveText(backend);
       await page.evaluate(async () => {
         const api = Reflect.get(window, '__fotoeditor') as EngineApi;
         await api.newDocument(513, 3, 72);

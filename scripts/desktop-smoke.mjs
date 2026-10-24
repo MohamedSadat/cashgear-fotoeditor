@@ -419,6 +419,63 @@ try {
       pixels: 1539,
       weight: 1539 * 128,
     });
+    result.adjustmentLayers = await page.evaluate(async () => {
+      const api = Reflect.get(window, '__fotoeditor');
+      const hash = async () =>
+        Array.from(
+          new Uint8Array(await crypto.subtle.digest('SHA-256', await api.exportPng())),
+        ).join(',');
+      const state = await api.newDocument(128, 128, 72);
+      await api.selectionAction({ kind: 'fill', color: [128, 64, 0, 255] });
+      const original = await hash();
+      const timing = await api.previewAdjustment(
+        { kind: 'exposure', stops: 1, offset: 0, gamma: 1 },
+        { kind: 'pixels', target: state.layers.nodes[0].id },
+      );
+      const previewDoesNotMutate = (await hash()) === original;
+      await api.endAdjustmentPreview();
+      const added = await api.layerAction({
+        kind: 'add-adjustment',
+        parent: null,
+        index: 1,
+        adjustment: { kind: 'exposure', stops: 1, offset: 0, gamma: 1 },
+      });
+      const adjusted = await hash();
+      const edited = await api.layerAction({
+        kind: 'set-adjustment',
+        target: added.layers.nodes[1].id,
+        adjustment: { kind: 'exposure', stops: 0, offset: 0, gamma: 1 },
+      });
+      const identity = (await hash()) === original;
+      await api.historyJump(2);
+      const exactUndo = (await hash()) === adjusted;
+      const directory = await navigator.storage.getDirectory();
+      const handle = await directory.getFileHandle('desktop-adjustment.cgfoto', { create: true });
+      await api.saveProjectFile(handle);
+      const reopened = await api.openProjectFile(await handle.getFile());
+      return {
+        previewDoesNotMutate,
+        previewWidth: timing.width,
+        changed: adjusted !== original,
+        identity,
+        exactUndo,
+        settings: reopened.layers.nodes[1].adjustment,
+        exactRoundtrip: (await hash()) === adjusted,
+        steps: edited.history.undo,
+      };
+    });
+    expect(result.adjustmentLayers.previewDoesNotMutate).toBe(true);
+    expect(result.adjustmentLayers.previewWidth).toBeGreaterThan(0);
+    expect(result.adjustmentLayers.changed).toBe(true);
+    expect(result.adjustmentLayers.identity).toBe(true);
+    expect(result.adjustmentLayers.exactUndo).toBe(true);
+    expect(result.adjustmentLayers.exactRoundtrip).toBe(true);
+    expect(result.adjustmentLayers.settings).toEqual({
+      kind: 'exposure',
+      stops: 1,
+      offset: 0,
+      gamma: 1,
+    });
     if (process.env.P4_DESKTOP_DENSE === '1' && backend === 'WebGPU') {
       page.setDefaultTimeout(360000);
       const started = performance.now();

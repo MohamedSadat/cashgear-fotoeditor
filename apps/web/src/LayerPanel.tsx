@@ -40,6 +40,10 @@ export function LayerPanel({ api, disabled }: { api?: EngineApi; disabled: boole
   const chosen = ids.length ? ids : active ? [active.id] : [];
   const blocked = disabled || pending || !api;
   const activeId = active?.id;
+  useEffect(() => {
+    if (activeId !== undefined)
+      setSelected((previous) => (previous.includes(activeId) ? previous : [activeId]));
+  }, [activeId]);
   const nodeIds = all.map((node) => node.id).join(',');
   useEffect(() => {
     if (!api || !activeId || painting || disabled) return;
@@ -172,7 +176,7 @@ export function LayerPanel({ api, disabled }: { api?: EngineApi; disabled: boole
             {thumbnails[node.id] && (
               <img className="layer-thumbnail" src={thumbnails[node.id]} alt="" />
             )}
-            {node.children ? '▾ ' : '▧ '}
+            {node.children ? '▾ ' : node.adjustment ? '◐ ' : '▧ '}
             {node.name}
           </button>
           {node.mask && (
@@ -350,6 +354,12 @@ export function LayerPanel({ api, disabled }: { api?: EngineApi; disabled: boole
                   {active.mask.enabled ? 'Disable mask' : 'Enable mask'}
                 </button>
                 <button
+                  disabled={!!active.adjustment}
+                  title={
+                    active.adjustment
+                      ? 'Adjustment masks remain editable. Use layer merge controls to bake the result.'
+                      : undefined
+                  }
                   onClick={() => {
                     if (api) {
                       setPending(true);

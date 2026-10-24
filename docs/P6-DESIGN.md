@@ -121,3 +121,25 @@ must drop temporary preview state. CPU/GPU budgets include preview sources and
 render targets. M2 acceptance requires measured warm preview latency below
 100 ms plus independent CPU/GPU and destructive/layer comparisons within one
 channel value, project/recovery integration and all applicable repository gates.
+
+The implementation resamples each visible layer/mask/selection into a temporary
+screen-space cache, at most 2048 pixels per side, using Rust nearest sample
+centers. A step pins at most one authoritative source generation; a six MiB
+scratch reservation covers mapping, pending samples and bridge uploads. Cached
+generations are counted once with document/history/display buffers and may use
+the existing pager. The GPU executes the full ordered layer plan over these
+screen tiles and converts premultiplied float results into a bounded RGBA8 display
+texture, without reading preview pixels back to JavaScript. Rotation, flip and
+pan are captured in the cache key. This is an interactive display sample, not a
+full-resolution export or a guarantee of identical downsampling at fitted zoom.
+
+Initial preparation waits for the GPU queue fence as well as source-cache work.
+This keeps asynchronous shader initialization inside the Preparing preview
+status. Warm control updates reuse these resources, coalesce intermediate UI
+settings, and acknowledge the presented viewport frame. Cancelling waits for the
+active preview request to release its admission slot before a subsequent Apply.
+Document/view/target changes and worker replacement invalidate the cache. Export
+and autosave read only committed content. A layer-command JSON bridge is bounded
+to 16 KiB before parsing. New manifest schema 3 stores adjustment settings and
+sparse mask defaults inside the unchanged bounded v2 stream framing; missing
+schema means legacy schema 2. Legacy single-raster v1 input is still supported.

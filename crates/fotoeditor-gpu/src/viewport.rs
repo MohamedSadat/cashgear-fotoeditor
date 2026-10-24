@@ -337,6 +337,11 @@ impl ViewportRenderer {
         pass.set_bind_group(0, &self.binding, &[]);
         pass.draw(0..3, 0..1);
     }
+    pub fn draw_grid(&self, pass: &mut RenderPass<'_>) {
+        pass.set_pipeline(&self.grid);
+        pass.set_bind_group(0, &self.binding, &[]);
+        pass.draw(0..3, 0..1);
+    }
     pub fn prepare(
         &mut self,
         device: &Device,

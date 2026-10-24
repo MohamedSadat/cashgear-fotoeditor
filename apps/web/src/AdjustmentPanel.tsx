@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react';
-import type { Adjustment, EngineApi, Histogram, LayerNode } from './engine/types';
+import type {
+  Adjustment,
+  AdjustmentPreviewTarget,
+  EngineApi,
+  Histogram,
+  LayerNode,
+} from './engine/types';
 import { updateWorkspace, useWorkspace } from './state';
+import { useAdjustmentPreview } from './useAdjustmentPreview';
 
 type Kind = Adjustment['kind'];
 const names: Record<Kind, string> = {
@@ -71,6 +78,18 @@ function find(nodes: LayerNode[], id?: number): LayerNode | undefined {
     if (child) return child;
   }
 }
+function insertion(
+  nodes: LayerNode[],
+  id: number | undefined,
+  parent: number | null = null,
+): { parent: number | null; index: number } {
+  for (let index = 0; index < nodes.length; index++) {
+    const node = nodes[index];
+    if (node.id === id) return { parent, index: index + 1 };
+    if (find(node.children ?? [], id)) return insertion(node.children ?? [], id, node.id);
+  }
+  return { parent: null, index: nodes.length };
+}
 function plot(bins: number[]) {
   const max = Math.max(1, ...bins);
   return bins
@@ -85,13 +104,34 @@ export function AdjustmentPanel({ api, disabled }: { api?: EngineApi; disabled: 
   const [refresh, setRefresh] = useState(0);
   const [histogram, setHistogram] = useState<{ key: string; api: EngineApi; data: Histogram }>();
   const [histogramError, setHistogramError] = useState('');
+  const [asLayer, setAsLayer] = useState(false);
+  const [previewEnabled, setPreviewEnabled] = useState(false);
   const active = snapshot?.layers.active ?? snapshot?.layers.nodes[0]?.id;
   const node = find(snapshot?.layers.nodes ?? [], active);
-  const raster = !!node && node.children === null;
+  const raster = !!node && node.children === null && !node.adjustment;
   const revision = snapshot?.contentRevision;
   const key = `${active}:${revision}`;
   const blocked = disabled || applying || !!snapshot?.operation;
-  const colorTarget = raster && !snapshot?.layers.maskTarget && !snapshot?.selection.quickMask;
+  const colorTarget = !!node && !snapshot?.layers.maskTarget && !snapshot?.selection.quickMask;
+  const target: AdjustmentPreviewTarget | undefined =
+    active === undefined
+      ? undefined
+      : asLayer || node?.children
+        ? { kind: 'new-layer', ...insertion(snapshot?.layers.nodes ?? [], active) }
+        : node?.adjustment
+          ? { kind: 'layer', target: active }
+          : { kind: 'pixels', target: active };
+  const savedSettings = JSON.stringify(node?.adjustment);
+  useEffect(() => {
+    if (node?.adjustment) setAdjustment(node.adjustment);
+  }, [api, active, savedSettings]);
+  const preview = useAdjustmentPreview(
+    api,
+    previewEnabled && colorTarget && !blocked,
+    target,
+    adjustment,
+    JSON.stringify([api ? key : '', snapshot?.revision, snapshot?.view]),
+  );
   useEffect(() => {
     if (!api || active === undefined || !raster || blocked) return;
     let current = true;
@@ -128,7 +168,9 @@ export function AdjustmentPanel({ api, disabled }: { api?: EngineApi; disabled: 
       <span className="section-eyebrow">COLOR & TONE</span>
       <h2>Adjustments</h2>
       <p className="history-note">
-        Active raster pixels · selection coverage applies. Changes apply on confirmation.
+        {node?.adjustment
+          ? 'Edit this adjustment layer, then save your settings.'
+          : 'Selection coverage applies. Confirm to change pixels or create an editable layer.'}
       </p>
       <form
         onSubmit={(event) => {
@@ -136,9 +178,27 @@ export function AdjustmentPanel({ api, disabled }: { api?: EngineApi; disabled: 
           if (!api || blocked) return;
           setApplying(true);
           setNotice('');
+          setPreviewEnabled(false);
           void api
-            .applyAdjustment(adjustment)
+            .endAdjustmentPreview()
+            .then(() => {
+              if (target?.kind === 'layer')
+                return api.layerAction({
+                  kind: 'set-adjustment',
+                  target: target.target,
+                  adjustment,
+                });
+              if (target?.kind === 'new-layer')
+                return api.layerAction({
+                  kind: 'add-adjustment',
+                  parent: target.parent,
+                  index: target.index,
+                  adjustment,
+                });
+              return api.applyAdjustment(adjustment);
+            })
             .then((next) => {
+              setAsLayer(false);
               updateWorkspace({ snapshot: next });
               setNotice('Adjustment applied. Undo is available in History.');
             })
@@ -161,11 +221,48 @@ export function AdjustmentPanel({ api, disabled }: { api?: EngineApi; disabled: 
               ))}
             </select>
           </label>
+          <label className="check-label">
+            <input
+              type="checkbox"
+              checked={asLayer}
+              onChange={(e) => setAsLayer(e.target.checked)}
+            />
+            Create adjustment layer above selection
+          </label>
+          <label className="check-label">
+            <input
+              type="checkbox"
+              checked={previewEnabled}
+              onChange={(e) => setPreviewEnabled(e.target.checked)}
+            />
+            Live viewport preview
+          </label>
+          {previewEnabled && (
+            <p
+              className="history-note"
+              role="status"
+              data-testid="adjustment-preview-status"
+              data-preparation-ms={preview.timing?.preparationMs}
+              data-update-ms={preview.timing?.updateMs}
+              data-serial={preview.timing?.serial}
+              data-settings={preview.completed}
+              data-submit-ms={preview.timing?.renderSubmitMs}
+              data-frame-wait-ms={preview.timing?.frameWaitMs}
+            >
+              {preview.error ||
+                (preview.pending
+                  ? 'Preparing preview…'
+                  : preview.timing
+                    ? 'Preview ready. Document is unchanged until confirmation.'
+                    : 'Starting preview…')}
+            </p>
+          )}
           {fields(adjustment.kind).map(([field, label, min, max, step, scale]) => (
             <label key={field}>
               {label}
               <input
                 type="number"
+                aria-label={label}
                 required
                 min={min}
                 max={max}
@@ -173,6 +270,20 @@ export function AdjustmentPanel({ api, disabled }: { api?: EngineApi; disabled: 
                 value={Number(
                   ((adjustment as unknown as Record<string, number>)[field] * scale).toFixed(5),
                 )}
+                onChange={(e) =>
+                  setAdjustment({
+                    ...adjustment,
+                    [field]: Number(e.target.value) / scale,
+                  } as Adjustment)
+                }
+              />
+              <input
+                type="range"
+                aria-label={label + ' slider'}
+                min={min}
+                max={max}
+                step={step}
+                value={(adjustment as unknown as Record<string, number>)[field] * scale}
                 onChange={(e) =>
                   setAdjustment({
                     ...adjustment,
@@ -264,7 +375,13 @@ export function AdjustmentPanel({ api, disabled }: { api?: EngineApi; disabled: 
             <button type="button" onClick={reset}>
               Reset
             </button>
-            <button type="submit">Apply adjustment</button>
+            <button type="submit">
+              {target?.kind === 'new-layer'
+                ? 'Add adjustment layer'
+                : target?.kind === 'layer'
+                  ? 'Save adjustment layer'
+                  : 'Apply adjustment'}
+            </button>
           </div>
         </fieldset>
       </form>

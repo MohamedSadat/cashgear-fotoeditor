@@ -11,13 +11,22 @@ of P4's layers, groups, masks and streamed projects. P5 acceptance is still in
 progress; the Photoshop feather comparison is pending. See
 [progress](docs/PROGRESS.md) and [selection contracts](docs/P5-DESIGN.md).
 
-P6 milestone 1 adds brightness/contrast, levels, master RGB curves, exposure and
-hue/saturation as destructive adjustments, plus a full active-raster histogram.
-Use Adjust in the inspector, change controls, then Apply adjustment. Each apply
-respects the selection and creates one undo step. Alpha and fully transparent
-hidden RGB remain exact. The histogram uses stored alpha weights and excludes
-layer masks/effects. GPU live preview, adjustment layers and filters remain later
-P6 milestones; see [milestone contracts](docs/P6-DESIGN.md).
+P6 adds brightness/contrast, levels, master RGB curves, exposure and hue/saturation,
+an active-raster histogram, and editable adjustment layers. Use Adjust in the
+inspector, change controls, then Apply adjustment, or choose Create adjustment
+layer above selection. Select an adjustment layer to edit and save its settings.
+A selection becomes its editable mask. Each confirmation creates one undo step.
+Authoritative alpha and fully transparent hidden RGB remain exact; the histogram
+uses stored alpha weights before layer masks/effects.
+
+Enable Live viewport preview to see changes without editing the document. Its
+initial preparation includes paging and GPU initialization; later control changes
+reuse the visible source cache. Preview samples the visible view at a maximum
+2048 pixels per side. Final Apply processes the full-resolution selection.
+Uncheck preview to cancel; saving pixels/projects always uses committed content.
+Adjustment layers work with groups, masks, clipping, opacity and blend modes and
+remain editable in project/recovery files. Filters and the other adjustments
+remain later P6 milestones; see [milestone contracts](docs/P6-DESIGN.md).
 
 Use New canvas or Open image, or drop an image into the viewport. Wheel/two-finger
 gestures scroll; Ctrl/Cmd+wheel or trackpad pinch zooms around the pointer.

@@ -1140,6 +1140,19 @@ select {
   background: #1a1e24;
   color: inherit;
 }
+.adjustment-panel .check-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.adjustment-panel input[type='checkbox'] {
+  width: auto;
+  margin: 0;
+}
+.adjustment-panel input[type='range'] {
+  padding: 0;
+  accent-color: #f5a470;
+}
 .adjustment-actions {
   display: flex;
   gap: 8px;
