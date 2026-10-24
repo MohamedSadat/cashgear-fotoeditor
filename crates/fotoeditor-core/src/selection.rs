@@ -38,7 +38,7 @@ impl SelectionCommand {
                         && a.tiles().iter().all(|(coord, t)| {
                             b.tiles()
                                 .get(coord)
-                                .is_some_and(|other| t.id() == other.id())
+                                .is_some_and(|other| t.id() == other.id() || matches!((t.pin(),other.pin()),(Ok(a),Ok(b)) if a.pixels==b.pixels))
                         }))
             }
             _ => false,
@@ -77,6 +77,35 @@ impl Command for SelectionCommand {
 mod tests {
     use super::*;
     use crate::{History, Rgba8};
+    use proptest::prelude::*;
+    fn fingerprint(d: &Document) -> (bool, Vec<u8>) {
+        (
+            d.selection.is_some(),
+            (0..d.height)
+                .flat_map(|y| (0..d.width).map(move |x| selection_coverage(&d.selection, x, y)))
+                .collect(),
+        )
+    }
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(500))]
+        #[test]
+        fn selection_sequences_undo_all_and_redo_exactly(steps in prop::collection::vec((0u8..5,any::<u8>(),0u32..513),0..35)) {
+            let mut d=Document::blank(513,2,72.0).unwrap();d.raster_mut().write(255,1,Rgba8([87,33,19,0]));
+            let initial=fingerprint(&d);let mut history=History::default();
+            for (kind,value,x) in steps {
+                let after=match kind {
+                    0=>None,
+                    1=>Some(Arc::new(TileSurface::new(513,2))),
+                    2=>Some(Arc::new(TileSurface::with_default(513,2,Gray8(255)))),
+                    _=>{let mut s=d.selection.as_ref().map_or_else(||TileSurface::new(513,2),|s|(**s).clone());s.write(x,u32::from(kind%2),Gray8(value));Some(Arc::new(s))}
+                };
+                let command=SelectionCommand::new(&d,after,"Selection").unwrap();history.execute(&mut d,Box::new(command),0).unwrap();
+            }
+            let final_state=fingerprint(&d);while history.undo(&mut d) {}
+            prop_assert_eq!(fingerprint(&d),initial);prop_assert_eq!(d.raster().sample(255,1),Rgba8([87,33,19,0]));
+            while history.redo(&mut d) {}prop_assert_eq!(fingerprint(&d),final_state);
+        }
+    }
     #[test]
     fn selection_commands_share_unique_buffers_and_restore_unrestricted_empty_and_partial() {
         let mut d = Document::blank(257, 2, 72.0).unwrap();

@@ -6,7 +6,15 @@ fn main() {
         .nth(1)
         .unwrap_or_else(|| "bench/results/fixtures".into());
     fs::create_dir_all(&root).unwrap();
-    for (name, w, h) in [("alpha", 513u32, 259u32), ("large", 6000, 4000)] {
+    let only = std::env::args().nth(2);
+    for (name, w, h) in [
+        ("alpha", 513u32, 259u32),
+        ("large", 6000, 4000),
+        ("wand", 1025, 257),
+    ] {
+        if only.as_ref().is_some_and(|value| value != name) {
+            continue;
+        }
         let mut samples = Vec::with_capacity(w as usize * h as usize * 4);
         for y in 0..h {
             for x in 0..w {
@@ -21,6 +29,9 @@ fn main() {
                             _ => [255, 255, 255, 255],
                         }
                     }
+                } else if name == "wand" {
+                    [[30, 60, 90, 255], [180, 60, 90, 255], [30, 190, 90, 255]]
+                        [((x / 128 + y / 64) % 3) as usize]
                 } else {
                     // Smooth color field with deterministic texture: roughly 64 MiB PNG.
                     let noise = ((x.wrapping_mul(374761393) ^ y.wrapping_mul(668265263))

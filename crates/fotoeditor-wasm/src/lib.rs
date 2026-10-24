@@ -2,6 +2,7 @@
 #[cfg(target_arch = "wasm32")]
 mod bridge {
     mod layers;
+    mod selection;
     use fotoeditor_brush::{BrushSettings, Sample, StrokeCommand};
     use fotoeditor_core::{Document, History, HistoryLimits, Residency, ResolutionCommand, View};
     use fotoeditor_io::{ExportJob, ImportJob, ProjectReader, ProjectWriter};
@@ -36,8 +37,10 @@ mod bridge {
         project_read: Option<ProjectReader>,
         project_write: Option<ProjectWriter>,
         revision: u32,
+        content_revision: u32,
         external_bytes: u64,
         layered: layers::LayerRuntime,
+        selected: selection::SelectionRuntime,
     }
 
     // Lifecycle replacement starts a new editing session and releases its history.
@@ -60,7 +63,10 @@ mod bridge {
                     self.paint_complete_time = 0.0;
                     self.renderer.clear_tiles();
                     self.layered = layers::LayerRuntime::default();
+                    self.selected.cancel();
+                    self.selected.quick_mask = false;
                     self.revision = self.revision.wrapping_add(1);
+                    self.content_revision = self.content_revision.wrapping_add(1);
                 }
             }
         }
@@ -69,12 +75,15 @@ mod bridge {
                 document: self.document.as_ref().map_or(0, |d| d.bytes()),
                 history: self.document.as_ref().map_or(0, |d| self.history.bytes(d)),
                 temporary: self.import.as_ref().map_or(0, |j| j.temporary_bytes())
+                    + self.renderer.selection_cpu_bytes()
                     + self.external_bytes
                     + self.layered.bytes()
+                    + self.selected.scratch_bytes()
                     + self.layered.extra_source_bytes(
                         self.document.as_ref(),
                         &self.history,
                         self.stroke.as_ref().map(|s| &s.preview),
+                        &self.selected,
                     )
                     + self.export.as_ref().map_or(0, |j| j.temporary_bytes())
                     + self
@@ -122,8 +131,10 @@ mod bridge {
                 project_read: None,
                 project_write: None,
                 revision: 0,
+                content_revision: 0,
                 external_bytes: 0,
                 layered: layers::LayerRuntime::default(),
+                selected: selection::SelectionRuntime::default(),
             })
         }
         pub fn backend(&self) -> String {
@@ -164,6 +175,7 @@ mod bridge {
             let document = self
                 .stroke
                 .as_mut()
+                .filter(|_| !self.selected.quick_mask)
                 .map(|s| &mut s.preview)
                 .or(self.document.as_mut());
             if let Some(doc) = document {
@@ -174,6 +186,7 @@ mod bridge {
                 .frame(
                     self.stroke
                         .as_ref()
+                        .filter(|_| !self.selected.quick_mask)
                         .map(|s| &s.preview)
                         .or(self.document.as_ref()),
                     &self.view,
@@ -198,15 +211,35 @@ mod bridge {
             Ok(())
         }
         pub fn undo(&mut self) -> bool {
+            let only_selection = self
+                .history
+                .selection_only_jump(self.history.depths().0.saturating_sub(1));
+            let before = self.revision;
             let changed = self.document.as_mut().is_some_and(|d| self.history.undo(d));
             self.revision = self.revision.wrapping_add(u32::from(changed));
+            self.content_revision = self
+                .content_revision
+                .wrapping_add(u32::from(changed && !only_selection));
             self.normalize_layer_target();
+            if only_selection {
+                self.layered.selection_revision(before, self.revision);
+            }
             changed
         }
         pub fn redo(&mut self) -> bool {
+            let only_selection = self
+                .history
+                .selection_only_jump(self.history.depths().0 + 1);
+            let before = self.revision;
             let changed = self.document.as_mut().is_some_and(|d| self.history.redo(d));
             self.revision = self.revision.wrapping_add(u32::from(changed));
+            self.content_revision = self
+                .content_revision
+                .wrapping_add(u32::from(changed && !only_selection));
             self.normalize_layer_target();
+            if only_selection {
+                self.layered.selection_revision(before, self.revision);
+            }
             changed
         }
         pub fn history_limits(&mut self, bytes: u32, steps: u32) -> Result<(), JsValue> {
@@ -231,6 +264,8 @@ mod bridge {
             Ok(())
         }
         pub fn history_jump(&mut self, target: u32) -> Result<(), JsValue> {
+            let only_selection = self.history.selection_only_jump(target as usize);
+            let before = self.revision;
             let doc = self
                 .document
                 .as_mut()
@@ -240,7 +275,13 @@ mod bridge {
                 .jump(doc, target as usize)
                 .map_err(|e| JsValue::from_str(&e))?;
             self.revision = self.revision.wrapping_add(u32::from(changed));
+            self.content_revision = self
+                .content_revision
+                .wrapping_add(u32::from(changed && !only_selection));
             self.normalize_layer_target();
+            if only_selection {
+                self.layered.selection_revision(before, self.revision);
+            }
             Ok(())
         }
         pub fn resolution(&mut self, dpi: f64, gesture: u32) -> Result<(), JsValue> {
@@ -260,6 +301,7 @@ mod bridge {
                 .execute(doc, Box::new(command), 0)
                 .map_err(|e| JsValue::from_str(&e))?;
             self.revision = self.revision.wrapping_add(u32::from(changed));
+            self.content_revision = self.content_revision.wrapping_add(u32::from(changed));
             Ok(())
         }
         pub fn stroke_begin(&mut self, settings: &str) -> Result<(), JsValue> {
@@ -282,11 +324,11 @@ mod bridge {
                 .or_else(|| doc.layers.first().map(|l| l.id))
                 .ok_or_else(|| JsValue::from_str("Choose a layer to paint"))?;
             let mask_doc;
-            let source = if self.layered.mask_target {
+            let source = if self.selected.quick_mask || self.layered.mask_target {
                 mask_doc = self
-                    .mask_document(target)
+                    .quick_or_layer_mask_document(target)
                     .map_err(|e| JsValue::from_str(&e))?;
-                self.layered.mask_base_bytes = mask_doc.bytes();
+                self.layered.mask_base_bytes = mask_doc.raster().bytes();
                 let gray = if settings.eraser {
                     255
                 } else {
@@ -302,15 +344,16 @@ mod bridge {
             } else {
                 doc
             };
+            let target = if self.selected.quick_mask {
+                source.layers[0].id
+            } else {
+                target
+            };
             self.stroke = Some(
                 StrokeCommand::for_layer(
                     source,
                     settings,
-                    available.saturating_sub(if self.layered.mask_target {
-                        source.bytes()
-                    } else {
-                        0
-                    }),
+                    available.saturating_sub(self.layered.mask_base_bytes),
                     target,
                 )
                 .map_err(|e| JsValue::from_str(&e))?,
@@ -349,6 +392,7 @@ mod bridge {
             }
             self.stroke
                 .as_ref()
+                .filter(|_| !self.selected.quick_mask)
                 .map(|s| &s.preview)
                 .or(self.document.as_ref())
                 .is_some_and(|d| d.raster().has_dirty())
@@ -361,6 +405,9 @@ mod bridge {
             }
         }
         pub fn stroke_step(&mut self) -> Result<(), JsValue> {
+            if self.selected.quick_mask && self.stroke.is_some() {
+                self.selected.serial = self.selected.serial.wrapping_add(1);
+            }
             if self.stroke.is_some() {
                 self.layered.invalidate_memory();
             }
@@ -370,6 +417,13 @@ mod bridge {
                 self.paint_complete_time = self.paint_complete_time.max(s.completed_time);
             }
             if self.stroke.as_ref().is_some_and(|s| s.done()) {
+                if self.selected.quick_mask {
+                    let preview = self.stroke.as_ref().unwrap().preview.clone();
+                    let result = self.finish_quick_stroke(&preview);
+                    self.stroke = None;
+                    self.layered.mask_base_bytes = 0;
+                    return result;
+                }
                 let mut stroke = self.stroke.take().unwrap();
                 self.layered.dirty = Some(
                     stroke
@@ -409,6 +463,7 @@ mod bridge {
                     )
                     .map_err(|e| JsValue::from_str(&e))?;
                 self.revision = self.revision.wrapping_add(u32::from(changed));
+                self.content_revision = self.content_revision.wrapping_add(u32::from(changed));
                 self.layered.mask_base_bytes = 0;
             }
             Ok(())
@@ -479,6 +534,7 @@ mod bridge {
                 .map_err(|e| JsValue::from_str(&e))
         }
         pub fn cancel_job(&mut self) {
+            self.selected.cancel();
             self.layered.cancel();
             self.import = None;
             self.export = None;
@@ -602,10 +658,12 @@ mod bridge {
             let v = &self.view;
             serde_json::json!({"document":self.document.as_ref().map(|d|serde_json::json!({"width":d.width,"height":d.height,"dpi":d.dpi,"tiles":d.tile_count()})),
                 "layers":self.layer_json(),
-                "view":{"zoom":v.zoom,"rotation":v.rotation,"flipped":v.flipped,"panX":v.pan_x,"panY":v.pan_y},
+                "selection":self.selection_json(),
+                "view":{"zoom":v.zoom,"rotation":v.rotation,"flipped":v.flipped,"panX":v.pan_x,"panY":v.pan_y,"screenWidth":v.width,"screenHeight":v.height},
                 "memory":{"document":r.document,"history":r.history,"temporary":r.temporary,"gpu":r.gpu},
                 "history":{"undo":self.history.depths().0,"redo":self.history.depths().1,"labels":self.history.labels(),"bytesLimit":self.history.limits.bytes,"stepsLimit":self.history.limits.steps,"evicted":self.history.evicted},
                 "revision":self.revision,
+                "contentRevision":self.content_revision,
                 "painting":self.stroke.is_some(),"pendingSamples":self.stroke.as_ref().map_or(0,|s|s.pending()),
                 "paintTime":self.paint_time,
                 "paintCompleteTime":self.paint_complete_time,

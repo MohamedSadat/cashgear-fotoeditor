@@ -12,3 +12,6 @@ png = "=0.18.1"
 crc32fast = "=1.5.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1.0", features = ["float_roundtrip"] }
+
+[dev-dependencies]
+fotoeditor-select = { path = "../fotoeditor-select" }

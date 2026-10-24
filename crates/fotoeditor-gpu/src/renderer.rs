@@ -20,6 +20,7 @@ pub struct Renderer {
     resized: bool,
     viewport: ViewportRenderer,
     compositor: Option<crate::compositor::Compositor>,
+    selection: crate::selection::SelectionRenderer,
 }
 
 async fn device_for(adapter: &Adapter) -> Result<(Device, Queue), String> {
@@ -186,6 +187,7 @@ impl Renderer {
             ],
         });
         let viewport = ViewportRenderer::new(&device, config.format);
+        let selection = crate::selection::SelectionRenderer::new(&device, config.format);
         let mut renderer = Self {
             surface,
             device,
@@ -201,6 +203,7 @@ impl Renderer {
             resized: true,
             viewport,
             compositor: None,
+            selection,
         };
         renderer.resize(renderer.canvas.width(), renderer.canvas.height());
         Ok(renderer)
@@ -259,14 +262,49 @@ impl Renderer {
         self.viewport.invalidate(dirty, surface);
     }
     pub fn gpu_bytes(&self) -> u64 {
-        self.viewport.bytes() + self.compositor.as_ref().map_or(0, |c| c.bytes())
+        self.viewport.bytes()
+            + self.compositor.as_ref().map_or(0, |c| c.bytes())
+            + self.selection.gpu_bytes()
+    }
+    pub fn selection_cpu_bytes(&self) -> u64 {
+        self.selection.cpu_bytes()
+    }
+    pub fn clear_selection(&mut self) {
+        self.selection.clear();
+    }
+    pub fn prepare_selection(
+        &mut self,
+        source: fotoeditor_core::SelectionDisplaySource<'_>,
+        view: &View,
+        state: (u32, u32, bool),
+    ) -> Result<(), String> {
+        self.viewport.budget(
+            fotoeditor_core::GPU_BUDGET.saturating_sub(
+                self.compositor
+                    .as_ref()
+                    .map_or(0, |_| crate::compositor::COMPOSITE_RESERVE)
+                    + 8 * 1024 * 1024
+                    + 32,
+            ),
+        );
+        self.selection.prepare(
+            &self.device,
+            &self.queue,
+            source,
+            view,
+            (self.config.width, self.config.height),
+            state,
+        )
     }
     pub fn composite(
         &mut self,
         plan: &fotoeditor_core::CompositePlan,
     ) -> Result<js_sys::Promise, String> {
-        self.viewport
-            .budget(fotoeditor_core::GPU_BUDGET - crate::compositor::COMPOSITE_RESERVE);
+        self.viewport.budget(
+            fotoeditor_core::GPU_BUDGET
+                - crate::compositor::COMPOSITE_RESERVE
+                - self.selection.gpu_bytes(),
+        );
         self.compositor
             .get_or_insert_with(|| crate::compositor::Compositor::new(&self.device))
             .compose(&self.device, &self.queue, plan)
@@ -291,6 +329,8 @@ impl Renderer {
             return Ok(false);
         }
         if !self.diagnostic {
+            self.selection
+                .update_time(&self.queue, (self.config.width, self.config.height));
             self.viewport
                 .prepare(&self.device, &self.queue, doc, view, dpr)?;
         }
@@ -336,6 +376,7 @@ impl Renderer {
                 pass.draw(0..3, 0..1);
             } else {
                 self.viewport.draw(&mut pass, view);
+                self.selection.draw(&mut pass);
             }
         }
         self.queue.submit([encoder.finish()]);

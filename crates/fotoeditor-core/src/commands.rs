@@ -167,6 +167,14 @@ pub struct History {
     merge_allowed: bool,
 }
 impl History {
+    pub fn selection_only_jump(&self, target: usize) -> bool {
+        if target > self.entries.len() {
+            return false;
+        }
+        self.entries[target.min(self.cursor)..target.max(self.cursor)]
+            .iter()
+            .all(|c| (c.as_ref() as &dyn std::any::Any).is::<crate::SelectionCommand>())
+    }
     pub fn visit_tiles(&self, visitor: &mut dyn FnMut(TileRef<'_>)) {
         for command in &self.entries {
             command.visit_tiles(visitor);

@@ -986,6 +986,7 @@ version = "0.1.0"
 dependencies = [
  "crc32fast",
  "fotoeditor-core",
+ "fotoeditor-select",
  "image",
  "png",
  "serde",
@@ -1008,6 +1009,7 @@ dependencies = [
  "fotoeditor-core",
  "fotoeditor-gpu",
  "fotoeditor-io",
+ "fotoeditor-select",
  "js-sys",
  "serde_json",
  "wasm-bindgen",

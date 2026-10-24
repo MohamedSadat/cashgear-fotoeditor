@@ -6,10 +6,23 @@ mod renderer;
 #[cfg(target_arch = "wasm32")]
 pub use renderer::Renderer;
 #[cfg(target_arch = "wasm32")]
+mod selection;
+#[cfg(target_arch = "wasm32")]
 mod viewport;
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn selection_shader_is_valid_portable_wgsl() {
+        let module =
+            naga::front::wgsl::parse_str(include_str!("selection.wgsl")).expect("selection WGSL");
+        naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::empty(),
+        )
+        .validate(&module)
+        .expect("portable selection shader");
+    }
     #[test]
     fn composite_shader_is_valid_portable_wgsl() {
         let module =

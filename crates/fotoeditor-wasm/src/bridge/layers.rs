@@ -27,6 +27,11 @@ pub(super) struct LayerRuntime {
     memory: Option<Residency>,
 }
 impl LayerRuntime {
+    pub fn selection_revision(&mut self, before: u32, after: u32) {
+        if self.display_revision == Some(before) {
+            self.display_revision = Some(after);
+        }
+    }
     pub fn invalidate_memory(&mut self) {
         self.memory = None;
     }
@@ -39,8 +44,13 @@ impl LayerRuntime {
         document: Option<&Document>,
         history: &History,
         preview: Option<&Document>,
+        selection: &super::selection::SelectionRuntime,
     ) -> u64 {
-        if self.render.is_none() && self.thumbnail.is_none() && self.display.is_none() {
+        if self.render.is_none()
+            && self.thumbnail.is_none()
+            && self.display.is_none()
+            && !selection.has_tiles()
+        {
             return 0;
         }
         let mut seen = HashSet::new();
@@ -73,6 +83,7 @@ impl LayerRuntime {
         if let Some(display) = &self.display {
             display.visit_tiles(&mut count);
         }
+        selection.visit_tiles(&mut count);
         bytes
     }
     pub fn cancel(&mut self) {
@@ -240,7 +251,15 @@ impl Engine {
             layers: vec![layer],
         })
     }
-    fn refresh_pages(&mut self) {
+    pub(super) fn quick_or_layer_mask_document(&self, target: LayerId) -> Result<Document, String> {
+        if self.selected.quick_mask {
+            self.quick_document()
+                .map_err(|e| e.as_string().unwrap_or_else(|| "Quick Mask failed".into()))
+        } else {
+            self.mask_document(target)
+        }
+    }
+    pub(super) fn refresh_pages(&mut self) {
         self.layered.memory = None;
         let mut pages = HashMap::new();
         let mut add = |t: TileRef<'_>| {
@@ -262,6 +281,7 @@ impl Engine {
         if let Some(job) = &self.layered.thumbnail {
             job.source.visit_tiles(&mut add);
         }
+        self.selected.visit_tiles(&mut add);
         self.layered.pages = pages;
     }
     pub(super) fn layer_json(&self) -> serde_json::Value {
@@ -344,6 +364,7 @@ impl Engine {
             .execute(doc, Box::new(command), self.layered.bytes())
             .map_err(js)?;
         self.revision = self.revision.wrapping_add(u32::from(changed));
+        self.content_revision = self.content_revision.wrapping_add(u32::from(changed));
         self.layered.force_composite = true;
         if select_new {
             fn new_node(nodes: &[Layer], existing: &HashSet<LayerId>) -> Option<LayerId> {
@@ -391,6 +412,7 @@ impl Engine {
             )
             .map_err(js)?;
         self.revision = self.revision.wrapping_add(u32::from(changed));
+        self.content_revision = self.content_revision.wrapping_add(u32::from(changed));
         self.refresh_pages();
         Ok(())
     }
@@ -422,7 +444,7 @@ impl Engine {
             || self
                 .stroke
                 .as_ref()
-                .is_some_and(|s| s.preview.raster().has_dirty())
+                .is_some_and(|s| !self.selected.quick_mask && s.preview.raster().has_dirty())
     }
     pub fn composite_begin(&mut self) -> Result<bool, JsValue> {
         if !self.layered.requires_composite(self.document.as_ref()) {
@@ -434,7 +456,7 @@ impl Engine {
         }
         let mut doc = self.document.as_ref().ok_or("No document")?.clone();
         let mut regions = self.layered.dirty.take();
-        if let Some(stroke) = &self.stroke {
+        if let Some(stroke) = self.stroke.as_ref().filter(|_| !self.selected.quick_mask) {
             let preview = if self.layered.mask_target {
                 self.mask_preview(&stroke.preview).map_err(js)?
             } else {
@@ -443,7 +465,7 @@ impl Engine {
             let target = preview.id;
             *doc.layer_mut(target).map_err(js)? = preview;
         }
-        if let Some(stroke) = &mut self.stroke {
+        if let Some(stroke) = self.stroke.as_mut().filter(|_| !self.selected.quick_mask) {
             regions = Some(
                 stroke
                     .preview
@@ -518,6 +540,7 @@ impl Engine {
                     )
                     .map_err(js)?;
                 self.revision = self.revision.wrapping_add(1);
+                self.content_revision = self.content_revision.wrapping_add(1);
                 self.layered.display_revision = None;
                 self.layered.mask_target = false;
                 self.layered.mask_view = false;
@@ -679,6 +702,20 @@ impl Engine {
             }
         };
         match scope {
+            "export" => {
+                if let Some(j) = &self.export {
+                    j.needed(&mut add);
+                }
+            }
+            "selection" => self.selected.needed(&mut add),
+            "selection-seed" => self.selected.seed_needed(&mut add),
+            "selection-mask" => {
+                if let Some(selection) = self.document.as_ref().and_then(|d| d.selection.as_ref()) {
+                    for t in selection.tiles().values() {
+                        add(TileRef::Gray(t));
+                    }
+                }
+            }
             "thumbnail" => {
                 if let Some(job) = &self.layered.thumbnail {
                     if let Some((_, plan)) = job.plan().map_err(js)? {
@@ -717,6 +754,11 @@ impl Engine {
                 } else {
                     layer.visit_tiles(&mut add);
                 }
+                if let Some(s) = &doc.selection {
+                    for t in s.tiles().values() {
+                        add(TileRef::Gray(t));
+                    }
+                }
             }
             _ => return Err(JsValue::from_str("Unknown page request scope")),
         }
@@ -725,7 +767,11 @@ impl Engine {
         for tile in &needed {
             self.layered.pages.insert(tile.id(), tile.clone());
         }
-        let ticket = self.begin_page_io()?;
+        let ticket = if needed.is_empty() {
+            0
+        } else {
+            self.begin_page_io()?
+        };
         Ok(serde_json::json!({"requests":needed.iter().map(description).collect::<Vec<_>>(),"ticket":ticket}).to_string())
     }
     pub fn page_io_complete(&mut self, ticket: u32) {
@@ -747,6 +793,9 @@ impl Engine {
             return false;
         };
         let mut cold = false;
+        if let Some(s) = &doc.selection {
+            cold |= s.tiles().values().any(|t| t.resident_bytes() == 0);
+        }
         if let Ok(layer) = doc.layer(target) {
             let mut check = |t: TileRef<'_>| {
                 if t.bytes() == 0 {

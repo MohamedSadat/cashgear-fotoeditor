@@ -250,7 +250,9 @@ impl LayerProjectWriter {
         // Bounded manifest plus framed output/input/bridge reservation.
         residency.check_cpu(LAYER_PROJECT_SCRATCH)?;
         let mut references = 0;
-        document.visit_tiles(&mut |_| references += 1);
+        for layer in &document.layers {
+            layer.visit_tiles(&mut |_| references += 1);
+        }
         if references > MAX_MANIFEST_REFERENCES {
             return Err("Layer tile directory exceeds the bounded manifest reference limit".into());
         }
@@ -519,6 +521,19 @@ impl LayerProjectReader {
 mod tests {
     use super::*;
     use fotoeditor_core::BlendMode;
+    #[test]
+    fn active_session_selection_is_not_a_project_channel_or_tile_record() {
+        let mut document = Document::blank(257, 2, 72.0).unwrap();
+        document.raster_mut().write(256, 1, Rgba8([87, 33, 19, 0]));
+        let before = encode(&document);
+        let mut selection = TileSurface::new(257, 2);
+        selection.write(256, 1, Gray8(128));
+        document.selection = Some(Arc::new(selection));
+        let after = encode(&document);
+        assert_eq!(before, after);
+        let decoded = read(&after).unwrap();
+        assert!(decoded.selection.is_none());
+    }
     #[test]
     fn arbitrary_nearby_float_metadata_roundtrips_exact_bits() {
         for n in 0..256u64 {

@@ -143,6 +143,19 @@ pub struct ExportJob {
     row: Vec<u8>,
 }
 impl ExportJob {
+    pub fn needed(&self, visitor: &mut dyn FnMut(fotoeditor_core::TileRef<'_>)) {
+        if self.next_y >= self.document.height {
+            return;
+        }
+        let y1 = (self.next_y + 32).min(self.document.height);
+        for ty in self.next_y / TILE_SIZE..y1.div_ceil(TILE_SIZE) {
+            for tx in 0..self.document.width.div_ceil(TILE_SIZE) {
+                if let Some(t) = self.document.raster().tiles().get(&(tx, ty)) {
+                    visitor(fotoeditor_core::TileRef::Rgba(t));
+                }
+            }
+        }
+    }
     pub fn new(document: &Document, residency: Residency) -> Result<Self, String> {
         document.export_raster()?;
         // Conservative output capacity + JS bridge copy; shared tile Arcs add no pixel copies.
