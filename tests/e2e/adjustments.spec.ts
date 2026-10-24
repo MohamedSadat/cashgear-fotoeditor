@@ -107,7 +107,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
         );
       });
       expect(pixel(await exported(page), 256)).toEqual([127, 191, 255, 1]);
-      expect((await snap(page)).history.undo).toBe(0);
+      await expect.poll(async () => (await snap(page)).history.undo).toBe(0);
       await page
         .getByTestId('open-image')
         .setInputFiles(resolve('bench/results/fixtures/alpha.png'));
@@ -236,7 +236,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       await page.getByRole('button', { name: 'Restore session', exact: true }).click();
       await expect(page.getByTestId('document-size')).toHaveText('64 × 64');
       expect(pixel(await exported(page), 0)).toEqual([176, 90, 0, 255]);
-      expect((await snap(page)).history.undo).toBe(0);
+      await expect.poll(async () => (await snap(page)).history.undo).toBe(0);
     },
   );
 }

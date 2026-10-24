@@ -55,6 +55,7 @@ try {
           base + '/?diagnostic=1&document=1' + (backend === 'WebGL2' ? '&gpu=webgl2' : ''),
         );
         await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');
+        await expect(page.getByTestId('gpu-backend')).toHaveText(backend);
         const gpu = await page.evaluate(async () => {
           const a = await navigator.gpu?.requestAdapter();
           return a
