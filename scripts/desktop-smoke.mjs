@@ -131,12 +131,27 @@ try {
   const page = context.pages()[0] ?? (await context.waitForEvent('page'));
   await expect(page.getByTestId('engine-status')).toHaveText('Engine ready', { timeout: 60000 });
   const origin = new URL(page.url()).origin;
+  const dismissRecoveryPrompt = async () => {
+    // Engine readiness precedes the asynchronous storage/recovery scan. Decide
+    // from its completed catalog, then let click wait for React's dialog effect.
+    await page.waitForFunction(() => {
+      const snapshot = JSON.parse(
+        document.querySelector('[data-testid="gpu-canvas"]')?.dataset.snapshot ?? 'null',
+      );
+      return snapshot?.recovery && snapshot.recovery.state !== 'starting';
+    });
+    const count = await page.evaluate(
+      () =>
+        JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot).recovery
+          .candidates.length,
+    );
+    if (count > 0) await page.getByRole('button', { name: 'Later', exact: true }).click();
+  };
   const results = [];
   for (const backend of ['WebGPU', 'WebGL2']) {
     await page.goto(origin + '/?diagnostic=1' + (backend === 'WebGL2' ? '&gpu=webgl2' : ''));
     await expect(page.getByTestId('engine-status')).toHaveText('Engine ready', { timeout: 60000 });
-    if (await page.getByRole('dialog', { name: 'Restore last session?' }).isVisible())
-      await page.getByRole('button', { name: 'Later', exact: true }).click();
+    await dismissRecoveryPrompt();
     await expect(page.getByTestId('gpu-backend')).toHaveText(backend);
     await expect(page.getByTestId('gpu-canvas')).toHaveAttribute('data-presented', 'true');
     if (!(await page.evaluate(() => crossOriginIsolated)))
@@ -160,8 +175,7 @@ try {
     };
     await page.goto(origin + (backend === 'WebGL2' ? '/?gpu=webgl2' : '/'));
     await expect(page.getByTestId('engine-status')).toHaveText('Engine ready', { timeout: 60000 });
-    if (await page.getByRole('dialog', { name: 'Restore last session?' }).isVisible())
-      await page.getByRole('button', { name: 'Later', exact: true }).click();
+    await dismissRecoveryPrompt();
     await page
       .getByTestId('open-image')
       .setInputFiles(join(root, 'bench/results/fixtures/alpha.png'));
@@ -280,8 +294,7 @@ try {
       origin + '/?diagnostic=1&document=1' + (backend === 'WebGL2' ? '&gpu=webgl2' : ''),
     );
     await expect(page.getByTestId('engine-status')).toHaveText('Engine ready', { timeout: 60000 });
-    if (await page.getByRole('dialog', { name: 'Restore last session?' }).isVisible())
-      await page.getByRole('button', { name: 'Later', exact: true }).click();
+    await dismissRecoveryPrompt();
     const golden = await page.evaluate(async () =>
       Reflect.get(window, '__fotoeditor').compareCompositors(),
     );
