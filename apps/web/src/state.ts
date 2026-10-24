@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Backend } from './engine/types';
 import type { DocumentSnapshot } from './engine/types';
 interface WorkspaceState {
+  previewOwner?: 'adjustment' | 'filter';
   status: 'starting' | 'ready' | 'error';
   backend?: Backend;
   adapter?: string;

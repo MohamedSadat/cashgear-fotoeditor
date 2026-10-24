@@ -81,6 +81,7 @@ export class PagingStore {
       | 'write'
       | 'thumbnail'
       | 'adjustment'
+      | 'filter'
       | 'preview'
       | 'preview-render'
       | 'histogram'

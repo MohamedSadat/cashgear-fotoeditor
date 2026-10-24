@@ -24,6 +24,8 @@ export interface FrameResult extends PhysicalSize {
   snapshot?: DocumentSnapshot;
 }
 export interface DocumentSnapshot {
+  canFade: boolean;
+  filterTiming?: { kernelMs: number; totalMs: number; cpuPeakBytes: number };
   adjustmentTiming?: { kernelMs: number; totalMs: number };
   selection: {
     active: boolean;
@@ -102,6 +104,9 @@ export interface Interaction {
   sample?: [number, number, number, number, number, number];
 }
 export interface EngineApi {
+  applyFilter(filter: SpatialFilter): Promise<DocumentSnapshot>;
+  fadeFilter(opacity: number, blend: string): Promise<DocumentSnapshot>;
+  previewFilter(filter: SpatialFilter, target: number): Promise<AdjustmentPreviewTiming>;
   previewAdjustment(
     adjustment: Adjustment,
     target: AdjustmentPreviewTarget,
@@ -110,7 +115,9 @@ export interface EngineApi {
   diagnosticPreviewFault(fault: 'pause-before-render' | 'hold-gpu-wait' | 'budget'): Promise<void>;
   applyAdjustment(adjustment: Adjustment): Promise<DocumentSnapshot>;
   histogram(target: number): Promise<Histogram>;
-  diagnosticAdjustmentFault(fault: 'pause-before-commit' | 'budget'): Promise<void>;
+  diagnosticAdjustmentFault(
+    fault: 'pause-before-commit' | 'budget' | 'budget-after-step',
+  ): Promise<void>;
   diagnosticSelectionFault(fault: 'pause-before-commit' | 'budget'): Promise<void>;
   selectionAction(action: SelectionAction): Promise<DocumentSnapshot>;
   quickMask(enabled: boolean): Promise<DocumentSnapshot>;
@@ -119,6 +126,7 @@ export interface EngineApi {
   thumbnail(target: number): Promise<Uint8Array>;
   compareCompositors(): Promise<number[]>;
   compareAdjustmentCompositors(): Promise<number[]>;
+  compareFilterCompositors(): Promise<number[]>;
   selectLayer(target: number, mask?: boolean, view?: boolean): Promise<DocumentSnapshot>;
   mergeLayers(kind: 'down' | 'visible' | 'flatten', target: number): Promise<DocumentSnapshot>;
   layerAction(action: LayerAction): Promise<DocumentSnapshot>;
@@ -156,6 +164,11 @@ export interface EngineApi {
   exportPng(): Promise<Uint8Array>;
   cancelJob(): boolean | Promise<boolean>;
 }
+
+export type SpatialFilter =
+  | { kind: 'gaussian' | 'box-blur' | 'median'; radius: number }
+  | { kind: 'unsharp-mask'; radius: number; amount: number; threshold: number }
+  | { kind: 'sharpen'; amount: number };
 export type SelectionMode = 'new' | 'add' | 'subtract' | 'intersect';
 export type Adjustment =
   | { kind: 'brightness-contrast'; brightness: number; contrast: number }

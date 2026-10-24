@@ -105,7 +105,9 @@ export function AdjustmentPanel({ api, disabled }: { api?: EngineApi; disabled: 
   const [histogram, setHistogram] = useState<{ key: string; api: EngineApi; data: Histogram }>();
   const [histogramError, setHistogramError] = useState('');
   const [asLayer, setAsLayer] = useState(false);
-  const [previewEnabled, setPreviewEnabled] = useState(false);
+  const previewEnabled = useWorkspace((s) => s.previewOwner === 'adjustment');
+  const setPreviewEnabled = (enabled: boolean) =>
+    updateWorkspace({ previewOwner: enabled ? 'adjustment' : undefined });
   const active = snapshot?.layers.active ?? snapshot?.layers.nodes[0]?.id;
   const node = find(snapshot?.layers.nodes ?? [], active);
   const raster = !!node && node.children === null && !node.adjustment;

@@ -1,7 +1,7 @@
 import { expose, transfer } from 'comlink';
 import type { EngineApi, EngineInfo, InitOptions, PhysicalSize, Interaction } from './types';
 import initWasm, { Engine } from './pkg/fotoeditor_wasm';
-import type { DocumentSnapshot } from './types';
+import type { Adjustment, AdjustmentPreviewTarget, SpatialFilter, DocumentSnapshot } from './types';
 import type { RecoveryStatus } from './types';
 import { RecoveryStore } from './recovery';
 import type { RecoveryFault } from './recovery';
@@ -38,8 +38,9 @@ let thumbnailRunning = false;
 let selectionTiming: DocumentSnapshot['selection']['timing'];
 let selectionFault: 'pause-before-commit' | 'budget' | undefined;
 let releaseSelectionPause: (() => void) | undefined;
+let filterTiming: DocumentSnapshot['filterTiming'];
 let adjustmentTiming: DocumentSnapshot['adjustmentTiming'];
-let adjustmentFault: 'pause-before-commit' | 'budget' | undefined;
+let adjustmentFault: 'pause-before-commit' | 'budget' | 'budget-after-step' | undefined;
 let releaseAdjustmentPause: (() => void) | undefined;
 let histogramRunning = false;
 let previewRequest = 0;
@@ -66,6 +67,7 @@ function snapshot(): DocumentSnapshot {
     operation,
     projectTiming,
     adjustmentTiming,
+    filterTiming,
     recovery,
     // A completed stroke can have the next stroke waiting behind it. Keep the
     // entire queued edit busy so open/export cannot interleave in that gap.
@@ -268,121 +270,233 @@ function replaced(fileName: string) {
   editError = undefined;
   sampledColor = undefined;
 }
-const api: EngineApi = {
-  async diagnosticPreviewFault(fault) {
-    if (!diagnostic) throw new Error('Diagnostics are disabled');
-    previewFault = fault;
-  },
-  async previewAdjustment(adjustment, target) {
-    const e = requireIdle();
-    const request = ++previewRequest;
-    const token = job;
-    busy = true;
-    previewRunning = true;
-    let finishPreview: () => void = () => {};
-    const completion = new Promise<void>((resolve) => {
-      finishPreview = resolve;
+async function runPreview(
+  adjustment: Adjustment | SpatialFilter,
+  target: AdjustmentPreviewTarget,
+  filter = false,
+) {
+  const e = requireIdle();
+  const request = ++previewRequest;
+  const token = job;
+  busy = true;
+  previewRunning = true;
+  let finishPreview: () => void = () => {};
+  const completion = new Promise<void>((resolve) => {
+    finishPreview = resolve;
+  });
+  previewCompletion = completion;
+  cancelAllowed = true;
+  const fault = previewFault;
+  previewFault = undefined;
+  const priorExternal = externalBytes;
+  const current = () => {
+    cancelled(token);
+    if (request !== previewRequest) throw new Error('Preview cancelled');
+  };
+  const start = performance.now();
+  let preparationMs = 0;
+  let cold = false;
+  try {
+    if (fault === 'budget') {
+      e.preview_cancel();
+      previewKey = undefined;
+      const memory = snapshot().memory;
+      external(priorExternal + 768 * 1048576 - memory.document - memory.history - memory.temporary);
+    }
+    const state = snapshot();
+    const key = JSON.stringify([state.revision, state.view, size, target, filter]);
+    if (previewKey !== key || !e.preview_valid()) {
+      cold = true;
+      if (filter) e.filter_preview_begin(JSON.stringify(target));
+      else e.preview_begin(JSON.stringify(target));
+      previewKey = key;
+      let slice = performance.now();
+      while (!e.preview_ready()) {
+        current();
+        await pages.hydrate(e, 'preview');
+        current();
+        e.preview_step();
+        if (performance.now() - slice >= 4) {
+          await yieldProjectTask();
+          slice = performance.now();
+        }
+      }
+      preparationMs = performance.now() - start;
+    }
+    current();
+    if (fault === 'pause-before-render') {
+      operation = 'Preview ready to render (diagnostic)…';
+      await new Promise<void>((resolve) => {
+        releasePreviewPause = resolve;
+      });
+      current();
+    }
+    const updated = performance.now();
+    if (filter) e.filter_preview_update(JSON.stringify(adjustment));
+    else e.preview_update(JSON.stringify(adjustment));
+    let done = false;
+    while (!done) {
+      current();
+      await pages.hydrate(e, 'preview-render');
+      current();
+      done = e.preview_render_step();
+    }
+    const submitted = performance.now();
+    dirty = true;
+    await new Promise<void>((resolve, reject) => {
+      presentation = { resolve, reject };
     });
-    previewCompletion = completion;
-    cancelAllowed = true;
-    const fault = previewFault;
-    previewFault = undefined;
-    const priorExternal = externalBytes;
-    const current = () => {
-      cancelled(token);
-      if (request !== previewRequest) throw new Error('Preview cancelled');
+    current();
+    const presented = performance.now();
+    if (cold) {
+      // Include asynchronous GPU pipeline initialization in preparation.
+      if (fault === 'hold-gpu-wait') operation = 'Preview GPU wait (diagnostic)…';
+      await e.preview_settled(fault === 'hold-gpu-wait');
+      current();
+      preparationMs += performance.now() - presented;
+    }
+    return {
+      serial: request,
+      preparationMs,
+      updateMs: presented - updated,
+      renderSubmitMs: submitted - updated,
+      frameWaitMs: presented - submitted,
+      width: Math.min(e.width(), 2048),
+      height: Math.min(e.height(), 2048),
     };
-    const start = performance.now();
-    let preparationMs = 0;
-    let cold = false;
-    try {
-      if (fault === 'budget') {
-        e.preview_cancel();
-        previewKey = undefined;
+  } catch (error) {
+    if (!disposed && token === job && request === previewRequest) {
+      previewKey = undefined;
+      e.preview_cancel();
+      dirty = true;
+    }
+    throw error;
+  } finally {
+    if (token === job) {
+      external(priorExternal);
+      busy = false;
+      operation = undefined;
+      releasePreviewPause = undefined;
+    }
+    finishPreview();
+    if (previewCompletion === completion) {
+      previewRunning = false;
+      previewCompletion = undefined;
+    }
+  }
+}
+
+async function runFilter(begin: (engine: Engine) => void) {
+  const e = requireIdle();
+  busy = true;
+  operation = 'Applying filter…';
+  const token = beginJob();
+  const start = performance.now();
+  const fault = adjustmentFault;
+  adjustmentFault = undefined;
+  const priorExternal = externalBytes;
+  let kernelMs = 0;
+  try {
+    if (fault === 'budget') {
+      const m = snapshot().memory;
+      external(priorExternal + 768 * 1048576 - m.document - m.history - m.temporary);
+    }
+    begin(e);
+    let slice = performance.now();
+    while (!e.filter_ready()) {
+      cancelled(token);
+      await pages.hydrate(e, 'filter');
+      cancelled(token);
+      const t = performance.now();
+      e.filter_step();
+      kernelMs += performance.now() - t;
+      if (fault === 'budget-after-step') {
         const memory = snapshot().memory;
         external(
           priorExternal + 768 * 1048576 - memory.document - memory.history - memory.temporary,
         );
       }
-      const state = snapshot();
-      const key = JSON.stringify([state.revision, state.view, size, target]);
-      if (previewKey !== key || !e.preview_valid()) {
-        cold = true;
-        e.preview_begin(JSON.stringify(target));
-        previewKey = key;
-        let slice = performance.now();
-        while (!e.preview_ready()) {
-          current();
-          await pages.hydrate(e, 'preview');
-          current();
-          e.preview_step();
-          if (performance.now() - slice >= 4) {
-            await yieldProjectTask();
-            slice = performance.now();
-          }
-        }
-        preparationMs = performance.now() - start;
-      }
-      current();
-      if (fault === 'pause-before-render') {
-        operation = 'Preview ready to render (diagnostic)…';
-        await new Promise<void>((resolve) => {
-          releasePreviewPause = resolve;
-        });
-        current();
-      }
-      const updated = performance.now();
-      e.preview_update(JSON.stringify(adjustment));
-      let done = false;
-      while (!done) {
-        current();
-        await pages.hydrate(e, 'preview-render');
-        current();
-        done = e.preview_render_step();
-      }
-      const submitted = performance.now();
-      dirty = true;
-      await new Promise<void>((resolve, reject) => {
-        presentation = { resolve, reject };
-      });
-      current();
-      const presented = performance.now();
-      if (cold) {
-        // Include asynchronous GPU pipeline initialization in preparation.
-        if (fault === 'hold-gpu-wait') operation = 'Preview GPU wait (diagnostic)…';
-        await e.preview_settled(fault === 'hold-gpu-wait');
-        current();
-        preparationMs += performance.now() - presented;
-      }
-      return {
-        serial: request,
-        preparationMs,
-        updateMs: presented - updated,
-        renderSubmitMs: submitted - updated,
-        frameWaitMs: presented - submitted,
-        width: Math.min(e.width(), 2048),
-        height: Math.min(e.height(), 2048),
-      };
-    } catch (error) {
-      if (!disposed && token === job && request === previewRequest) {
-        previewKey = undefined;
-        e.preview_cancel();
-        dirty = true;
-      }
-      throw error;
-    } finally {
-      if (token === job) {
-        external(priorExternal);
-        busy = false;
-        operation = undefined;
-        releasePreviewPause = undefined;
-      }
-      finishPreview();
-      if (previewCompletion === completion) {
-        previewRunning = false;
-        previewCompletion = undefined;
+      if (performance.now() - slice >= 4) {
+        await yieldProjectTask();
+        slice = performance.now();
       }
     }
+    if (fault === 'pause-before-commit') {
+      operation = 'Filter ready (diagnostic)…';
+      await new Promise<void>((resolve) => {
+        releaseAdjustmentPause = resolve;
+      });
+    }
+    cancelled(token);
+    e.filter_commit();
+    cancelAllowed = false;
+    await recompose(token);
+    filterTiming = {
+      kernelMs,
+      totalMs: performance.now() - start,
+      cpuPeakBytes: e.filter_cpu_peak(),
+    };
+    dirty = true;
+    return snapshot();
+  } finally {
+    if (token === job) {
+      external(priorExternal);
+      releaseAdjustmentPause = undefined;
+      e.filter_cancel();
+      busy = false;
+      operation = undefined;
+    }
+  }
+}
+const api: EngineApi = {
+  async compareFilterCompositors() {
+    if (!diagnostic) throw new Error('Diagnostics are disabled');
+    const e = requireIdle();
+    busy = true;
+    const errors: number[] = [];
+    try {
+      for (const filter of [
+        { kind: 'gaussian', radius: 20 },
+        { kind: 'box-blur', radius: 20 },
+        { kind: 'unsharp-mask', radius: 3, amount: 1.3, threshold: 7 },
+        { kind: 'sharpen', amount: 1.2 },
+        { kind: 'median', radius: 1 },
+        { kind: 'gaussian', radius: 0 },
+      ]) {
+        for (let tile = 0; tile < 6; tile++) {
+          const bytes = (await e.filter_golden_begin(JSON.stringify(filter), tile)) as Uint8Array;
+          errors.push(e.golden_compare(bytes));
+          await yieldProjectTask();
+        }
+      }
+      for (const filter of [
+        { kind: 'gaussian', radius: 64 },
+        { kind: 'median', radius: 5 },
+      ]) {
+        const bytes = (await e.filter_golden_begin(JSON.stringify(filter), 0)) as Uint8Array;
+        errors.push(e.golden_compare(bytes));
+        await yieldProjectTask();
+      }
+      return errors;
+    } finally {
+      busy = false;
+    }
+  },
+  async diagnosticPreviewFault(fault) {
+    if (!diagnostic) throw new Error('Diagnostics are disabled');
+    previewFault = fault;
+  },
+  async previewAdjustment(adjustment, target) {
+    return runPreview(adjustment, target);
+  },
+  async previewFilter(filter, target) {
+    return runPreview(filter, { kind: 'pixels', target }, true);
+  },
+  async applyFilter(filter) {
+    return runFilter((e) => e.filter_begin(JSON.stringify(filter)));
+  },
+  async fadeFilter(opacity, blend) {
+    return runFilter((e) => e.fade_begin(opacity, JSON.stringify(blend)));
   },
   async endAdjustmentPreview() {
     const completion = previewCompletion;
