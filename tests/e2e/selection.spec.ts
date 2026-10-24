@@ -359,18 +359,20 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       await page.getByRole('textbox', { name: 'Color hex' }).fill('#0000ff');
       const canvas = page.getByTestId('gpu-canvas');
       const box = (await canvas.boundingBox())!;
-      const click = async (x: number, y: number) => {
+      const click = async (x: number, y: number, mutates = false) => {
+        const undo = (await snap(page)).history.undo;
         await page.mouse.click(box.x + box.width / 2 + x - 256, box.y + box.height / 2 + y - 64);
+        if (mutates) await expect.poll(async () => (await snap(page)).history.undo).toBe(undo + 1);
         await expect.poll(async () => (await snap(page)).painting).toBe(false);
       };
       await click(100.5, 64.5);
-      await click(256.5, 64.5);
+      await click(256.5, 64.5, true);
       let image = await exported(page);
       expect(pixel(image, 100, 64)).toEqual([0, 255, 0, 255]);
       expect(pixel(image, 256, 64)).toEqual([0, 0, 255, 255]);
       await page.keyboard.press('e');
       await click(100.5, 64.5);
-      await click(256.5, 64.5);
+      await click(256.5, 64.5, true);
       image = await exported(page);
       expect(pixel(image, 100, 64)).toEqual([0, 255, 0, 255]);
       expect(pixel(image, 256, 64)).toEqual([0, 0, 255, 0]);
@@ -379,7 +381,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       await page.evaluate(async () => {
         await (Reflect.get(window, '__fotoeditor') as EngineApi).quickMask(true);
       });
-      await click(256.5, 64.5);
+      await click(256.5, 64.5, true);
       await expect
         .poll(async () => (await snap(page)).history.labels.at(-1))
         .toBe('Paint Quick Mask');

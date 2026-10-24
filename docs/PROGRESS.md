@@ -44,7 +44,7 @@ hardware APIs: maximum API return 164.42 ms, visible acknowledgement 188.20 ms,
 navigation and 300-pixel brush regression measurements are recorded in
 P5-REPORT.md. All 144 local installed Chrome/Edge hardware tests pass, with no
 failures, skips or retries, including all 36 P5 cases. The implementation and
-verification are pushed through `b26ef9c`; remote verification is linked from
+verification are pushed on main; remote verification is linked from
 the phase report. The unavailable Photoshop feather comparison is still pending;
 prepared deterministic reference-input masks do not close that acceptance item.
 

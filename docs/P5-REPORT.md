@@ -130,16 +130,17 @@ Evidence: `p5-viewport-performance.json` and `p5-brush-performance.json`.
   the full existing brush/history/layer/recovery/viewport regressions.
   Evidence: `bench/results/p5-hardware-browser-tests.json`.
 
-The first broad browser run exposed two test preconditions: the new toolbar moved
+The broad browser runs exposed test preconditions: the new toolbar moved
 layer rows under a sticky inspector header during native drag, and a selection
 assertion read before the first frame snapshot. Tests now center the whole layer
 stack before drag and await snapshot availability. An overlapping probe also
 removed another run's trace directory; final evidence is gathered serially.
-The lasso pointer-move defect found during integration was fixed and is covered
+The software pass also exposed an export assertion racing queued brush input;
+the selection test now waits for that stroke's committed history entry before
+reading samples. The lasso pointer-move defect found during integration was fixed and is covered
 by an actual rotated/flipped-view lasso, polygon and modifier gesture test.
 
-Remote CI for implementation checkpoint `b26ef9c46539926f2973c6acd0fc9309094a80bb`
-is tracked by [FotoEditor checks](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/runs/40068873435).
+Remote verification is retained in [FotoEditor checks on main](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/workflows/ci.yml?query=branch%3Amain).
 The latest [Azure deployment](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/workflows/azure-static-web-apps-proud-pebble-07b8b4f10.yml?query=branch%3Amain)
 includes documentation follow-ups; a newer main push supersedes an unfinished deployment.
 The CI result and its `phase-verification` artifact retain software browser and
