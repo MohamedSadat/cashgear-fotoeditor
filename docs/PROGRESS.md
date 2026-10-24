@@ -35,8 +35,19 @@ measures 59.75–60.00 fps; brush pointer acknowledgement p95 is at most 14.68 m
 Local gzip9 WASM is 1,244,718 bytes; CI is 1,244,781, both under 1,500,000.
 Raw completion evidence: `bench/results/p6-m1-final-verification.json`.
 
-Next milestone: M2 adjustment layers, CPU/GPU parity, persistence and GPU viewport
-preview. It has not started. Stop at M1; P7 remains outside the current phase.
+M2 resumed by the user on 2026-10-24: adjustment layers, CPU/GPU parity,
+persistence and GPU viewport preview. P7 remains outside the current phase.
+
+The subsequent documentation commit `37dbe92` deployed successfully, but its
+CI run 40092450448 exposed selection-test scheduling failures (111 passed,
+one failed, one flaky). The first attempt collided with autosave admission;
+the retry trace also shows software-driver stalls stretching native click
+delivery and UI reads into tens of seconds. The follow-up shares the existing
+pre-mutation admission retry helper and bounds the single-dab software fixture
+to one down/up task; hardware keeps native input. All 18 repeated software
+selection cases, eight installed Chrome/Edge hardware cases, formatting, lint,
+TypeScript, 16 Vitest cases and the web production build pass locally. Remote
+verification of this correction is pending; this does not change phase status.
 
 P5's identifiable Photoshop feather comparison remains pending. Starting P6 does
 not close or waive it; `p5-select` remains uncreated.

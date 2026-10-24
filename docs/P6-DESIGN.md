@@ -85,3 +85,32 @@ history entry and does not mark recovery dirty.
   before M2. No blur or slider-preview performance claim is valid in M1.
 
 The P5 Photoshop feather comparison remains pending and is not waived by P6.
+
+## M2 implementation contract
+
+The user resumed M2 on 2026-10-24. Adjustment settings become validated layer
+content with command-based insertion/editing, exact metadata undo, duplication,
+reordering and masks. The core crate owns the shared numerical definitions so
+the CPU compositor can evaluate them without introducing a dependency cycle;
+the filters crate continues to expose the same adjustment API for destructive
+jobs. Adjustment steps transform the straight color of the accumulated backdrop
+and preserve its alpha, interpolating by mask, opacity and fill, with the layer's
+blend function. Empty backdrops remain empty. Group isolation and clipping use
+the existing ordered compositor plan.
+
+Selection on insertion becomes the adjustment layer's editable mask. Sparse mask
+defaults must survive composition, painting, commands and streaming persistence.
+New manifests identify their schema; existing raster/group projects remain
+readable. Corrupt settings or unsupported schema versions reject the candidate
+before replacing the live document.
+
+Viewport preview is temporary worker/GPU state, with no history or recovery
+mutation. Preparing its bounded visible source cache may require paging; report
+that preparation separately from warm control-change latency. Slider updates
+must use the GPU, coalesce stale requests and preserve the full layer tree's
+ordering/masks/blends. Applying still uses the full-resolution selected area or
+commits adjustment metadata. Cancellation, document changes and worker replacement
+must drop temporary preview state. CPU/GPU budgets include preview sources and
+render targets. M2 acceptance requires measured warm preview latency below
+100 ms plus independent CPU/GPU and destructive/layer comparisons within one
+channel value, project/recovery integration and all applicable repository gates.

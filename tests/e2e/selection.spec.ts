@@ -4,6 +4,7 @@ import type { EngineApi, DocumentSnapshot } from '../../apps/web/src/engine/type
 import { PNG } from 'pngjs';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { whenIdle } from './idle';
 const snap = async (page: Page) => {
   const canvas = page.getByTestId('gpu-canvas');
   await expect(canvas).toHaveAttribute('data-snapshot', /"view":/);
@@ -12,8 +13,10 @@ const snap = async (page: Page) => {
 const exported = async (page: Page) =>
   PNG.sync.read(
     Buffer.from(
-      await page.evaluate(async () =>
-        Array.from(await (Reflect.get(window, '__fotoeditor') as EngineApi).exportPng()),
+      await whenIdle(page, () =>
+        page.evaluate(async () =>
+          Array.from(await (Reflect.get(window, '__fotoeditor') as EngineApi).exportPng()),
+        ),
       ),
     ),
   );
@@ -361,7 +364,30 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       const box = (await canvas.boundingBox())!;
       const click = async (x: number, y: number, mutates = false) => {
         const undo = (await snap(page)).history.undo;
-        await page.mouse.click(box.x + box.width / 2 + x - 256, box.y + box.height / 2 + y - 64);
+        const clientX = box.x + box.width / 2 + x - 256,
+          clientY = box.y + box.height / 2 + y - 64;
+        if (process.env.GPU_TEST_SOFTWARE === '1') {
+          // Keep this single-dab clipping fixture finite even if the driver
+          // stalls between native down/up delivery. Hardware retains native input.
+          await canvas.evaluate(
+            (element, point) => {
+              for (const type of ['pointerdown', 'pointerup'])
+                element.dispatchEvent(
+                  new PointerEvent(type, {
+                    ...point,
+                    pointerId: 1,
+                    pointerType: 'mouse',
+                    button: 0,
+                    buttons: type === 'pointerdown' ? 1 : 0,
+                    pressure: type === 'pointerdown' ? 0.5 : 0,
+                    bubbles: true,
+                    cancelable: true,
+                  }),
+                );
+            },
+            { clientX, clientY },
+          );
+        } else await page.mouse.click(clientX, clientY);
         if (mutates) await expect.poll(async () => (await snap(page)).history.undo).toBe(undo + 1);
         await expect.poll(async () => (await snap(page)).painting).toBe(false);
       };
@@ -378,18 +404,28 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       expect(pixel(image, 256, 64)).toEqual([0, 0, 255, 0]);
       await page.keyboard.press('b');
       await page.getByRole('textbox', { name: 'Color hex' }).fill('#000000');
-      await page.evaluate(async () => {
-        await (Reflect.get(window, '__fotoeditor') as EngineApi).quickMask(true);
-      });
+      await whenIdle(page, () =>
+        page.evaluate(async () => {
+          await (Reflect.get(window, '__fotoeditor') as EngineApi).quickMask(true);
+        }),
+      );
       await click(256.5, 64.5, true);
       await expect
         .poll(async () => (await snap(page)).history.labels.at(-1))
         .toBe('Paint Quick Mask');
-      await page.evaluate(async () => {
-        const api = Reflect.get(window, '__fotoeditor') as EngineApi;
-        await api.quickMask(false);
-        await api.selectionAction({ kind: 'fill', color: [255, 0, 0, 255] });
-      });
+      await whenIdle(page, () =>
+        page.evaluate(async () => {
+          await (Reflect.get(window, '__fotoeditor') as EngineApi).quickMask(false);
+        }),
+      );
+      await whenIdle(page, () =>
+        page.evaluate(async () => {
+          await (Reflect.get(window, '__fotoeditor') as EngineApi).selectionAction({
+            kind: 'fill',
+            color: [255, 0, 0, 255],
+          });
+        }),
+      );
       image = await exported(page);
       expect(pixel(image, 256, 64)).toEqual([0, 0, 255, 0]);
       expect(pixel(image, 255, 64)).toEqual([255, 0, 0, 255]);

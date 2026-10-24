@@ -9,25 +9,7 @@ const snap = async (page: Page) => {
     (await page.getByTestId('gpu-canvas').getAttribute('data-snapshot'))!,
   ) as DocumentSnapshot;
 };
-// Automatic recovery can start between two RPCs on a slow software runner.
-// Retry only the documented admission refusal, before any document mutation.
-async function whenIdle<T>(page: Page, action: () => Promise<T>): Promise<T> {
-  const deadline = Date.now() + 60000;
-  for (;;) {
-    try {
-      return await action();
-    } catch (error) {
-      if (
-        !/Finish or cancel the current operation first|Histogram is already updating/.test(
-          String(error),
-        ) ||
-        Date.now() >= deadline
-      )
-        throw error;
-      await page.waitForTimeout(50);
-    }
-  }
-}
+import { whenIdle } from './idle';
 const exported = async (page: Page) =>
   PNG.sync.read(
     Buffer.from(
