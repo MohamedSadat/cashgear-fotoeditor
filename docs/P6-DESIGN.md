@@ -96,7 +96,9 @@ the filters crate continues to expose the same adjustment API for destructive
 jobs. Adjustment steps transform the straight color of the accumulated backdrop
 and preserve its alpha, interpolating by mask, opacity and fill, with the layer's
 blend function. Empty backdrops remain empty. Group isolation and clipping use
-the existing ordered compositor plan.
+the existing ordered compositor plan. When an adjustment is the base of a clipping
+chain, the chain inherits the accumulated backdrop and retains its alpha. The
+adjustment's own blend function is evaluated against that inherited backdrop.
 
 An adjustment step quantizes its inherited straight color to bytes before LUT/
 HSL evaluation and blending; its inherited floating-point alpha is preserved.

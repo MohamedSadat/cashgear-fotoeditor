@@ -233,10 +233,14 @@ impl CompositePlan {
                 }
                 if base.properties.visible {
                     if end > i + 1 {
+                        // An adjustment has no independent pixel shape. Its
+                        // clipping chain transforms the inherited backdrop and
+                        // keeps that alpha, rather than starting from empty.
+                        let inherited = matches!(&base.content, LayerContent::Adjustment(_));
                         steps.push(CompositeStep::Begin {
-                            pass_through: false,
+                            pass_through: inherited,
                         });
-                        node(base, coord, preview, steps, false, true)?;
+                        node(base, coord, preview, steps, false, !inherited)?;
                         for clipped in &layers[i + 1..end] {
                             if clipped.properties.visible {
                                 node(clipped, coord, preview, steps, true, false)?;

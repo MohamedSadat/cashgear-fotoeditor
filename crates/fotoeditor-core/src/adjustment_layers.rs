@@ -2,6 +2,51 @@
 mod tests {
     use crate::*;
     use std::sync::Arc;
+    #[test]
+    fn adjustment_clipping_base_inherits_backdrop_alpha_and_keeps_its_blend_mode() {
+        let mut doc = Document::blank(1, 1, 72.0).unwrap();
+        doc.raster_mut().write(0, 0, Rgba8([64, 128, 192, 128]));
+        doc.layers.push(Layer::adjustment(
+            "Invert".into(),
+            Adjustment::Curves {
+                points: vec![[0.0, 1.0], [1.0, 0.0]],
+            },
+        ));
+        let mut samples = TileSurface::new(1, 1);
+        samples.write(0, 0, Rgba8([255, 0, 0, 128]));
+        let mut top = Layer::raster("Clipped red".into(), samples);
+        top.properties.clipped = true;
+        doc.layers.push(top);
+        let plan = CompositePlan::tile(&doc, (0, 0), None).unwrap();
+        assert_eq!(
+            plan.sample(0).unwrap().straight(),
+            Rgba8([223, 63, 31, 128])
+        );
+        assert_eq!(
+            plan.reference(Residency::default()).unwrap()[0].straight(),
+            Rgba8([223, 63, 31, 128])
+        );
+        doc.layers[1].properties.blend = BlendMode::Multiply;
+        doc.layers[2].properties.opacity = 0.0;
+        assert_eq!(
+            CompositePlan::tile(&doc, (0, 0), None)
+                .unwrap()
+                .sample(0)
+                .unwrap()
+                .straight(),
+            Rgba8([48, 64, 47, 128])
+        );
+        doc.layers[1].properties.visible = false;
+        assert_eq!(
+            CompositePlan::tile(&doc, (0, 0), None)
+                .unwrap()
+                .sample(0)
+                .unwrap()
+                .straight(),
+            Rgba8([64, 128, 192, 128])
+        );
+        assert_eq!(doc.raster().sample(0, 0), Rgba8([64, 128, 192, 128]));
+    }
 
     fn settings() -> [Adjustment; 5] {
         [

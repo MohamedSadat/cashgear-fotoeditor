@@ -9,20 +9,24 @@ preview. Visible source caches preserve paging and budgets; preview never edits
 document/history, and final confirmation covers the full-resolution selection.
 See P6-M2-REPORT.md and P6-DESIGN.md for processing contracts and measured limits.
 
-All 95 Rust tests, 16 Vitest tests, native/WASM clippy, Rust/JS formatting,
+All 96 Rust tests, 16 Vitest tests, native/WASM clippy, Rust/JS formatting,
 TypeScript, ESLint, licenses and the release size gate pass. The 184-case hardware
 regression, final 32 feature cases, 134-case software regression plus three added
 grid cases, and both hardware WebView2 APIs pass without skips/failures/retries.
+The final clipping-base correction also passes 36 hardware feature/compositor
+cases, including 400 adjustment scenes per browser/API. An adjustment clipping
+base now inherits backdrop alpha and retains its blend function.
+The corresponding six software compositor cases also pass.
 Final pushed CI runs the 137 software cases together and both software WebView2
 APIs; green CI/deployment are required before the task reports M2 accepted. The
 task completion message names their immutable run links. The earlier layer
 foundation already passes CI 40105107961 and deployment 40105108054.
 
 On the resident 6000×4000 photo, all 160 measured warm slider events complete in
-under 35 ms, with worst p95 31.91 ms. Initial readiness, including source/GPU work,
-is 0.37–0.39 s on WebGPU and 0.96–1.03 s on WebGL2. Sampled logical residency is
-at most 104.1 MiB CPU / 22.49 MiB GPU. Release WASM is 3,382,552 bytes / gzip9
-1,279,503 bytes. Navigation remains about 60 fps; brush acknowledgement p95 is
+under 35 ms, with worst p95 31.70 ms. Initial readiness, including source/GPU work,
+is 0.33–0.38 s on WebGPU and 0.92–0.98 s on WebGL2. Sampled logical residency is
+at most 104.0 MiB CPU / 22.49 MiB GPU. Release WASM is 3,382,747 bytes / gzip9
+1,279,600 bytes. Navigation remains about 60 fps; brush acknowledgement p95 is
 at most 16.29 ms on the measured workload. These are hardware measurements;
 software checks supply functional evidence only.
 

@@ -114,7 +114,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
           (Reflect.get(window, '__fotoeditor') as EngineApi).compareAdjustmentCompositors(),
         ),
       );
-      expect(errors).toHaveLength(320);
+      expect(errors).toHaveLength(400);
       expect(Math.max(...errors)).toBeLessThanOrEqual(1);
     },
   );

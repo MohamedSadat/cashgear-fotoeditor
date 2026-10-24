@@ -685,7 +685,7 @@ const api: EngineApi = {
     try {
       for (const adjustment of adjustments)
         for (let mode = 0; mode < 16; mode++)
-          for (let scene = 0; scene < 4; scene++) {
+          for (let scene = 0; scene < 5; scene++) {
             const bytes = (await e.golden_begin(
               mode,
               scene,

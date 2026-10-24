@@ -18,6 +18,8 @@ their immutable run links. No P6 completion tag is authorized at M2.
   mask, retaining sparse defaults and tile sharing. Masks can be painted outside
   the original selection after deselecting, disabled or deleted. Layer merge
   controls rasterize results; adjustment masks remain editable independently.
+  An adjustment used as a clipping base inherits the backdrop's alpha and keeps
+  its own blend function while clipped children transform that inherited shape.
 - Schema-3 manifests persist settings and sparse mask defaults inside the
   bounded v2 stream framing. Schema-2 raster/group/mask files and legacy v1
   single-raster files remain readable. Unknown schemas, invalid settings and
@@ -61,19 +63,21 @@ pixels cover layered/masked output. The performance workload below is one opaque
 
 Local results:
 
-- All 95 Rust tests, native/WASM clippy, Rust/JS formatting, TypeScript, ESLint,
+- All 96 Rust tests, native/WASM clippy, Rust/JS formatting, TypeScript, ESLint,
   all 16 Vitest cases, and the 450-expression license inventory pass.
 - The full installed Chrome/Edge hardware regression passes 184 cases with no
   failures, skips or retries. Final shutdown/ownership/grid follow-ups pass all
-  32 feature cases, explicitly checking each requested backend.
+  32 feature cases, explicitly checking each requested backend. After the final
+  clipping correction, all 36 feature and existing layer-compositor cases pass.
 - The full software regression passes 134 cases, followed by all three added
   high-zoom grid cases. These are functional SwiftShader/WARP checks. The final
-  CI suite contains all 137 cases together.
+  clipping matrix and existing layer-compositor checks also pass all six
+  software cases. The final CI suite contains all 137 cases together.
 - Both hardware Windows/WebView2 APIs build, launch and pass the expanded smoke,
   including adjustment metadata, preview, exact undo and streamed persistence.
-- Release WASM is 3,382,552 bytes / gzip9 1,279,503 bytes, under 1,500,000.
+- Release WASM is 3,382,747 bytes / gzip9 1,279,600 bytes, under 1,500,000.
   The measured distribution's SHA-256 is
-  `e5124e9f00fa1c0a6dc40152c93217a8c30ef570789a920da964d58987d0d95e`.
+  `01b9a634c055546a1744a097b8454517f714f2fa49021af803776f28fbe995c7`.
 
 The earlier adjustment-layer foundation at `5705cf7` passes
 [CI 40105107961](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/runs/40105107961)
@@ -83,8 +87,8 @@ integration `683f863`. Final viewport integration has its own required
 CI/deployment gate. Its immutable run links are named in the task's completion
 message only after both workflows pass.
 
-Numerical coverage includes five adjustments × 16 blend modes × four mask,
-clipping and isolated/pass-through group scenes: 320 complete tile comparisons
+Numerical coverage includes five adjustments × 16 blend modes × five mask,
+clipping and isolated/pass-through group scenes: 400 complete tile comparisons
 per installed browser/API, with at most one channel value of error. Rust tests
 also compare adjustment layers with destructive math across alpha 0/1/128/255,
 partial masks and odd tile boundaries; check metadata undo/no-ops/locks; and
@@ -119,14 +123,14 @@ Logical residency is sampled from the worker's accounted categories.
 
 | Browser / API | Exposure slider p95 | HSL slider p95 | Slowest of 40 events | First ready, source + GPU |
 | ------------- | ------------------: | -------------: | -------------------: | ------------------------: |
-| Chrome WebGPU |            30.67 ms |       30.83 ms |             31.04 ms |                    388 ms |
-| Chrome WebGL2 |            31.25 ms |       31.32 ms |             34.97 ms |                  1,027 ms |
-| Edge WebGPU   |            31.48 ms |       31.91 ms |             33.64 ms |                    369 ms |
-| Edge WebGL2   |            31.49 ms |       31.66 ms |             33.89 ms |                    955 ms |
+| Chrome WebGPU |            31.11 ms |       31.23 ms |             33.62 ms |                    330 ms |
+| Chrome WebGL2 |            31.70 ms |       31.35 ms |             31.71 ms |                    925 ms |
+| Edge WebGPU   |            30.84 ms |       30.89 ms |             31.39 ms |                    379 ms |
+| Edge WebGL2   |            31.22 ms |       31.25 ms |             31.57 ms |                    975 ms |
 
 All 160 recorded slider events are under 100 ms after preparation. Warm API
-return p95 across all five controls is at most 20.81 ms. Sampled accounted
-residency peaks at 104.1 MiB CPU and 22.49 MiB GPU for this workload. Initial
+return p95 across all five controls is at most 18.90 ms. Sampled accounted
+residency peaks at 104.0 MiB CPU and 22.49 MiB GPU for this workload. Initial
 readiness above sums the recorded worker preparation and first render intervals;
 it includes initial GPU work and is separate from warm interaction latency.
 
@@ -144,6 +148,10 @@ scanout and physical pen latency. Raw results are
 
 - The GPU/CPU comparison found a Color Burn/HSL endpoint branch discrepancy;
   byte-exact adjustment blend inputs corrected it without loosening tolerance.
+- Final review reproduced an adjustment disappearing when used as the base of
+  a clipping chain. The chain now inherits the backdrop and its alpha. A failing
+  Rust regression was corrected, and the GPU matrix gained this fifth scene
+  across every adjustment and blend mode.
 - Early startup measurements exposed a delayed WebGPU initialization spike.
   Initial readiness now includes a queue fence. Raw earlier measurements remain
   available alongside the final evidence.

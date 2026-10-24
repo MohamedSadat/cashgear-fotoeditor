@@ -617,7 +617,7 @@ impl Engine {
         adjustment: Option<String>,
     ) -> Result<js_sys::Promise, JsValue> {
         let mode = BlendMode::from_index(mode).map_err(js)?;
-        if scenario > 3 {
+        if scenario > 4 || (scenario == 4 && adjustment.is_none()) {
             return Err(JsValue::from_str("Unknown golden scene"));
         }
         fn raster(seed: u32) -> Layer {
@@ -657,7 +657,12 @@ impl Engine {
                 samples: std::sync::Arc::new(mask.clone()),
             });
         }
-        let layers = if scenario >= 2 {
+        let layers = if scenario == 4 {
+            let mut clipped = raster(11);
+            clipped.properties.clipped = true;
+            clipped.properties.opacity = 0.45;
+            vec![bottom, top, clipped]
+        } else if scenario >= 2 {
             let children = if is_adjustment {
                 vec![raster(11), top]
             } else {
