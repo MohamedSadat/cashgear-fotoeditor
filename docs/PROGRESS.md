@@ -1,6 +1,38 @@
 # Progress
 
-## P6 — M1 complete; phase in progress
+## P6 — M2 implementation complete; phase in progress
+
+Resumed 2026-10-24 at the user's request. The five priority adjustments now have
+editable layer content and exact metadata commands, masks/groups/clipping/blend
+integration, schema-3 streamed persistence/recovery, and opt-in GPU viewport
+preview. Visible source caches preserve paging and budgets; preview never edits
+document/history, and final confirmation covers the full-resolution selection.
+See P6-M2-REPORT.md and P6-DESIGN.md for processing contracts and measured limits.
+
+All 95 Rust tests, 16 Vitest tests, native/WASM clippy, Rust/JS formatting,
+TypeScript, ESLint, licenses and the release size gate pass. The 184-case hardware
+regression, final 32 feature cases, 134-case software regression plus three added
+grid cases, and both hardware WebView2 APIs pass without skips/failures/retries.
+Final pushed CI runs the 137 software cases together and both software WebView2
+APIs; green CI/deployment are required before the task reports M2 accepted. The
+task completion message names their immutable run links. The earlier layer
+foundation already passes CI 40105107961 and deployment 40105108054.
+
+On the resident 6000×4000 photo, all 160 measured warm slider events complete in
+under 35 ms, with worst p95 31.91 ms. Initial readiness, including source/GPU work,
+is 0.37–0.39 s on WebGPU and 0.96–1.03 s on WebGL2. Sampled logical residency is
+at most 104.1 MiB CPU / 22.49 MiB GPU. Release WASM is 3,382,552 bytes / gzip9
+1,279,503 bytes. Navigation remains about 60 fps; brush acknowledgement p95 is
+at most 16.29 ms on the measured workload. These are hardware measurements;
+software checks supply functional evidence only.
+
+M2 implementation commits: `5705cf7` (layers/persistence), `2b537b6` (source
+cache), `398cc36` (engine), `683f863` (controls). P6 remains incomplete, without
+`p6-filters`. Proposed next is M3's first five filters, padding/selection clipping,
+preview and Fade Last Filter. Stop before beginning M3. P5's Photoshop feather
+comparison remains pending, without `p5-select`; the pen deferral is unchanged.
+
+## P6 — M1 complete (history)
 
 Started 2026-10-24 on clean main at `27576cb1`, by the user's explicit fresh-session
 request. Read AGENTS.md, the phase records, P5 integration/report and the complete
@@ -58,8 +90,9 @@ clippy, JS checks, formatting, 16 Vitest tests, licenses and production build
 pass. The new hardware comparisons cover 320 scenes on each installed
 Chrome/Edge API, including all five settings, 16 blend modes and four mask/group/
 clipping scenarios. A Color Burn/HSL endpoint mismatch found by these comparisons
-was corrected by quantizing the adjustment blend inputs consistently. The UI,
-viewport preview, recovery-specific scenarios and M2 acceptance remain in progress.
+was corrected by quantizing the adjustment blend inputs consistently. At that
+increment, the UI, viewport preview, recovery-specific scenarios and M2 acceptance
+were still in progress; the current M2 status is recorded above.
 
 P5's identifiable Photoshop feather comparison remains pending. Starting P6 does
 not close or waive it; `p5-select` remains uncreated.
