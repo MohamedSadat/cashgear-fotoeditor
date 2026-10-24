@@ -138,9 +138,10 @@ removed another run's trace directory; final evidence is gathered serially.
 The lasso pointer-move defect found during integration was fixed and is covered
 by an actual rotated/flipped-view lasso, polygon and modifier gesture test.
 
-Remote verification for implementation checkpoint `b26ef9c46539926f2973c6acd0fc9309094a80bb`
-is tracked by [FotoEditor checks](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/runs/40068873435)
-and [Azure deployment](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/runs/40068873426).
+Remote CI for implementation checkpoint `b26ef9c46539926f2973c6acd0fc9309094a80bb`
+is tracked by [FotoEditor checks](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/runs/40068873435).
+The latest [Azure deployment](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/workflows/azure-static-web-apps-proud-pebble-07b8b4f10.yml?query=branch%3Amain)
+includes documentation follow-ups; a newer main push supersedes an unfinished deployment.
 The CI result and its `phase-verification` artifact retain software browser and
 WebView2 outcomes; software rendering establishes function only. Documentation
 follow-ups receive their own checks on main. The public endpoint is

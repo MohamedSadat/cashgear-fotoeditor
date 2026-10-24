@@ -54,8 +54,8 @@ removes selected coverage, white or eraser adds it, and red marks excluded pixel
 Brushes, erasers and fills respect the selection, including partial coverage.
 
 The Edit menu offers foreground/background Fill, Clear, Cut, Copy, Copy merged,
-Paste and Paste in place. Standard Ctrl/Cmd+C/X/V shortcuts work; Shift+V pastes
-in place. Paste creates a raster layer. The internal clipboard preserves exact
+Paste and Paste in place. Standard Ctrl/Cmd+C/X/V shortcuts work; Ctrl/Cmd+Shift+V
+pastes in place. Paste creates a raster layer. The internal clipboard preserves exact
 straight samples and source position. System PNG clipboard access depends on
 browser permissions; failures are visible and the internal copy remains usable.
 External clipboard conversions may normalize transparent RGB. Active selections
