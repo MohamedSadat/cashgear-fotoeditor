@@ -24,6 +24,7 @@ export interface FrameResult extends PhysicalSize {
   snapshot?: DocumentSnapshot;
 }
 export interface DocumentSnapshot {
+  adjustmentTiming?: { kernelMs: number; totalMs: number };
   selection: {
     active: boolean;
     quickMask: boolean;
@@ -100,6 +101,9 @@ export interface Interaction {
   sample?: [number, number, number, number, number, number];
 }
 export interface EngineApi {
+  applyAdjustment(adjustment: Adjustment): Promise<DocumentSnapshot>;
+  histogram(target: number): Promise<Histogram>;
+  diagnosticAdjustmentFault(fault: 'pause-before-commit' | 'budget'): Promise<void>;
   diagnosticSelectionFault(fault: 'pause-before-commit' | 'budget'): Promise<void>;
   selectionAction(action: SelectionAction): Promise<DocumentSnapshot>;
   quickMask(enabled: boolean): Promise<DocumentSnapshot>;
@@ -145,6 +149,25 @@ export interface EngineApi {
   cancelJob(): boolean | Promise<boolean>;
 }
 export type SelectionMode = 'new' | 'add' | 'subtract' | 'intersect';
+export type Adjustment =
+  | { kind: 'brightness-contrast'; brightness: number; contrast: number }
+  | {
+      kind: 'levels';
+      black: number;
+      white: number;
+      gamma: number;
+      outputBlack: number;
+      outputWhite: number;
+    }
+  | { kind: 'curves'; points: [number, number][] }
+  | { kind: 'exposure'; stops: number; offset: number; gamma: number }
+  | { kind: 'hue-saturation'; hue: number; saturation: number; lightness: number };
+export interface Histogram {
+  bins: number[][];
+  weight: number;
+  pixels: number;
+  milliseconds: number;
+}
 export type SelectionShape =
   | { kind: 'rectangle' | 'ellipse'; x0: number; y0: number; x1: number; y1: number }
   | { kind: 'polygon'; points: [number, number][] };

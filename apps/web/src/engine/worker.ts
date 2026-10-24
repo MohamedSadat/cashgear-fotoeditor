@@ -38,6 +38,10 @@ let thumbnailRunning = false;
 let selectionTiming: DocumentSnapshot['selection']['timing'];
 let selectionFault: 'pause-before-commit' | 'budget' | undefined;
 let releaseSelectionPause: (() => void) | undefined;
+let adjustmentTiming: DocumentSnapshot['adjustmentTiming'];
+let adjustmentFault: 'pause-before-commit' | 'budget' | undefined;
+let releaseAdjustmentPause: (() => void) | undefined;
+let histogramRunning = false;
 function beginJob() {
   cancelAllowed = true;
   return ++job;
@@ -55,6 +59,7 @@ function snapshot(): DocumentSnapshot {
     selection: { ...state.selection, timing: selectionTiming },
     operation,
     projectTiming,
+    adjustmentTiming,
     recovery,
     // A completed stroke can have the next stroke waiting behind it. Keep the
     // entire queued edit busy so open/export cannot interleave in that gap.
@@ -258,6 +263,92 @@ function replaced(fileName: string) {
   sampledColor = undefined;
 }
 const api: EngineApi = {
+  async diagnosticAdjustmentFault(fault) {
+    if (!diagnostic) throw new Error('Diagnostics are disabled');
+    adjustmentFault = fault;
+  },
+  async applyAdjustment(adjustment) {
+    const e = requireIdle();
+    busy = true;
+    operation = 'Applying adjustment…';
+    const token = beginJob();
+    const start = performance.now();
+    const fault = adjustmentFault;
+    adjustmentFault = undefined;
+    const priorExternal = externalBytes;
+    let kernelMs = 0;
+    try {
+      if (fault === 'budget') {
+        const memory = JSON.parse(e.snapshot()).memory as DocumentSnapshot['memory'];
+        external(
+          priorExternal + 768 * 1048576 - memory.document - memory.history - memory.temporary,
+        );
+      }
+      e.adjustment_begin(JSON.stringify(adjustment));
+      let sliceStart = performance.now();
+      while (!e.adjustment_ready()) {
+        cancelled(token);
+        await pages.hydrate(e, 'adjustment');
+        cancelled(token);
+        const stepStart = performance.now();
+        e.adjustment_step();
+        kernelMs += performance.now() - stepStart;
+        if (performance.now() - sliceStart >= 4) {
+          await yieldProjectTask();
+          sliceStart = performance.now();
+        }
+      }
+      if (fault === 'pause-before-commit') {
+        operation = 'Adjustment ready to commit (diagnostic)…';
+        await new Promise<void>((resolve) => {
+          releaseAdjustmentPause = resolve;
+        });
+      }
+      cancelled(token);
+      e.adjustment_commit();
+      cancelAllowed = false;
+      await recompose(token);
+      adjustmentTiming = { kernelMs, totalMs: performance.now() - start };
+      dirty = true;
+      return snapshot();
+    } finally {
+      if (token === job) {
+        external(priorExternal);
+        releaseAdjustmentPause = undefined;
+        e.adjustment_cancel();
+        busy = false;
+        operation = undefined;
+      }
+    }
+  },
+  async histogram(target) {
+    const e = requireIdle();
+    if (histogramRunning) throw new Error('Histogram is already updating');
+    histogramRunning = true;
+    const revision = snapshot().contentRevision;
+    const start = performance.now();
+    try {
+      e.histogram_begin(target);
+      let done = false;
+      let sliceStart = performance.now();
+      while (!done) {
+        if (disposed || busy || e.painting() || snapshot().contentRevision !== revision)
+          throw new Error('Histogram source changed; refresh when idle');
+        await pages.hydrate(e, 'histogram');
+        if (disposed || busy || snapshot().contentRevision !== revision)
+          throw new Error('Histogram source changed; refresh when idle');
+        done = e.histogram_step();
+        if (performance.now() - sliceStart >= 4) {
+          await yieldProjectTask();
+          sliceStart = performance.now();
+        }
+      }
+      return { ...JSON.parse(e.histogram_finish()), milliseconds: performance.now() - start };
+    } finally {
+      if (!disposed) e.histogram_cancel();
+      histogramRunning = false;
+    }
+  },
   async diagnosticSelectionFault(fault) {
     if (!diagnostic) throw new Error('Diagnostics are disabled');
     selectionFault = fault;
@@ -866,6 +957,8 @@ const api: EngineApi = {
   },
   dispose() {
     ++job;
+    releaseAdjustmentPause?.();
+    releaseAdjustmentPause = undefined;
     busy = false;
     presentation?.reject(new Error('Engine disposed'));
     presentation = undefined;
@@ -1044,6 +1137,8 @@ const api: EngineApi = {
       return false;
     ++job;
     releaseSelectionPause?.();
+    releaseAdjustmentPause?.();
+    releaseAdjustmentPause = undefined;
     releaseSelectionPause = undefined;
     requireEngine().cancel_job();
     external(0);

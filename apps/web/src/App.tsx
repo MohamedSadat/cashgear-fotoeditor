@@ -5,6 +5,7 @@ import { BrushPanel } from './BrushPanel';
 import { HistoryPanel } from './HistoryPanel';
 import { LayerPanel } from './LayerPanel';
 import { SelectionControls } from './SelectionControls';
+import { AdjustmentPanel } from './AdjustmentPanel';
 import { useSelection } from './selection-state';
 import { useBrush } from './brush-state';
 import { updateWorkspace, useWorkspace } from './state';
@@ -469,6 +470,14 @@ export function App() {
         >
           <nav className="inspector-index" aria-label="Inspector sections">
             <button
+              aria-label="Show adjustments section"
+              onClick={() =>
+                document.querySelector('.adjustment-panel')?.scrollIntoView({ block: 'start' })
+              }
+            >
+              Adjust
+            </button>
+            <button
               aria-label="Show brush section"
               onClick={() =>
                 document.querySelector('.brush-panel')?.scrollIntoView({ block: 'start' })
@@ -498,6 +507,11 @@ export function App() {
           <HistoryPanel api={engineApi} disabled={status !== 'ready' || working || painting} />
           <div className="section-divider" />
           <LayerPanel
+            api={engineApi}
+            disabled={status !== 'ready' || working || painting || !doc}
+          />
+          <div className="section-divider" />
+          <AdjustmentPanel
             api={engineApi}
             disabled={status !== 'ready' || working || painting || !doc}
           />

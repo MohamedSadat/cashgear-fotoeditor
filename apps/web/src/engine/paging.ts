@@ -80,6 +80,8 @@ export class PagingStore {
       | 'render'
       | 'write'
       | 'thumbnail'
+      | 'adjustment'
+      | 'histogram'
       | 'selection'
       | 'selection-seed'
       | 'selection-mask'

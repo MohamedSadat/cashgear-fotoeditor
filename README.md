@@ -11,6 +11,14 @@ of P4's layers, groups, masks and streamed projects. P5 acceptance is still in
 progress; the Photoshop feather comparison is pending. See
 [progress](docs/PROGRESS.md) and [selection contracts](docs/P5-DESIGN.md).
 
+P6 milestone 1 adds brightness/contrast, levels, master RGB curves, exposure and
+hue/saturation as destructive adjustments, plus a full active-raster histogram.
+Use Adjust in the inspector, change controls, then Apply adjustment. Each apply
+respects the selection and creates one undo step. Alpha and fully transparent
+hidden RGB remain exact. The histogram uses stored alpha weights and excludes
+layer masks/effects. GPU live preview, adjustment layers and filters remain later
+P6 milestones; see [milestone contracts](docs/P6-DESIGN.md).
+
 Use New canvas or Open image, or drop an image into the viewport. Wheel/two-finger
 gestures scroll; Ctrl/Cmd+wheel or trackpad pinch zooms around the pointer.
 Space+drag or middle mouse pans; R+drag rotates. The left rail fits, resets to
