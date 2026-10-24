@@ -9,11 +9,32 @@ const snap = async (page: Page) => {
     (await page.getByTestId('gpu-canvas').getAttribute('data-snapshot'))!,
   ) as DocumentSnapshot;
 };
+// Automatic recovery can start between two RPCs on a slow software runner.
+// Retry only the documented admission refusal, before any document mutation.
+async function whenIdle<T>(page: Page, action: () => Promise<T>): Promise<T> {
+  const deadline = Date.now() + 60000;
+  for (;;) {
+    try {
+      return await action();
+    } catch (error) {
+      if (
+        !/Finish or cancel the current operation first|Histogram is already updating/.test(
+          String(error),
+        ) ||
+        Date.now() >= deadline
+      )
+        throw error;
+      await page.waitForTimeout(50);
+    }
+  }
+}
 const exported = async (page: Page) =>
   PNG.sync.read(
     Buffer.from(
-      await page.evaluate(async () =>
-        Array.from(await (Reflect.get(window, '__fotoeditor') as EngineApi).exportPng()),
+      await whenIdle(page, () =>
+        page.evaluate(async () =>
+          Array.from(await (Reflect.get(window, '__fotoeditor') as EngineApi).exportPng()),
+        ),
       ),
     ),
   );
@@ -59,9 +80,11 @@ for (const backend of ['WebGPU', 'WebGL2']) {
         [{ kind: 'hue-saturation', hue: 120, saturation: 0, lightness: 0 }, [0, 128, 64, 1]],
       ];
       for (const [setting, expected] of cases) {
-        const state = await page.evaluate(
-          (s) => (Reflect.get(window, '__fotoeditor') as EngineApi).applyAdjustment(s),
-          setting,
+        const state = await whenIdle(page, () =>
+          page.evaluate(
+            (s) => (Reflect.get(window, '__fotoeditor') as EngineApi).applyAdjustment(s),
+            setting,
+          ),
         );
         expect(state.history.undo).toBe(3);
         const image = await exported(page);
@@ -69,43 +92,75 @@ for (const backend of ['WebGPU', 'WebGL2']) {
         expect(pixel(image, 256)).toEqual(expected);
         expect(pixel(image, 255)).toEqual(pixel(image, 257));
         expect(pixel(image, 255)[3]).toBe(1);
-        const h = await page.evaluate(async () => {
-          const api = Reflect.get(window, '__fotoeditor') as EngineApi;
-          const s = JSON.parse(
-            (document.querySelector('[data-testid="gpu-canvas"]') as HTMLElement).dataset.snapshot!,
-          ) as DocumentSnapshot;
-          return api.histogram(s.layers.active ?? s.layers.nodes[0].id);
-        });
+        const h = await whenIdle(page, () =>
+          page.evaluate(async () => {
+            const api = Reflect.get(window, '__fotoeditor') as EngineApi;
+            const s = JSON.parse(
+              (document.querySelector('[data-testid="gpu-canvas"]') as HTMLElement).dataset
+                .snapshot!,
+            ) as DocumentSnapshot;
+            return api.histogram(s.layers.active ?? s.layers.nodes[0].id);
+          }),
+        );
         expect(h.pixels).toBe(1539);
         expect(h.weight).toBe(1539);
         for (const bins of h.bins) expect(bins.reduce((a, b) => a + b, 0)).toBe(1539);
-        await page.evaluate(() =>
-          (Reflect.get(window, '__fotoeditor') as EngineApi).historyJump(2),
+        if (setting.kind === 'brightness-contrast')
+          await page.evaluate(() => {
+            Reflect.set(
+              window,
+              'adjustmentAutosave',
+              (Reflect.get(window, '__fotoeditor') as EngineApi).autosave(),
+            );
+          });
+        await whenIdle(page, () =>
+          page.evaluate(() => (Reflect.get(window, '__fotoeditor') as EngineApi).historyJump(2)),
         );
+        if (setting.kind === 'brightness-contrast')
+          await page.evaluate(async () => {
+            await Reflect.get(window, 'adjustmentAutosave');
+          });
         expect((await exported(page)).data.equals(before.data)).toBe(true);
-        await page.evaluate(() =>
-          (Reflect.get(window, '__fotoeditor') as EngineApi).historyJump(3),
+        await whenIdle(page, () =>
+          page.evaluate(() => (Reflect.get(window, '__fotoeditor') as EngineApi).historyJump(3)),
         );
         expect((await exported(page)).data.equals(image.data)).toBe(true);
-        await page.evaluate(() =>
-          (Reflect.get(window, '__fotoeditor') as EngineApi).historyJump(2),
+        await whenIdle(page, () =>
+          page.evaluate(() => (Reflect.get(window, '__fotoeditor') as EngineApi).historyJump(2)),
         );
       }
-      await page.evaluate(async () => {
-        const api = Reflect.get(window, '__fotoeditor') as EngineApi;
-        await api.applyAdjustment({
-          kind: 'curves',
-          points: [
-            [0, 1],
-            [1, 0],
-          ],
-        });
-        const bytes = await api.saveProject();
-        await api.openProject(
-          bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
-          'adjusted.cgfoto',
-        );
-      });
+      await whenIdle(page, () =>
+        page.evaluate(async () => {
+          const api = Reflect.get(window, '__fotoeditor') as EngineApi;
+          await api.applyAdjustment({
+            kind: 'curves',
+            points: [
+              [0, 1],
+              [1, 0],
+            ],
+          });
+        }),
+      );
+      await whenIdle(page, () =>
+        page.evaluate(async () => {
+          const api = Reflect.get(window, '__fotoeditor') as EngineApi;
+          const bytes = await api.saveProject();
+          Reflect.set(window, 'adjustedProject', bytes);
+        }),
+      );
+      await whenIdle(page, () =>
+        page.evaluate(async () => {
+          const api = Reflect.get(window, '__fotoeditor') as EngineApi;
+          const bytes = Reflect.get(window, 'adjustedProject') as Uint8Array;
+          await api.openProject(
+            bytes.buffer.slice(
+              bytes.byteOffset,
+              bytes.byteOffset + bytes.byteLength,
+            ) as ArrayBuffer,
+            'adjusted.cgfoto',
+          );
+        }),
+      );
       expect(pixel(await exported(page), 256)).toEqual([127, 191, 255, 1]);
       await expect.poll(async () => (await snap(page)).history.undo).toBe(0);
       await page
