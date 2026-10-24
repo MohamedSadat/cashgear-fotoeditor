@@ -29,6 +29,12 @@ pub enum SelectionShape {
     Polygon { points: Vec<[f64; 2]> },
 }
 impl SelectionShape {
+    fn bytes(&self) -> u64 {
+        match self {
+            Self::Polygon { points } => (points.capacity() * size_of::<[f64; 2]>()) as u64,
+            _ => 0,
+        }
+    }
     fn bounds(&self) -> Result<[f64; 4], String> {
         let b = match self {
             Self::Rectangle { x0, y0, x1, y1 } | Self::Ellipse { x0, y0, x1, y1 } => {
@@ -156,7 +162,7 @@ impl ShapeSelectionJob {
         }
     }
     pub fn temporary_bytes(&self) -> u64 {
-        self.output.bytes() + TILE_PIXELS as u64
+        self.output.bytes() + TILE_PIXELS as u64 + self.shape.bytes() * 2 + 4096
     }
     pub fn step(&mut self) -> Result<bool, String> {
         if self.remaining() == 0 {
@@ -177,16 +183,26 @@ impl ShapeSelectionJob {
             self.next += 1;
             return Ok(self.remaining() == 0);
         }
-        if self.output.bytes() + 2 * TILE_PIXELS as u64 > self.available {
+        if self.temporary_bytes() + TILE_PIXELS as u64 > self.available {
             return Err("Selection exceeds the shared CPU budget".into());
         }
         let mut pixels = vec![self.output.default; TILE_PIXELS];
         let steps = if self.antialias { 4 } else { 1 };
         for y in 0..TILE_SIZE.min(self.output.height - c.1 * TILE_SIZE) {
+            let polygon = match &self.shape {
+                SelectionShape::Polygon { points } if !outside => Some(polygon_row(
+                    points,
+                    c.0 * TILE_SIZE,
+                    c.1 * TILE_SIZE + y,
+                    TILE_SIZE.min(self.output.width - c.0 * TILE_SIZE),
+                    steps,
+                )),
+                _ => None,
+            };
             for x in 0..TILE_SIZE.min(self.output.width - c.0 * TILE_SIZE) {
                 let i = (y * TILE_SIZE + x) as usize;
                 let mut hits = 0;
-                if !outside {
+                if !outside && polygon.is_none() {
                     for sy in 0..steps {
                         for sx in 0..steps {
                             hits += u32::from(self.shape.contains(
@@ -199,7 +215,10 @@ impl ShapeSelectionJob {
                         }
                     }
                 }
-                let incoming = ((hits * 255 + steps * steps / 2) / (steps * steps)) as u8;
+                let incoming = polygon.as_ref().map_or_else(
+                    || ((hits * 255 + steps * steps / 2) / (steps * steps)) as u8,
+                    |row| row[x as usize],
+                );
                 let before = old.as_ref().map_or_else(
                     || self.before.as_ref().map_or(0, |s| s.default.0),
                     |t| t.pixels[i].0,
@@ -207,10 +226,51 @@ impl ShapeSelectionJob {
                 pixels[i] = Gray8(self.mode.combine(before, incoming));
             }
         }
-        self.output.insert(c, pixels);
+        if old.as_ref().is_some_and(|t| t.pixels == pixels)
+            && self
+                .before
+                .as_ref()
+                .is_some_and(|s| s.default == self.output.default)
+        {
+            self.output
+                .insert_handle(c, self.before.as_ref().unwrap().tiles()[&c].clone())?;
+        } else {
+            self.output.insert(c, pixels);
+        }
         self.next += 1;
         Ok(self.remaining() == 0)
     }
+}
+
+/// Scanline crossings avoid testing every polygon edge for every subpixel.
+fn polygon_row(points: &[[f64; 2]], x0: u32, y: u32, width: u32, steps: u32) -> Vec<u8> {
+    let mut hits = vec![0u32; width as usize];
+    let mut crossings = Vec::with_capacity(points.len());
+    for sy in 0..steps {
+        crossings.clear();
+        let yy = f64::from(y) + (f64::from(sy) + 0.5) / f64::from(steps);
+        let mut a = points[points.len() - 1];
+        for &b in points {
+            if (a[1] > yy) != (b[1] > yy) {
+                crossings.push((b[0] - a[0]) * (yy - a[1]) / (b[1] - a[1]) + a[0]);
+            }
+            a = b;
+        }
+        crossings.sort_unstable_by(f64::total_cmp);
+        let mut edge = 0;
+        for x in 0..width {
+            for sx in 0..steps {
+                let xx = f64::from(x0 + x) + (f64::from(sx) + 0.5) / f64::from(steps);
+                while edge < crossings.len() && crossings[edge] <= xx {
+                    edge += 1;
+                }
+                hits[x as usize] += u32::from(edge % 2 == 1);
+            }
+        }
+    }
+    hits.into_iter()
+        .map(|n| ((n * 255 + steps * steps / 2) / (steps * steps)) as u8)
+        .collect()
 }
 #[cfg(test)]
 mod tests {

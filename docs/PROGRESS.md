@@ -23,6 +23,14 @@ internal foundation; selection UI, overlays, fill/clipboard and P5 browser/
 hardware/desktop acceptance remain unfinished. Existing generated benchmark
 output is now excluded from ESLint as it already is from Git and Prettier.
 
+The next internal checkpoint adds bounded tilewise matching, four-connected
+scanline flood selection, anti-aliased masks, scanline polygon rasterization,
+invert/feather/grow/shrink/border/smooth and exact selection-clipped fill/clear
+jobs. All 70 Rust tests, native and WASM clippy, formatting, licenses and the
+production build pass. WASM is 3,093,875 bytes / gzip9 1,178,626 bytes; these
+processing jobs are not bridged into that WASM build yet. No P5 browser,
+clipboard, overlay, hardware or Photoshop acceptance is claimed by this checkpoint.
+
 ## P4 — Complete
 
 Started on 2026-10-23 on clean main at `ae46c5b`, the tagged P3 completion.

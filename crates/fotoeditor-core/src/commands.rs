@@ -27,6 +27,7 @@ struct TileChange {
 pub struct TileCommand {
     layer: LayerId,
     changes: Vec<TileChange>,
+    label: &'static str,
 }
 impl TileCommand {
     pub fn between(before: &Document, after: &Document) -> Result<Self, String> {
@@ -65,10 +66,21 @@ impl TileCommand {
                 })
             })
             .collect();
-        Ok(Self { layer, changes })
+        Ok(Self {
+            layer,
+            changes,
+            label: "Brush stroke",
+        })
+    }
+    pub fn named(mut self, label: &'static str) -> Self {
+        self.label = label;
+        self
     }
 }
 impl Command for TileCommand {
+    fn label(&self) -> &str {
+        self.label
+    }
     fn apply(&self, document: &mut Document) {
         for change in &self.changes {
             document

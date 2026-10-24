@@ -37,6 +37,14 @@ including alpha, with four-connected contiguous traversal or global matching.
 Transparent samples compare visible premultiplied color and alpha so hidden RGB
 does not alter visual matching; stored samples remain straight and exact.
 
+Mask feathering uses three separable box passes approximating a Gaussian with
+sigma equal to the requested radius. Grow/shrink use separable square windows;
+smooth removes small protrusions/holes with opening and closing. Replicated
+canvas boundaries preserve a selection touching the canvas edge, consistent
+with Adobe's default `applyEffectAtCanvasBounds=false`. This does not establish
+radius equivalence with Photoshop: that visual comparison remains pending.
+See [Adobe's Selection API](https://developer.adobe.com/photoshop/uxp/ps_reference/classes/selection/).
+
 Quick Mask brushes edit a grayscale selection candidate through the existing
 bounded stroke machinery. Quick Mask itself is a UI/view mode; its red overlay
 and marching ants are GPU presentation only. The ants follow the mask's 50%
@@ -59,6 +67,9 @@ instead of claiming arbitrary external applications preserve hidden samples.
 Paste always adds a new layer; regular paste centers it in the document and
 Paste in place retains its copied origin. Clipboard images keep the 128 MiB image
 limit and admission checks; no document-sized JavaScript pixel arrays.
+See [Clipboard API requirements](https://developer.mozilla.org/en-US/docs/Web/API/Clipboard_API)
+for secure-context, activation and permission behavior; rejection is a visible
+system-clipboard failure while the internal clipboard remains usable.
 
 ## Verification and evidence
 
