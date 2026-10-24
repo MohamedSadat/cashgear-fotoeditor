@@ -18,7 +18,10 @@ impl ThumbnailJob {
         layer.properties.visible = true;
         layer.properties.clipped = false;
         let mut source = document.clone();
-        source.layers = vec![layer];
+        // Adjustment thumbnails need the underlying color they transform.
+        if !matches!(layer.content, LayerContent::Adjustment(_)) {
+            source.layers = vec![layer];
+        }
         let scale = 64.0 / f64::from(document.width.max(document.height));
         let width = (f64::from(document.width) * scale).round().max(1.0) as u32;
         let height = (f64::from(document.height) * scale).round().max(1.0) as u32;
@@ -194,6 +197,7 @@ pub fn raster_coordinates(layers: &[Layer]) -> Vec<TileCoord> {
             match &node.content {
                 LayerContent::Raster(samples) => out.extend(samples.tiles().keys().copied()),
                 LayerContent::Group(children) => visit(children, out),
+                LayerContent::Adjustment(_) => {}
             }
         }
     }
@@ -205,17 +209,29 @@ impl CompositePlan {
     pub fn visit_tiles(&self, visitor: &mut dyn FnMut(TileRef<'_>)) {
         for step in &self.steps {
             match step {
-                CompositeStep::Raster { source, mask, .. } => {
+                CompositeStep::Raster {
+                    source,
+                    mask,
+                    adjustment,
+                    ..
+                } => {
                     if let Some(source) = source {
                         visitor(TileRef::Rgba(source));
                     }
-                    if let Some(mask) = mask {
+                    if let Some(mask) = &mask.tile {
+                        visitor(TileRef::Gray(mask));
+                    }
+                    if let Some((_, mask)) = adjustment {
+                        if let Some(mask) = &mask.tile {
+                            visitor(TileRef::Gray(mask));
+                        }
+                    }
+                }
+                CompositeStep::End { mask, .. } | CompositeStep::Adjustment { mask, .. } => {
+                    if let Some(mask) = &mask.tile {
                         visitor(TileRef::Gray(mask));
                     }
                 }
-                CompositeStep::End {
-                    mask: Some(mask), ..
-                } => visitor(TileRef::Gray(mask)),
                 _ => {}
             }
         }
@@ -311,13 +327,17 @@ pub fn apply_raster_mask(
         residency.check_cpu(samples.bytes())?;
         let coords: Vec<_> = samples.tiles().keys().copied().collect();
         for coord in coords {
-            let Some(mask) = mask.samples.tiles().get(&coord) else {
-                continue;
-            };
-            let mask = mask.pin()?;
+            let default = mask.samples.default.0;
+            let mask = mask
+                .samples
+                .tiles()
+                .get(&coord)
+                .map(|m| m.pin())
+                .transpose()?;
             let mut pixels = samples.tiles()[&coord].pin()?.pixels.clone();
-            for (pixel, mask) in pixels.iter_mut().zip(&mask.pixels) {
-                pixel.0[3] = ((u32::from(pixel.0[3]) * u32::from(mask.0) + 127) / 255) as u8;
+            for (i, pixel) in pixels.iter_mut().enumerate() {
+                let value = mask.as_ref().map_or(default, |m| m.pixels[i].0);
+                pixel.0[3] = ((u32::from(pixel.0[3]) * u32::from(value) + 127) / 255) as u8;
             }
             samples.insert(coord, pixels);
         }

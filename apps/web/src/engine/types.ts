@@ -111,6 +111,7 @@ export interface EngineApi {
   clipboardImport(bytes: ArrayBuffer): Promise<void>;
   thumbnail(target: number): Promise<Uint8Array>;
   compareCompositors(): Promise<number[]>;
+  compareAdjustmentCompositors(): Promise<number[]>;
   selectLayer(target: number, mask?: boolean, view?: boolean): Promise<DocumentSnapshot>;
   mergeLayers(kind: 'down' | 'visible' | 'flatten', target: number): Promise<DocumentSnapshot>;
   layerAction(action: LayerAction): Promise<DocumentSnapshot>;
@@ -202,6 +203,7 @@ export interface LayerProperties {
   locks: { pixels: boolean; alpha: boolean; position: boolean; all: boolean };
 }
 export interface LayerNode {
+  adjustment?: Adjustment | null;
   id: number;
   name: string;
   properties: LayerProperties;
@@ -209,6 +211,8 @@ export interface LayerNode {
   children: LayerNode[] | null;
 }
 export type LayerAction =
+  | { kind: 'add-adjustment'; adjustment: Adjustment; parent: number | null; index: number }
+  | { kind: 'set-adjustment'; target: number; adjustment: Adjustment }
   | { kind: 'add'; name: string; parent: number | null; index: number; group: boolean }
   | { kind: 'delete' | 'duplicate'; ids: number[] }
   | { kind: 'rename'; target: number; name: string }

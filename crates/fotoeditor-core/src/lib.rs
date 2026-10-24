@@ -1,4 +1,7 @@
 //! Straight-alpha CPU document samples. No browser or GPU types.
+mod adjustment;
+#[cfg(test)]
+mod adjustment_layers;
 mod blend;
 mod commands;
 mod composite;
@@ -10,6 +13,7 @@ mod selection;
 mod selection_display;
 mod tiles;
 mod view;
+pub use adjustment::*;
 pub use blend::*;
 pub use commands::*;
 pub use composite::*;
@@ -123,6 +127,7 @@ impl Document {
                 .map(|l| match &l.content {
                     LayerContent::Raster(s) => s.tiles().len(),
                     LayerContent::Group(c) => count(c),
+                    LayerContent::Adjustment(_) => 0,
                 })
                 .sum()
         }

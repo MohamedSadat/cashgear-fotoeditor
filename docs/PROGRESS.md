@@ -47,7 +47,19 @@ pre-mutation admission retry helper and bounds the single-dab software fixture
 to one down/up task; hardware keeps native input. All 18 repeated software
 selection cases, eight installed Chrome/Edge hardware cases, formatting, lint,
 TypeScript, 16 Vitest cases and the web production build pass locally. Remote
-verification of this correction is pending; this does not change phase status.
+verification of this correction passed in CI run 40103488769; deployment
+40103488794 also passed. This does not change phase status.
+
+M2's first implementation increment introduces validated adjustment-layer
+content, insertion/edit commands, exact metadata undo, selection-derived sparse
+masks, schema-3 manifests within the existing bounded v2 framing (with schema-2
+read support), and shared CPU/WGSL composition. All 91 Rust tests, native/WASM
+clippy, JS checks, formatting, 16 Vitest tests, licenses and production build
+pass. The new hardware comparisons cover 320 scenes on each installed
+Chrome/Edge API, including all five settings, 16 blend modes and four mask/group/
+clipping scenarios. A Color Burn/HSL endpoint mismatch found by these comparisons
+was corrected by quantizing the adjustment blend inputs consistently. The UI,
+viewport preview, recovery-specific scenarios and M2 acceptance remain in progress.
 
 P5's identifiable Photoshop feather comparison remains pending. Starting P6 does
 not close or waive it; `p5-select` remains uncreated.

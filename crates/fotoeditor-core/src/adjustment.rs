@@ -1,8 +1,8 @@
-use fotoeditor_core::Rgba8;
+use crate::Rgba8;
 use serde::{Deserialize, Serialize};
 
 /// The numerical specification is recorded in docs/P6-DESIGN.md.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum Adjustment {
     BrightnessContrast {
@@ -167,6 +167,7 @@ impl Adjustment {
         })
     }
 }
+#[derive(Clone)]
 pub enum AdjustmentKernel {
     Lut(Box<[f64; 256]>),
     Hsl([f64; 3]),

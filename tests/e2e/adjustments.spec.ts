@@ -75,14 +75,10 @@ for (const backend of ['WebGPU', 'WebGL2']) {
         expect(pixel(image, 255)).toEqual(pixel(image, 257));
         expect(pixel(image, 255)[3]).toBe(1);
         const h = await whenIdle(page, () =>
-          page.evaluate(async () => {
+          page.evaluate(async (target) => {
             const api = Reflect.get(window, '__fotoeditor') as EngineApi;
-            const s = JSON.parse(
-              (document.querySelector('[data-testid="gpu-canvas"]') as HTMLElement).dataset
-                .snapshot!,
-            ) as DocumentSnapshot;
-            return api.histogram(s.layers.active ?? s.layers.nodes[0].id);
-          }),
+            return api.histogram(target);
+          }, state.layers.active ?? state.layers.nodes[0].id),
         );
         expect(h.pixels).toBe(1539);
         expect(h.weight).toBe(1539);

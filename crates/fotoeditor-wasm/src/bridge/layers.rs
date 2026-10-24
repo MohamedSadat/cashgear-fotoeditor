@@ -206,7 +206,8 @@ impl Engine {
             .layer(target)?
             .clone();
         let mask = layer.mask.as_mut().ok_or("Layer has no mask")?;
-        let mut samples = TileSurface::with_default(preview.width, preview.height, Gray8(255));
+        let mut samples =
+            TileSurface::with_default(preview.width, preview.height, mask.samples.default);
         for (coord, tile) in preview.raster().tiles() {
             samples.insert(
                 *coord,
@@ -234,7 +235,9 @@ impl Engine {
         let layer = doc.layer(target)?;
         let mask = layer.mask.as_ref().ok_or("Layer has no mask")?;
         self.residency().check_cpu(mask.samples.bytes() * 4)?;
-        let mut samples = TileSurface::with_default(doc.width, doc.height, Rgba8([255; 4]));
+        let value = mask.samples.default.0;
+        let mut samples =
+            TileSurface::with_default(doc.width, doc.height, Rgba8([value, value, value, 255]));
         for (coord, tile) in mask.samples.tiles() {
             samples.insert(
                 *coord,
@@ -296,7 +299,8 @@ impl Engine {
                 .map(|l| {
                     serde_json::json!({"id":l.id,"name":l.name,"properties":l.properties,
                 "mask":l.mask.as_ref().map(|m|serde_json::json!({"enabled":m.enabled})),
-                "children":match &l.content { LayerContent::Group(c)=>Some(nodes(c)),_=>None }})
+                "children":match &l.content { LayerContent::Group(c)=>Some(nodes(c)),_=>None },
+                "adjustment":match &l.content { LayerContent::Adjustment(a)=>Some(a),_=>None }})
                 })
                 .collect()
         }
@@ -351,7 +355,10 @@ impl Engine {
         let doc = self.document.as_mut().ok_or("No document")?;
         let select_new = matches!(
             action,
-            LayerAction::Add { .. } | LayerAction::Duplicate { .. } | LayerAction::Group { .. }
+            LayerAction::Add { .. }
+                | LayerAction::AddAdjustment { .. }
+                | LayerAction::Duplicate { .. }
+                | LayerAction::Group { .. }
         );
         fn layer_ids(nodes: &[Layer], ids: &mut HashSet<LayerId>) {
             for l in nodes {
@@ -501,7 +508,8 @@ impl Engine {
                             .map(|p| Rgba8([p.0, p.0, p.0, 255]))
                             .collect()
                     } else {
-                        vec![Rgba8([255; 4]); TILE_PIXELS]
+                        let v = mask.default.0;
+                        vec![Rgba8([v, v, v, 255]); TILE_PIXELS]
                     };
                     samples.insert((x, y), pixels);
                 }
@@ -593,7 +601,12 @@ impl Engine {
             Ok(false)
         }
     }
-    pub fn golden_begin(&mut self, mode: u32, scenario: u32) -> Result<js_sys::Promise, JsValue> {
+    pub fn golden_begin(
+        &mut self,
+        mode: u32,
+        scenario: u32,
+        adjustment: Option<String>,
+    ) -> Result<js_sys::Promise, JsValue> {
         let mode = BlendMode::from_index(mode).map_err(js)?;
         if scenario > 3 {
             return Err(JsValue::from_str("Unknown golden scene"));
@@ -612,7 +625,15 @@ impl Engine {
             Layer::raster("Golden samples".into(), surface)
         }
         let bottom = raster(1);
-        let mut top = raster(7);
+        let is_adjustment = adjustment.is_some();
+        let mut top = if let Some(settings) = adjustment {
+            let settings: Adjustment =
+                serde_json::from_str(&settings).map_err(|e| js(e.to_string()))?;
+            settings.validate().map_err(js)?;
+            Layer::adjustment("Adjustment golden".into(), settings)
+        } else {
+            raster(7)
+        };
         top.properties.blend = mode;
         top.properties.opacity = 0.73;
         top.properties.fill = 0.81;
@@ -628,7 +649,12 @@ impl Engine {
             });
         }
         let layers = if scenario >= 2 {
-            let mut group = Layer::group("Golden group".into(), vec![top]);
+            let children = if is_adjustment {
+                vec![raster(11), top]
+            } else {
+                vec![top]
+            };
+            let mut group = Layer::group("Golden group".into(), children);
             group.properties.pass_through = scenario == 2;
             group.properties.opacity = 0.67;
             group.mask = Some(LayerMask {

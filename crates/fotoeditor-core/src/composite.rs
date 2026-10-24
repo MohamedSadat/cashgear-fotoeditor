@@ -1,9 +1,35 @@
 //! Tile-sized CPU reference and an ordered plan shared with the GPU adapter.
 //! Planning never hydrates pixels; the worker can load one source at a time.
 use crate::{
-    BlendMode, Composite, Document, Gray8, Layer, LayerContent, LayerProperties, Residency, Rgba8,
-    TileCoord, TileHandle, TILE_PIXELS, TILE_SIZE,
+    AdjustmentKernel, BlendMode, Composite, Document, Gray8, Layer, LayerContent, LayerProperties,
+    Residency, Rgba8, TileCoord, TileHandle, TILE_PIXELS, TILE_SIZE,
 };
+use std::sync::Arc;
+
+#[derive(Clone)]
+pub struct CompositeMask {
+    pub tile: Option<TileHandle<Gray8>>,
+    pub default: u8,
+}
+impl Default for CompositeMask {
+    fn default() -> Self {
+        Self {
+            tile: None,
+            default: 255,
+        }
+    }
+}
+impl CompositeMask {
+    pub fn sample(&self, index: usize) -> Result<f64, String> {
+        Ok(f64::from(
+            self.tile
+                .as_ref()
+                .map(|t| t.pin().map(|t| t.pixels[index].0))
+                .transpose()?
+                .unwrap_or(self.default),
+        ) / 255.0)
+    }
+}
 
 #[derive(Clone)]
 pub enum CompositeStep {
@@ -11,13 +37,20 @@ pub enum CompositeStep {
         pass_through: bool,
     },
     Raster {
+        id: crate::LayerId,
         source: Option<TileHandle<Rgba8>>,
-        mask: Option<TileHandle<Gray8>>,
+        mask: CompositeMask,
         properties: LayerProperties,
         clipped: bool,
+        adjustment: Option<(Arc<AdjustmentKernel>, CompositeMask)>,
+    },
+    Adjustment {
+        kernel: Arc<AdjustmentKernel>,
+        mask: CompositeMask,
+        properties: LayerProperties,
     },
     End {
-        mask: Option<TileHandle<Gray8>>,
+        mask: CompositeMask,
         properties: LayerProperties,
         clipped: bool,
     },
@@ -26,13 +59,38 @@ pub struct CompositePlan {
     pub steps: Vec<CompositeStep>,
     pub stack_depth: usize,
 }
-fn mask(layer: &Layer, coord: TileCoord) -> Option<TileHandle<Gray8>> {
+fn mask(layer: &Layer, coord: TileCoord) -> CompositeMask {
     layer
         .mask
         .as_ref()
         .filter(|m| m.enabled)
-        .and_then(|m| m.samples.tiles().get(&coord))
-        .cloned()
+        .map_or_else(CompositeMask::default, |m| CompositeMask {
+            tile: m.samples.tiles().get(&coord).cloned(),
+            default: m.samples.default.0,
+        })
+}
+fn adjust(
+    backdrop: Composite,
+    kernel: &AdjustmentKernel,
+    mode: BlendMode,
+    factor: f64,
+) -> Composite {
+    if backdrop.0[3] <= 0.0 {
+        return backdrop;
+    }
+    let mut before = backdrop.straight();
+    // A positive inherited alpha may round below one byte; color transforms
+    // still apply while the original floating-point alpha stays unchanged.
+    before.0[3] = 255;
+    let after = kernel.sample(before, 255);
+    let b = std::array::from_fn(|i| f64::from(before.0[i]) / 255.0);
+    let s = std::array::from_fn(|i| f64::from(after.0[i]) / 255.0);
+    let rgb = crate::blend_rgb(mode, b, s);
+    let mut out = backdrop;
+    for (i, value) in rgb.into_iter().enumerate() {
+        out.0[i] += (value * backdrop.0[3] - out.0[i]) * factor.clamp(0.0, 1.0);
+    }
+    out
 }
 impl CompositePlan {
     /// Low-resolution worker previews evaluate only requested samples, using the
@@ -56,22 +114,35 @@ impl CompositePlan {
                     mask,
                     properties,
                     clipped,
+                    adjustment,
+                    ..
                 } => {
                     if let Some(source) = source {
-                        let factor = properties.opacity
-                            * properties.fill
-                            * mask
-                                .as_ref()
-                                .map(|m| m.pin().map(|m| f64::from(m.pixels[index].0) / 255.0))
-                                .transpose()?
-                                .unwrap_or(1.0);
+                        let factor = properties.opacity * properties.fill * mask.sample(index)?;
+                        let mut source = source.pin()?.pixels[index];
+                        if let Some((kernel, coverage)) = adjustment {
+                            source = kernel
+                                .sample(source, (coverage.sample(index)? * 255.0).round() as u8);
+                        }
                         current = current.blend(
-                            Composite::from_straight(source.pin()?.pixels[index]),
+                            Composite::from_straight(source),
                             properties.blend,
                             factor,
                             *clipped,
                         );
                     }
+                }
+                CompositeStep::Adjustment {
+                    kernel,
+                    mask,
+                    properties,
+                } => {
+                    current = adjust(
+                        current,
+                        kernel,
+                        properties.blend,
+                        properties.opacity * properties.fill * mask.sample(index)?,
+                    );
                 }
                 CompositeStep::End {
                     mask,
@@ -80,13 +151,7 @@ impl CompositePlan {
                 } => {
                     let (backdrop, pass_through) =
                         stack.pop().ok_or("Unbalanced composite plan")?;
-                    let factor = properties.opacity
-                        * properties.fill
-                        * mask
-                            .as_ref()
-                            .map(|m| m.pin().map(|m| f64::from(m.pixels[index].0) / 255.0))
-                            .transpose()?
-                            .unwrap_or(1.0);
+                    let factor = properties.opacity * properties.fill * mask.sample(index)?;
                     current = if pass_through {
                         backdrop.interpolate(current, factor)
                     } else {
@@ -114,7 +179,7 @@ impl CompositePlan {
             steps: &mut Vec<CompositeStep>,
             clipped: bool,
             normal: bool,
-        ) {
+        ) -> Result<(), String> {
             let layer = preview.filter(|p| p.id == layer.id).unwrap_or(layer);
             let mut properties = layer.properties.clone();
             if normal {
@@ -122,17 +187,24 @@ impl CompositePlan {
             }
             match &layer.content {
                 LayerContent::Raster(samples) => steps.push(CompositeStep::Raster {
+                    id: layer.id,
                     source: samples.tiles().get(&coord).cloned(),
                     mask: mask(layer, coord),
                     properties,
                     clipped,
+                    adjustment: None,
+                }),
+                LayerContent::Adjustment(adjustment) => steps.push(CompositeStep::Adjustment {
+                    kernel: Arc::new(adjustment.compile()?),
+                    mask: mask(layer, coord),
+                    properties,
                 }),
                 LayerContent::Group(children) => {
                     // A clipped group is an isolated source for source-atop.
                     steps.push(CompositeStep::Begin {
                         pass_through: properties.pass_through && !clipped,
                     });
-                    siblings(children, coord, preview, steps);
+                    siblings(children, coord, preview, steps)?;
                     steps.push(CompositeStep::End {
                         mask: mask(layer, coord),
                         properties,
@@ -140,13 +212,14 @@ impl CompositePlan {
                     });
                 }
             }
+            Ok(())
         }
         fn siblings(
             layers: &[Layer],
             coord: TileCoord,
             preview: Option<&Layer>,
             steps: &mut Vec<CompositeStep>,
-        ) {
+        ) -> Result<(), String> {
             let mut i = 0;
             while i < layers.len() {
                 let base = &layers[i];
@@ -163,14 +236,14 @@ impl CompositePlan {
                         steps.push(CompositeStep::Begin {
                             pass_through: false,
                         });
-                        node(base, coord, preview, steps, false, true);
+                        node(base, coord, preview, steps, false, true)?;
                         for clipped in &layers[i + 1..end] {
                             if clipped.properties.visible {
-                                node(clipped, coord, preview, steps, true, false);
+                                node(clipped, coord, preview, steps, true, false)?;
                             }
                         }
                         steps.push(CompositeStep::End {
-                            mask: None,
+                            mask: CompositeMask::default(),
                             properties: LayerProperties {
                                 blend: base.properties.blend,
                                 ..LayerProperties::default()
@@ -178,14 +251,15 @@ impl CompositePlan {
                             clipped: false,
                         });
                     } else {
-                        node(base, coord, preview, steps, false, false);
+                        node(base, coord, preview, steps, false, false)?;
                     }
                 }
                 i = end;
             }
+            Ok(())
         }
         let mut steps = Vec::new();
-        siblings(&document.layers, coord, preview, &mut steps);
+        siblings(&document.layers, coord, preview, &mut steps)?;
         let mut depth = 0;
         let mut stack_depth = 0;
         for step in &steps {
@@ -225,22 +299,57 @@ impl CompositePlan {
                     mask,
                     properties,
                     clipped,
+                    adjustment,
+                    ..
                 } => {
                     let Some(source) = source else {
                         continue;
                     };
                     let source = source.pin()?;
-                    let mask = mask.as_ref().map(|m| m.pin()).transpose()?;
+                    let mask_default = f64::from(mask.default) / 255.0;
+                    let mask = mask.tile.as_ref().map(|m| m.pin()).transpose()?;
+                    let coverage = adjustment
+                        .as_ref()
+                        .map(|(_, m)| m.tile.as_ref().map(|m| m.pin()).transpose())
+                        .transpose()?
+                        .flatten();
                     let factor = properties.opacity * properties.fill;
                     for (i, pixel) in current.iter_mut().enumerate() {
                         let m = mask
                             .as_ref()
-                            .map_or(1.0, |m| f64::from(m.pixels[i].0) / 255.0);
+                            .map_or(mask_default, |m| f64::from(m.pixels[i].0) / 255.0);
+                        let mut source = source.pixels[i];
+                        if let Some((kernel, mask)) = adjustment {
+                            source = kernel.sample(
+                                source,
+                                coverage.as_ref().map_or(mask.default, |m| m.pixels[i].0),
+                            );
+                        }
                         *pixel = pixel.blend(
-                            Composite::from_straight(source.pixels[i]),
+                            Composite::from_straight(source),
                             properties.blend,
                             factor * m,
                             *clipped,
+                        );
+                    }
+                }
+                CompositeStep::Adjustment {
+                    kernel,
+                    mask,
+                    properties,
+                } => {
+                    let default = f64::from(mask.default) / 255.0;
+                    let mask = mask.tile.as_ref().map(|m| m.pin()).transpose()?;
+                    for (i, pixel) in current.iter_mut().enumerate() {
+                        *pixel = adjust(
+                            *pixel,
+                            kernel,
+                            properties.blend,
+                            properties.opacity
+                                * properties.fill
+                                * mask
+                                    .as_ref()
+                                    .map_or(default, |m| f64::from(m.pixels[i].0) / 255.0),
                         );
                     }
                 }
@@ -251,12 +360,13 @@ impl CompositePlan {
                 } => {
                     let (mut backdrop, pass_through) =
                         stack.pop().expect("balanced composite plan");
-                    let mask = mask.as_ref().map(|m| m.pin()).transpose()?;
+                    let mask_default = f64::from(mask.default) / 255.0;
+                    let mask = mask.tile.as_ref().map(|m| m.pin()).transpose()?;
                     let factor = properties.opacity * properties.fill;
                     for (i, pixel) in backdrop.iter_mut().enumerate() {
                         let m = mask
                             .as_ref()
-                            .map_or(1.0, |m| f64::from(m.pixels[i].0) / 255.0);
+                            .map_or(mask_default, |m| f64::from(m.pixels[i].0) / 255.0);
                         *pixel = if pass_through {
                             pixel.interpolate(current[i], factor * m)
                         } else {

@@ -512,10 +512,54 @@ const api: EngineApi = {
     try {
       for (let mode = 0; mode < 16; mode++)
         for (let scenario = 0; scenario < 4; scenario++) {
-          const bytes = (await e.golden_begin(mode, scenario)) as Uint8Array;
+          const bytes = (await e.golden_begin(mode, scenario, undefined)) as Uint8Array;
           errors.push(e.golden_compare(bytes));
           await yieldProjectTask();
         }
+      return errors;
+    } finally {
+      busy = false;
+    }
+  },
+  async compareAdjustmentCompositors() {
+    if (!diagnostic) throw new Error('Diagnostics are disabled');
+    const e = requireIdle();
+    busy = true;
+    const errors: number[] = [];
+    const adjustments = [
+      { kind: 'brightness-contrast', brightness: 0.17, contrast: -0.3 },
+      {
+        kind: 'levels',
+        black: 0.12,
+        white: 0.85,
+        gamma: 1.7,
+        outputBlack: 0.04,
+        outputWhite: 0.94,
+      },
+      {
+        kind: 'curves',
+        points: [
+          [0, 0.9],
+          [0.3, 0.2],
+          [0.8, 0.7],
+          [1, 0.1],
+        ],
+      },
+      { kind: 'exposure', stops: 1.3, offset: -0.04, gamma: 0.8 },
+      { kind: 'hue-saturation', hue: -127, saturation: 0.27, lightness: -0.17 },
+    ];
+    try {
+      for (const adjustment of adjustments)
+        for (let mode = 0; mode < 16; mode++)
+          for (let scene = 0; scene < 4; scene++) {
+            const bytes = (await e.golden_begin(
+              mode,
+              scene,
+              JSON.stringify(adjustment),
+            )) as Uint8Array;
+            errors.push(e.golden_compare(bytes));
+            await yieldProjectTask();
+          }
       return errors;
     } finally {
       busy = false;

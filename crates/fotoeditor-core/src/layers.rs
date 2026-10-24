@@ -61,6 +61,7 @@ pub struct LayerMask {
 pub enum LayerContent {
     Raster(Arc<TileSurface<Rgba8>>),
     Group(Vec<Layer>),
+    Adjustment(crate::Adjustment),
 }
 #[derive(Clone)]
 pub struct Layer {
@@ -71,6 +72,15 @@ pub struct Layer {
     pub content: LayerContent,
 }
 impl Layer {
+    pub fn adjustment(name: String, adjustment: crate::Adjustment) -> Self {
+        Self {
+            id: next_id(),
+            name,
+            properties: LayerProperties::default(),
+            mask: None,
+            content: LayerContent::Adjustment(adjustment),
+        }
+    }
     pub fn raster(name: String, samples: TileSurface<Rgba8>) -> Self {
         Self {
             id: next_id(),
@@ -121,6 +131,7 @@ impl Layer {
                     child.visit_tiles(visitor);
                 }
             }
+            LayerContent::Adjustment(_) => {}
         }
     }
     fn duplicate(&self) -> Self {
@@ -267,12 +278,7 @@ pub fn validate_layers(nodes: &[Layer], width: u32, height: u32) -> Result<(), S
                 return Err("Invalid layer name or opacity/fill".into());
             }
             if let Some(mask) = &node.mask {
-                if (
-                    mask.samples.width,
-                    mask.samples.height,
-                    mask.samples.default,
-                ) != (w, h, Gray8(255))
-                {
+                if (mask.samples.width, mask.samples.height) != (w, h) {
                     return Err("Invalid mask surface".into());
                 }
             }
@@ -290,6 +296,12 @@ pub fn validate_layers(nodes: &[Layer], width: u32, height: u32) -> Result<(), S
                     }
                     validate(children, w, h, depth + 1, ids)?;
                 }
+                LayerContent::Adjustment(adjustment) => {
+                    adjustment.validate()?;
+                    if p.pass_through {
+                        return Err("Adjustment layers cannot pass through".into());
+                    }
+                }
             }
         }
         Ok(())
@@ -300,6 +312,15 @@ pub fn validate_layers(nodes: &[Layer], width: u32, height: u32) -> Result<(), S
 #[derive(Clone, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum LayerAction {
+    AddAdjustment {
+        adjustment: crate::Adjustment,
+        parent: Option<LayerId>,
+        index: usize,
+    },
+    SetAdjustment {
+        target: LayerId,
+        adjustment: crate::Adjustment,
+    },
     Add {
         name: String,
         parent: Option<LayerId>,
@@ -365,6 +386,7 @@ fn equivalent(a: &[Layer], b: &[Layer]) -> bool {
                 && match (&a.content, &b.content) {
                     (LayerContent::Raster(a), LayerContent::Raster(b)) => Arc::ptr_eq(a, b),
                     (LayerContent::Group(a), LayerContent::Group(b)) => equivalent(a, b),
+                    (LayerContent::Adjustment(a), LayerContent::Adjustment(b)) => a == b,
                     _ => false,
                 }
         })
@@ -374,6 +396,38 @@ impl LayerCommand {
         let mut after = document.layers.clone();
         let mut empty = false;
         let label = match action {
+            LayerAction::AddAdjustment {
+                adjustment,
+                parent,
+                index,
+            } => {
+                adjustment.validate()?;
+                if let Some(parent) = parent {
+                    check_layer_edit(&after, parent, true)?;
+                }
+                let mut node = Layer::adjustment(adjustment.label().into(), adjustment);
+                node.mask = document.selection.as_ref().map(|samples| LayerMask {
+                    enabled: true,
+                    samples: samples.clone(),
+                });
+                let nodes = siblings_mut(&mut after, parent)?;
+                if index > nodes.len() {
+                    return Err("Invalid layer insertion position".into());
+                }
+                nodes.insert(index, node);
+                "Add adjustment layer"
+            }
+            LayerAction::SetAdjustment { target, adjustment } => {
+                adjustment.validate()?;
+                check_layer_edit(&after, target, false)?;
+                let node = find_layer_mut(&mut after, target).ok_or("Layer no longer exists")?;
+                let LayerContent::Adjustment(before) = &node.content else {
+                    return Err("Choose an adjustment layer".into());
+                };
+                empty = before == &adjustment;
+                node.content = LayerContent::Adjustment(adjustment);
+                "Edit adjustment layer"
+            }
             LayerAction::Add {
                 name,
                 parent,
@@ -607,6 +661,9 @@ mod tests {
                         out.push('[');
                         nodes(children, out);
                         out.push(']');
+                    }
+                    LayerContent::Adjustment(settings) => {
+                        out.push_str(&format!("adjustment:{settings:?}"))
                     }
                 }
             }

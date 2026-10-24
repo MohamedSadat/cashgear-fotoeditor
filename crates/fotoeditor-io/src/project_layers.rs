@@ -36,11 +36,19 @@ impl Write for BoundedManifest {
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Manifest {
+    #[serde(default = "legacy_schema")]
+    schema: u32,
     width: u32,
     height: u32,
     dpi: f64,
     blend_space: String,
     layers: Vec<Node>,
+}
+fn legacy_schema() -> u32 {
+    2
+}
+fn full_mask() -> u8 {
+    255
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -54,12 +62,21 @@ struct Node {
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
 enum Content {
-    Raster { tiles: Vec<TileEntry> },
-    Group { children: Vec<Node> },
+    Raster {
+        tiles: Vec<TileEntry>,
+    },
+    Group {
+        children: Vec<Node>,
+    },
+    Adjustment {
+        settings: fotoeditor_core::Adjustment,
+    },
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Mask {
+    #[serde(default = "full_mask")]
+    default: u8,
     enabled: bool,
     tiles: Vec<TileEntry>,
 }
@@ -211,6 +228,7 @@ impl ManifestBuilder {
                 self.node += 1;
                 let id = self.node;
                 let mask = layer.mask.as_ref().map(|mask| Mask {
+                    default: mask.samples.default.0,
                     enabled: mask.enabled,
                     tiles: self.tiles(&mask.samples, |t| StoredProjectTile::Gray(t.clone())),
                 });
@@ -220,6 +238,9 @@ impl ManifestBuilder {
                     },
                     LayerContent::Group(children) => Content::Group {
                         children: self.nodes(children),
+                    },
+                    LayerContent::Adjustment(settings) => Content::Adjustment {
+                        settings: settings.clone(),
                     },
                 };
                 Node {
@@ -262,6 +283,7 @@ impl LayerProjectWriter {
             node: 0,
         };
         let manifest = Manifest {
+            schema: 3,
             width: document.width,
             height: document.height,
             dpi: document.dpi,
@@ -387,6 +409,30 @@ impl LayerProjectReader {
                     let manifest: Manifest = serde_json::from_slice(&record.payload)
                         .map_err(|e| format!("Invalid layer manifest: {e}"))?;
                     validate_size(manifest.width, manifest.height, manifest.dpi)?;
+                    if !(2..=3).contains(&manifest.schema) {
+                        return Err("Unsupported layer manifest schema".into());
+                    }
+                    fn compatible(nodes: &[Node], schema: u32) -> Result<(), String> {
+                        for node in nodes {
+                            if schema == 2 && node.mask.as_ref().is_some_and(|m| m.default != 255) {
+                                return Err("Sparse mask defaults require manifest schema 3".into());
+                            }
+                            match &node.content {
+                                Content::Adjustment { settings } => {
+                                    if schema < 3 {
+                                        return Err(
+                                            "Adjustment layers require manifest schema 3".into()
+                                        );
+                                    }
+                                    settings.validate()?;
+                                }
+                                Content::Group { children } => compatible(children, schema)?,
+                                _ => {}
+                            }
+                        }
+                        Ok(())
+                    }
+                    compatible(&manifest.layers, manifest.schema)?;
                     if manifest.blend_space != "srgb" {
                         return Err("Unsupported project blend space".into());
                     }
@@ -463,13 +509,17 @@ impl LayerProjectReader {
                         .map(|mask| {
                             Ok::<_, String>(LayerMask {
                                 enabled: mask.enabled,
-                                samples: Arc::new(self.surface(mask.tiles, Gray8(255), |t| {
-                                    if let StoredProjectTile::Gray(t) = t {
-                                        Some(t.clone())
-                                    } else {
-                                        None
-                                    }
-                                })?),
+                                samples: Arc::new(self.surface(
+                                    mask.tiles,
+                                    Gray8(mask.default),
+                                    |t| {
+                                        if let StoredProjectTile::Gray(t) = t {
+                                            Some(t.clone())
+                                        } else {
+                                            None
+                                        }
+                                    },
+                                )?),
                             })
                         })
                         .transpose()?;
@@ -487,6 +537,7 @@ impl LayerProjectReader {
                         Content::Group { children } => {
                             Layer::group(node.name, self.nodes(children, depth + 1)?)
                         }
+                        Content::Adjustment { settings } => Layer::adjustment(node.name, settings),
                     };
                     layer.mask = mask;
                     layer.properties = node.properties;
@@ -521,6 +572,76 @@ impl LayerProjectReader {
 mod tests {
     use super::*;
     use fotoeditor_core::BlendMode;
+    #[test]
+    fn adjustment_settings_and_sparse_mask_defaults_roundtrip_without_baking_pixels() {
+        let mut document = Document::blank(513, 3, 72.0).unwrap();
+        document.raster_mut().write(256, 1, Rgba8([87, 33, 19, 0]));
+        let settings = fotoeditor_core::Adjustment::Curves {
+            points: vec![[0.0, 1.0], [0.3, 0.2], [1.0, 0.0]],
+        };
+        let mut layer = Layer::adjustment("Editable curves".into(), settings.clone());
+        let mut mask = TileSurface::new(513, 3);
+        mask.write(256, 1, Gray8(128));
+        layer.mask = Some(LayerMask {
+            enabled: true,
+            samples: Arc::new(mask),
+        });
+        document.layers.push(layer);
+        let bytes = encode(&document);
+        let decoded = read(&bytes).unwrap();
+        assert_eq!(decoded.tile_count(), 1);
+        let LayerContent::Adjustment(actual) = &decoded.layers[1].content else {
+            panic!()
+        };
+        assert_eq!(actual, &settings);
+        assert_eq!(
+            decoded.layers[1].mask.as_ref().unwrap().samples.default,
+            Gray8(0)
+        );
+        assert_eq!(decoded.bytes(), 0);
+        hydrate(&decoded, &bytes);
+        assert_eq!(decoded.raster().sample(256, 1), Rgba8([87, 33, 19, 0]));
+        assert_eq!(
+            decoded.layers[1]
+                .mask
+                .as_ref()
+                .unwrap()
+                .samples
+                .sample(256, 1),
+            Gray8(128)
+        );
+        assert_eq!(encode(&decoded), bytes);
+    }
+    #[test]
+    fn schema_two_remains_readable_and_new_or_invalid_adjustment_schemas_are_rejected() {
+        fn frame(json: &str) -> Vec<u8> {
+            let mut writer = ProjectStreamWriter::new(Residency::default()).unwrap();
+            let mut bytes = writer.signature().to_vec();
+            bytes.extend(writer.record(Kind::Manifest, 0, json.as_bytes()).unwrap());
+            bytes.extend(writer.finish().unwrap());
+            bytes
+        }
+        let legacy = r#"{"width":1,"height":1,"dpi":72,"blend_space":"srgb","layers":[{"id":1,"name":"Legacy","properties":{},"mask":{"enabled":true,"tiles":[]},"content":{"kind":"raster","tiles":[]}}]}"#;
+        let doc = read(&frame(legacy)).unwrap();
+        assert_eq!(
+            doc.layers[0].mask.as_ref().unwrap().samples.default,
+            Gray8(255)
+        );
+        let adjustment = legacy.replace(
+            r#""kind":"raster","tiles":[]"#,
+            r#""kind":"adjustment","settings":{"kind":"curves","points":[[0,1],[1,0]]}"#,
+        );
+        assert!(read(&frame(&adjustment)).is_err());
+        let valid = adjustment.replacen('{', r#"{"schema":3,"#, 1);
+        assert!(read(&frame(&valid)).is_ok());
+        for invalid in [
+            valid.replace("[[0,1],[1,0]]", "[[0,1],[0,0]]"),
+            valid.replace("\"schema\":3", "\"schema\":4"),
+            legacy.replace("\"enabled\":true", "\"enabled\":true,\"default\":0"),
+        ] {
+            assert!(read(&frame(&invalid)).is_err());
+        }
+    }
     #[test]
     fn active_session_selection_is_not_a_project_channel_or_tile_record() {
         let mut document = Document::blank(257, 2, 72.0).unwrap();

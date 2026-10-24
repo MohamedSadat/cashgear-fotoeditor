@@ -98,6 +98,13 @@ and preserve its alpha, interpolating by mask, opacity and fill, with the layer'
 blend function. Empty backdrops remain empty. Group isolation and clipping use
 the existing ordered compositor plan.
 
+An adjustment step quantizes its inherited straight color to bytes before LUT/
+HSL evaluation and blending; its inherited floating-point alpha is preserved.
+This stabilizes endpoint branches such as Color Burn at exact white/black across
+f64 CPU and f32 GPU math. A positive alpha smaller than half a byte still receives
+the color transform. Destructive/layer comparisons allow the specified one-byte
+difference from coverage interpolation and compositing quantization.
+
 Selection on insertion becomes the adjustment layer's editable mask. Sparse mask
 defaults must survive composition, painting, commands and streaming persistence.
 New manifests identify their schema; existing raster/group projects remain

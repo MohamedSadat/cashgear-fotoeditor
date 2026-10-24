@@ -7,12 +7,54 @@ struct Params {
     mask_enabled: u32,
     opacity: f32,
     fill: f32,
-    padding: vec2<f32>,
+    mask_default: f32,
+    adjustment_kind: u32,
+    adjustment: vec4<f32>, // HSL hue turns, saturation, lightness, unused
+    coverage: vec4<f32>, // enabled, sparse default, unused, unused
+    lut: array<vec4<f32>, 256>,
 }
 @group(0) @binding(0) var backdrop_texture: texture_2d<f32>;
 @group(0) @binding(1) var source_texture: texture_2d<f32>;
 @group(0) @binding(2) var mask_texture: texture_2d<f32>;
 @group(0) @binding(3) var<uniform> params: Params;
+@group(0) @binding(4) var coverage_texture: texture_2d<f32>;
+
+fn adjusted(color: vec3<f32>, coverage: f32) -> vec3<f32> {
+    let before = floor(clamp(color, vec3<f32>(0.0), vec3<f32>(1.0)) * 255.0 + 0.5) / 255.0;
+    var result: vec3<f32>;
+    if params.adjustment_kind == 1u {
+        let indices = vec3<u32>(floor(before * 255.0 + 0.5));
+        result = vec3<f32>(params.lut[indices.r].x, params.lut[indices.g].x, params.lut[indices.b].x);
+    } else {
+        let high = max(max(before.r, before.g), before.b);
+        let low = min(min(before.r, before.g), before.b);
+        let delta = high - low;
+        var light = (high + low) * 0.5;
+        var sat = 0.0;
+        var hue = 0.0;
+        if delta > 0.0 {
+            sat = delta / (1.0 - abs(2.0 * light - 1.0));
+            if high == before.r { hue = (before.g - before.b) / delta; }
+            else if high == before.g { hue = (before.b - before.r) / delta + 2.0; }
+            else { hue = (before.r - before.g) / delta + 4.0; }
+        }
+        hue = fract(hue / 6.0 + params.adjustment.x) * 6.0;
+        sat = clamp(sat * (1.0 + params.adjustment.y), 0.0, 1.0);
+        if params.adjustment.z < 0.0 { light *= 1.0 + params.adjustment.z; }
+        else { light += (1.0 - light) * params.adjustment.z; }
+        let chroma = (1.0 - abs(2.0 * light - 1.0)) * sat;
+        let x = chroma * (1.0 - abs(hue - 2.0 * floor(hue / 2.0) - 1.0));
+        var rgb: vec3<f32>;
+        if hue < 1.0 { rgb = vec3<f32>(chroma, x, 0.0); }
+        else if hue < 2.0 { rgb = vec3<f32>(x, chroma, 0.0); }
+        else if hue < 3.0 { rgb = vec3<f32>(0.0, chroma, x); }
+        else if hue < 4.0 { rgb = vec3<f32>(0.0, x, chroma); }
+        else if hue < 5.0 { rgb = vec3<f32>(x, 0.0, chroma); }
+        else { rgb = vec3<f32>(chroma, 0.0, x); }
+        result = rgb + vec3<f32>(light - chroma * 0.5);
+    }
+    return floor(clamp(mix(before, result, coverage), vec3<f32>(0.0), vec3<f32>(1.0)) * 255.0 + 0.5) / 255.0;
+}
 
 fn luminosity(c: vec3<f32>) -> f32 { return dot(c, vec3<f32>(0.3, 0.59, 0.11)); }
 fn saturation(c: vec3<f32>) -> f32 { return max(max(c.r, c.g), c.b) - min(min(c.r, c.g), c.b); }
@@ -83,10 +125,21 @@ fn vertex(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
 fn fragment(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
     let xy = vec2<i32>(position.xy);
     let backdrop = textureLoad(backdrop_texture, xy, 0);
-    let source = textureLoad(source_texture, xy, 0);
-    var mask = 1.0;
+    var source = textureLoad(source_texture, xy, 0);
+    var mask = params.mask_default;
     if params.mask_enabled != 0u { mask = textureLoad(mask_texture, xy, 0).r; }
     let factor = clamp(params.opacity * params.fill * mask, 0.0, 1.0);
+    if params.operation == 3u {
+        if backdrop.a == 0.0 { return backdrop; }
+        let b = floor(clamp(backdrop.rgb / backdrop.a, vec3<f32>(0.0), vec3<f32>(1.0)) * 255.0 + 0.5) / 255.0;
+        let rgb = blend_rgb(params.mode, b, adjusted(b, 1.0));
+        return vec4<f32>(mix(backdrop.rgb, rgb * backdrop.a, factor), backdrop.a);
+    }
+    if params.adjustment_kind != 0u && source.a > 0.0 {
+        var coverage = params.coverage.y;
+        if params.coverage.x > 0.5 { coverage = textureLoad(coverage_texture, xy, 0).r; }
+        source = vec4<f32>(adjusted(source.rgb, coverage), source.a);
+    }
     if params.operation == 2u { return mix(backdrop, source, factor); }
     let a = source.a * factor;
     let clipped = params.operation == 1u;

@@ -1,6 +1,8 @@
 //! Portable fragment passes with float32 premultiplied intermediates. One tile
 //! is read back at a time; authoritative straight-alpha sources are never changed.
-use fotoeditor_core::{CompositePlan, CompositeStep, LayerProperties, TILE_SIZE};
+use fotoeditor_core::{
+    AdjustmentKernel, CompositeMask, CompositePlan, CompositeStep, LayerProperties, TILE_SIZE,
+};
 use wasm_bindgen::JsValue;
 use wgpu::*;
 const FLOAT_BYTES: u64 = 256 * 256 * 16;
@@ -11,6 +13,7 @@ pub struct Compositor {
     uniform: Buffer,
     source: Texture,
     mask: Texture,
+    coverage: Texture,
     pool: Vec<Texture>,
 }
 fn texture(device: &Device, format: TextureFormat) -> Texture {
@@ -35,7 +38,7 @@ fn texture(device: &Device, format: TextureFormat) -> Texture {
 impl Compositor {
     pub fn new(device: &Device) -> Self {
         let mut entries = Vec::new();
-        for binding in 0..3 {
+        for binding in [0, 1, 2, 4] {
             entries.push(BindGroupLayoutEntry {
                 binding,
                 visibility: ShaderStages::FRAGMENT,
@@ -97,7 +100,7 @@ impl Compositor {
         });
         let uniform = device.create_buffer(&BufferDescriptor {
             label: Some("Composite parameters"),
-            size: 32,
+            size: 4160,
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -107,11 +110,12 @@ impl Compositor {
             uniform,
             source: texture(device, TextureFormat::Rgba8Unorm),
             mask: texture(device, TextureFormat::R8Unorm),
+            coverage: texture(device, TextureFormat::R8Unorm),
             pool: Vec::new(),
         }
     }
     pub fn bytes(&self) -> u64 {
-        (self.pool.len() as u64 + 1) * FLOAT_BYTES + 262144 + 65536 + 32
+        (self.pool.len() as u64 + 1) * FLOAT_BYTES + 262144 + 2 * 65536 + 4160
     }
     fn clear(&self, device: &Device, queue: &Queue, index: usize) {
         let view = self.pool[index].create_view(&TextureViewDescriptor::default());
@@ -161,25 +165,73 @@ impl Compositor {
         properties: &LayerProperties,
         operation: u32,
         premultiplied: bool,
-        masked: bool,
-    ) {
-        let mut params = Vec::with_capacity(32);
+        mask: &CompositeMask,
+        adjustment: Option<(&AdjustmentKernel, Option<&CompositeMask>)>,
+    ) -> Result<(), String> {
+        let mut params = Vec::with_capacity(4160);
         for value in [
             properties.blend as u32,
             operation,
             u32::from(premultiplied),
-            u32::from(masked),
+            u32::from(mask.tile.is_some()),
         ] {
             params.extend(value.to_le_bytes());
         }
         params.extend((properties.opacity as f32).to_le_bytes());
         params.extend((properties.fill as f32).to_le_bytes());
-        params.extend([0; 8]);
+        params.extend((f32::from(mask.default) / 255.0).to_le_bytes());
+        let kind = adjustment.map_or(0u32, |(kernel, _)| match kernel {
+            AdjustmentKernel::Lut(_) => 1,
+            AdjustmentKernel::Hsl(_) => 2,
+        });
+        params.extend(kind.to_le_bytes());
+        let settings = match adjustment {
+            Some((AdjustmentKernel::Hsl(settings), _)) => *settings,
+            _ => [0.0; 3],
+        };
+        for value in settings {
+            params.extend((value as f32).to_le_bytes());
+        }
+        params.extend(0f32.to_le_bytes());
+        let coverage = adjustment.and_then(|(_, m)| m);
+        for value in [
+            coverage.is_some_and(|m| m.tile.is_some()) as u8 as f32,
+            coverage.map_or(1.0, |m| f32::from(m.default) / 255.0),
+            0.0,
+            0.0,
+        ] {
+            params.extend(value.to_le_bytes());
+        }
+        for i in 0..256 {
+            let value = match adjustment {
+                Some((AdjustmentKernel::Lut(lut), _)) => lut[i] as f32,
+                _ => 0.0,
+            };
+            params.extend(value.to_le_bytes());
+            params.extend([0; 12]);
+        }
         queue.write_buffer(&self.uniform, 0, &params);
+        if let Some(tile) = &mask.tile {
+            self.upload(
+                queue,
+                &self.mask,
+                &tile.pin()?.pixels.iter().map(|p| p.0).collect::<Vec<_>>(),
+                TILE_SIZE,
+            );
+        }
+        if let Some(tile) = coverage.and_then(|m| m.tile.as_ref()) {
+            self.upload(
+                queue,
+                &self.coverage,
+                &tile.pin()?.pixels.iter().map(|p| p.0).collect::<Vec<_>>(),
+                TILE_SIZE,
+            );
+        }
         let views = [
             self.pool[backdrop].create_view(&TextureViewDescriptor::default()),
             source.create_view(&TextureViewDescriptor::default()),
             self.mask.create_view(&TextureViewDescriptor::default()),
+            self.coverage.create_view(&TextureViewDescriptor::default()),
         ];
         let group = device.create_bind_group(&BindGroupDescriptor {
             label: Some("Composite pass"),
@@ -196,6 +248,10 @@ impl Compositor {
                 BindGroupEntry {
                     binding: 2,
                     resource: BindingResource::TextureView(&views[2]),
+                },
+                BindGroupEntry {
+                    binding: 4,
+                    resource: BindingResource::TextureView(&views[3]),
                 },
                 BindGroupEntry {
                     binding: 3,
@@ -224,15 +280,16 @@ impl Compositor {
             pass.draw(0..3, 0..1);
         }
         queue.submit([encoder.finish()]);
+        Ok(())
     }
-    pub fn compose(
+    pub fn compose_texture(
         &mut self,
         device: &Device,
         queue: &Queue,
         plan: &CompositePlan,
-    ) -> Result<js_sys::Promise, String> {
+    ) -> Result<Texture, String> {
         let count = plan.stack_depth + 3;
-        if (count as u64 + 1) * FLOAT_BYTES + 327712 > COMPOSITE_RESERVE {
+        if (count as u64 + 1) * FLOAT_BYTES + 397376 > COMPOSITE_RESERVE {
             return Err("Composite stack exceeds the GPU scratch budget".into());
         }
         while self.pool.len() < count {
@@ -270,6 +327,8 @@ impl Compositor {
                     mask,
                     properties,
                     clipped,
+                    adjustment,
+                    ..
                 } => {
                     let Some(source) = source else {
                         continue;
@@ -281,14 +340,6 @@ impl Compositor {
                         &source.pixels.iter().flat_map(|p| p.0).collect::<Vec<_>>(),
                         TILE_SIZE * 4,
                     );
-                    if let Some(mask) = mask {
-                        self.upload(
-                            queue,
-                            &self.mask,
-                            &mask.pin()?.pixels.iter().map(|p| p.0).collect::<Vec<_>>(),
-                            TILE_SIZE,
-                        );
-                    }
                     let next = free(usize::MAX);
                     self.pass(
                         device,
@@ -299,8 +350,29 @@ impl Compositor {
                         properties,
                         u32::from(*clipped),
                         false,
-                        mask.is_some(),
-                    );
+                        mask,
+                        adjustment.as_ref().map(|(k, m)| (k.as_ref(), Some(m))),
+                    )?;
+                    current = next;
+                }
+                CompositeStep::Adjustment {
+                    kernel,
+                    mask,
+                    properties,
+                } => {
+                    let next = free(usize::MAX);
+                    self.pass(
+                        device,
+                        queue,
+                        current,
+                        &self.source,
+                        next,
+                        properties,
+                        3,
+                        false,
+                        mask,
+                        Some((kernel, None)),
+                    )?;
                     current = next;
                 }
                 CompositeStep::End {
@@ -310,14 +382,6 @@ impl Compositor {
                 } => {
                     let (backdrop, pass_through) =
                         *stack.last().ok_or("Unbalanced composite stack")?;
-                    if let Some(mask) = mask {
-                        self.upload(
-                            queue,
-                            &self.mask,
-                            &mask.pin()?.pixels.iter().map(|p| p.0).collect::<Vec<_>>(),
-                            TILE_SIZE,
-                        );
-                    }
                     let next = free(backdrop);
                     self.pass(
                         device,
@@ -328,13 +392,23 @@ impl Compositor {
                         properties,
                         if pass_through { 2 } else { u32::from(*clipped) },
                         true,
-                        mask.is_some(),
-                    );
+                        mask,
+                        None,
+                    )?;
                     stack.pop();
                     current = next;
                 }
             }
         }
+        Ok(self.pool[current].clone())
+    }
+    pub fn compose(
+        &mut self,
+        device: &Device,
+        queue: &Queue,
+        plan: &CompositePlan,
+    ) -> Result<js_sys::Promise, String> {
+        let texture = self.compose_texture(device, queue, plan)?;
         let buffer = device.create_buffer(&BufferDescriptor {
             label: Some("One composite readback"),
             size: FLOAT_BYTES,
@@ -343,7 +417,7 @@ impl Compositor {
         });
         let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor::default());
         encoder.copy_texture_to_buffer(
-            self.pool[current].as_image_copy(),
+            texture.as_image_copy(),
             TexelCopyBufferInfo {
                 buffer: &buffer,
                 layout: TexelCopyBufferLayout {
@@ -352,7 +426,7 @@ impl Compositor {
                     rows_per_image: Some(TILE_SIZE),
                 },
             },
-            self.pool[current].size(),
+            texture.size(),
         );
         queue.submit([encoder.finish()]);
         let complete = std::rc::Rc::new(std::cell::Cell::new(false));
