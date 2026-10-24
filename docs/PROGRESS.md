@@ -1,6 +1,6 @@
 # Progress
 
-## P6 — M1 in progress
+## P6 — M1 complete; phase in progress
 
 Started 2026-10-24 on clean main at `27576cb1`, by the user's explicit fresh-session
 request. Read AGENTS.md, the phase records, P5 integration/report and the complete
@@ -8,7 +8,35 @@ original P6 section (printed pages 14–15, text plus rendered pages). No worktr
 or agents. The four product choices are recorded in DECISIONS.md; P6-DESIGN.md
 defines independently accepted milestones. M1 covers the five priority destructive
 adjustments and active-layer histogram. GPU preview/adjustment layers, filters and
-the other adjustments remain later P6 milestones. No P6 acceptance is yet claimed.
+the other adjustments remain later P6 milestones. M1 acceptance is complete;
+P6 as a whole is not complete and `p6-filters` has not been created.
+
+The verified implementation is pushed through `7a845a1`. It adds bounded Rust
+brightness/contrast, levels, master RGB curves, exposure and hue/saturation,
+selection-clipped atomic commands, exact undo/redo and an active-raster histogram.
+The shared CPU/GPU budgets, paging, straight alpha/hidden RGB and file caps remain.
+See P6-M1-REPORT.md for shipped/deferred scope and the numerical/measurement limits.
+
+All 87 Rust tests, 16 Vitest tests, native/WASM clippy, formatting, TypeScript,
+ESLint, licenses and the production size gate pass. The 156-case installed
+Chrome/Edge hardware regression and 113-case local software regression pass;
+final UI follow-ups pass all 12 hardware and nine software adjustment cases.
+All 12 final public-site cases and both hardware WebView2 APIs pass. The final
+[CI run 40091443027](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/runs/40091443027)
+passes all 113 software browser cases with zero failures, skips or retries and
+both software WebView2 APIs. [Deployment 40091443033](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/runs/40091443033)
+also passes. Earlier test timing/admission corrections are disclosed in the report.
+
+On the 6000×4000 photo, worst warm API-return p95 is 1.999 s for Exposure and
+2.385 s for HSL; histogram worst p95 is 0.625 s. Sampled logical residency peaks
+at 289 MiB CPU and 16.11 MiB GPU. These are single-worker full-resolution apply
+measurements, not slider-preview or Gaussian-blur acceptance. Existing navigation
+measures 59.75–60.00 fps; brush pointer acknowledgement p95 is at most 14.68 ms.
+Local gzip9 WASM is 1,244,718 bytes; CI is 1,244,781, both under 1,500,000.
+Raw completion evidence: `bench/results/p6-m1-final-verification.json`.
+
+Next milestone: M2 adjustment layers, CPU/GPU parity, persistence and GPU viewport
+preview. It has not started. Stop at M1; P7 remains outside the current phase.
 
 P5's identifiable Photoshop feather comparison remains pending. Starting P6 does
 not close or waive it; `p5-select` remains uncreated.
