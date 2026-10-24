@@ -83,7 +83,7 @@ export function AdjustmentPanel({ api, disabled }: { api?: EngineApi; disabled: 
   const [applying, setApplying] = useState(false);
   const [notice, setNotice] = useState('');
   const [refresh, setRefresh] = useState(0);
-  const [histogram, setHistogram] = useState<{ key: string; data: Histogram }>();
+  const [histogram, setHistogram] = useState<{ key: string; api: EngineApi; data: Histogram }>();
   const [histogramError, setHistogramError] = useState('');
   const active = snapshot?.layers.active ?? snapshot?.layers.nodes[0]?.id;
   const node = find(snapshot?.layers.nodes ?? [], active);
@@ -101,7 +101,7 @@ export function AdjustmentPanel({ api, disabled }: { api?: EngineApi; disabled: 
         .histogram(active)
         .then((data) => {
           if (current) {
-            setHistogram({ key, data });
+            setHistogram({ key, api, data });
             setHistogramError('');
           }
         })
@@ -118,7 +118,7 @@ export function AdjustmentPanel({ api, disabled }: { api?: EngineApi; disabled: 
       clearTimeout(timer);
     };
   }, [api, active, raster, blocked, key, refresh]);
-  const data = histogram?.key === key ? histogram.data : undefined;
+  const data = histogram?.key === key && histogram.api === api ? histogram.data : undefined;
   const reset = () => {
     setAdjustment(defaults(adjustment.kind));
     setNotice('');

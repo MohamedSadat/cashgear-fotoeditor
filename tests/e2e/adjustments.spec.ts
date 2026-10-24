@@ -203,7 +203,8 @@ for (const backend of ['WebGPU', 'WebGL2']) {
     },
   );
   test(
-    backend + ' confirms controls explicitly updates histogram and restores adjusted recovery',
+    backend +
+      ' confirms controls restores recovery and refreshes histograms after worker replacement',
     async ({ page, context }) => {
       await page.goto(query);
       await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');
@@ -237,6 +238,22 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       await expect(page.getByTestId('document-size')).toHaveText('64 × 64');
       expect(pixel(await exported(page), 0)).toEqual([176, 90, 0, 255]);
       await expect.poll(async () => (await snap(page)).history.undo).toBe(0);
+      await expect(page.getByTestId('histogram-total')).toHaveText(
+        '4,096 nontransparent pixels · alpha weight 1,044,480',
+      );
+      await page.getByRole('button', { name: 'Simulate device loss' }).click();
+      await expect(page.getByRole('alert')).toContainText('GPU device lost');
+      await page.getByRole('button', { name: 'Retry engine' }).click();
+      await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');
+      await page.evaluate(() =>
+        (Reflect.get(window, '__fotoeditor') as EngineApi).newDocument(64, 64, 72),
+      );
+      await expect.poll(async () => (await snap(page)).document?.width).toBe(64);
+      const cached = await page.getByTestId('histogram-total').allTextContents();
+      expect(cached.join('')).not.toContain('4,096');
+      await expect(page.getByTestId('histogram-total')).toHaveText(
+        '0 nontransparent pixels · alpha weight 0',
+      );
     },
   );
 }
