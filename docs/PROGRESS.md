@@ -1,5 +1,18 @@
 # Progress
 
+## P6 — M1 in progress
+
+Started 2026-10-24 on clean main at `27576cb1`, by the user's explicit fresh-session
+request. Read AGENTS.md, the phase records, P5 integration/report and the complete
+original P6 section (printed pages 14–15, text plus rendered pages). No worktree
+or agents. The four product choices are recorded in DECISIONS.md; P6-DESIGN.md
+defines independently accepted milestones. M1 covers the five priority destructive
+adjustments and active-layer histogram. GPU preview/adjustment layers, filters and
+the other adjustments remain later P6 milestones. No P6 acceptance is yet claimed.
+
+P5's identifiable Photoshop feather comparison remains pending. Starting P6 does
+not close or waive it; `p5-select` remains uncreated.
+
 ## P5 — In progress
 
 Started 2026-10-24 on clean main at `9b03c160`, the accepted `p4-layers` tag.

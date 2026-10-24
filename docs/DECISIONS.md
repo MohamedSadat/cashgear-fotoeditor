@@ -1,5 +1,22 @@
 # Decisions
 
+## 2026-10-24 — P6 choices and sequencing
+
+- The user explicitly requested starting P6 in a fresh session while the P5
+  Photoshop feather comparison remains pending. Carry that item forward; this
+  sequencing instruction is neither a waiver nor permission to create p5-select.
+- Build brightness/contrast, levels, curves, exposure and hue/saturation first.
+  Prioritize Gaussian blur, box blur, unsharp mask, sharpen and median filters.
+- Live preview covers the visible viewport; final Apply covers the full selected
+  area. Adjustment layers are required; editable smart filters are outside v1.
+- Keep a histogram panel available outside the Levels/Curves dialogs.
+- P6 is delivered in independently verified milestones. M1 establishes the five
+  destructive adjustments and exact active-raster histogram. M2 introduces
+  adjustment layers and GPU viewport preview; the existing flattened display
+  cache needs a dedicated compositor integration. M3 adds the five priority
+  filters and Fade Last Filter; M4 completes the remaining source requirements.
+  This split does not remove any P6 acceptance criterion. See P6-DESIGN.md.
+
 ## 2026-10-24 — P5 user choices
 
 - Include Quick Mask in v1: brush/eraser editing of the selection with a red overlay.

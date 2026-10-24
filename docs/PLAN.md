@@ -187,3 +187,31 @@ All four product choices were answered on 2026-10-24; see DECISIONS.md.
 2. Anti-aliased edges by default: yes.
 3. AI Select Subject outside v1: confirmed.
 4. Paste behavior: always a new layer.
+
+## P6 acceptance and milestone boundaries
+
+Source: complete P6 section on original roadmap printed pages 14–15. The four
+product questions were answered on 2026-10-24; see DECISIONS.md and P6-DESIGN.md.
+The user explicitly authorized starting while the P5 feather comparison is open.
+
+1. M1: brightness/contrast, levels, curves, exposure and hue/saturation as bounded,
+   selection-clipped destructive commands; exact undo/redo, locks, paging,
+   cancellation and refusal; an always-available exact active-raster histogram.
+2. M2: those five adjustments as editable adjustment layers, CPU/GPU parity,
+   masks/groups/blends/project/recovery integration, and GPU viewport live preview.
+3. M3: Gaussian blur, box blur, unsharp mask, sharpen, median, tiled neighbor
+   padding, selection clipping, live preview and Fade Last Filter (opacity/blend).
+4. M4: vibrance, color balance, black & white, invert, threshold, posterize and
+   gradient map (destructive and layers); motion blur, high pass, add noise,
+   emboss and pixelate. Complete phase-wide validation and report, then stop.
+
+- Gaussian blur radius 20 on 6000×4000 must apply in under 2 seconds on measured
+  single-threaded hardware. Preview must update within 100 ms of slider movement.
+- Golden tests must show no tile seams; adjustment layers must match destructive
+  results within ±1/channel. These criteria remain pending until their milestones.
+- Preserve straight-alpha/hidden RGB, shared 768 MiB CPU / 128 MiB GPU budgets,
+  paging, 128 MiB image limits and 4 GiB streamed project cap. No smart filters.
+- Every milestone runs applicable repository checks, installed Chrome/Edge on
+  WebGPU/WebGL2, Windows/WebView2, size/license checks and remote CI/deployment.
+  Publish p6-filters only after every P6 milestone and acceptance criterion passes.
+  M1 is not phase completion. Stop before P7.
