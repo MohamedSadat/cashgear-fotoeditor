@@ -5,6 +5,18 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
 
 pub const FILTER_SCRATCH: u64 = 8 * 1024 * 1024;
+pub const FILTER_ALLOCATION_CHUNK: u64 = 16 * 1024 * 1024;
+/// A freed, budgeted allocator chunk avoids one WASM memory.grow per output
+/// tile. The allocator owns its free space; document samples are still computed.
+pub fn reserve_filter_capacity(bytes: u64) {
+    let mut reservation = Vec::<u8>::new();
+    if reservation
+        .try_reserve_exact(bytes.min(FILTER_ALLOCATION_CHUNK) as usize)
+        .is_ok()
+    {
+        std::hint::black_box(&mut reservation);
+    }
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(
     tag = "kind",
@@ -147,6 +159,7 @@ pub struct FilterJob {
     available: u64,
     allocated: u64,
     weights: Vec<f32>,
+    workspace: FilterWorkspace,
 }
 impl FilterJob {
     pub fn new(
@@ -185,6 +198,7 @@ impl FilterJob {
             next: 0,
             available,
             allocated: 0,
+            workspace: FilterWorkspace::default(),
         })
     }
     pub fn done(&self) -> bool {
@@ -194,6 +208,13 @@ impl FilterJob {
     /// counted separately; paging may reduce actual residency below this bound.
     pub fn allocated_bytes(&self) -> u64 {
         self.allocated
+    }
+    pub fn allocation_reservation(&self, available: u64) -> u64 {
+        if self.next.is_multiple_of(32) && !self.done() {
+            available.min(FILTER_ALLOCATION_CHUNK)
+        } else {
+            0
+        }
     }
     pub fn visit_tiles(&self, visitor: &mut dyn FnMut(TileRef<'_>)) {
         self.before.visit_tiles(visitor);
@@ -260,7 +281,8 @@ impl FilterJob {
         let height = TILE_SIZE.min(self.before.height - c.1 * TILE_SIZE) as usize;
         let stride = width + 2 * r;
         let rows = height + 2 * r;
-        let mut input = vec![[0.0; 4]; stride * rows];
+        let input = &mut self.workspace.input;
+        resize_scratch(input, stride * rows, [0.0; 4]);
         for y in 0..rows {
             let sy = (c.1 as i64 * 256 + y as i64 - r as i64)
                 .clamp(0, i64::from(self.before.height) - 1) as u32;
@@ -294,7 +316,16 @@ impl FilterJob {
             }
         }
         let opaque = input.iter().all(|p| p[3] == 255.0);
-        let output = convolve(&input, stride, width, height, &self.filter, &self.weights);
+        convolve_into(
+            &mut self.workspace,
+            stride,
+            width,
+            height,
+            &self.filter,
+            &self.weights,
+            opaque,
+        );
+        let output = &self.workspace.output;
         let selection = self.before.selection.as_ref();
         let mask = selection
             .and_then(|s| s.tiles().get(&c))
@@ -304,10 +335,20 @@ impl FilterJob {
             .get(&c)
             .map_or_else(|| vec![surface.default; TILE_PIXELS], |t| t.pixels.clone());
         let alpha_lock = self.before.layer(self.layer)?.properties.locks.alpha;
-        let mut full = selection.map(|_| pixels.clone());
+        let full_coverage = mask.as_ref().map_or_else(
+            || selection.is_none_or(|s| s.default.0 == 255),
+            |m| {
+                (0..height).all(|y| {
+                    m.pixels[y * 256..y * 256 + width]
+                        .iter()
+                        .all(|p| p.0 == 255)
+                })
+            },
+        );
+        let mut full = (!full_coverage).then(|| pixels.clone());
         let mut changed = false;
-        if opaque && selection.is_none() {
-            changed = apply_opaque_full(&mut pixels, &output, width, height);
+        if opaque && full_coverage {
+            changed = apply_opaque_full(&mut pixels, output, width, height);
         } else {
             for y in 0..height {
                 for x in 0..width {
@@ -392,20 +433,44 @@ fn apply_opaque_full(
     changed
 }
 
+#[derive(Default)]
+struct FilterWorkspace {
+    input: Vec<[f32; 4]>,
+    output: Vec<[f32; 4]>,
+    packed: Vec<f32>,
+    result: Vec<f32>,
+    horizontal: Vec<f32>,
+    median: Vec<f32>,
+}
+fn resize_scratch<T: Clone>(values: &mut Vec<T>, length: usize, value: T) {
+    if values.capacity() < length {
+        values.reserve_exact(length - values.len());
+    }
+    values.resize(length, value);
+}
 #[inline(never)]
-fn convolve(
-    input: &[[f32; 4]],
+fn convolve_into(
+    workspace: &mut FilterWorkspace,
     stride: usize,
     width: usize,
     height: usize,
     filter: &Filter,
     weights: &[f32],
-) -> Vec<[f32; 4]> {
+    opaque: bool,
+) {
+    let FilterWorkspace {
+        input,
+        output: out,
+        packed,
+        result,
+        horizontal,
+        median: values,
+    } = workspace;
     let r = filter.radius() as usize;
-    let mut out = vec![[0.0; 4]; width * height];
+    resize_scratch(out, width * height, [0.0; 4]);
     if matches!(filter, Filter::Median { .. }) {
         let count = (2 * r + 1).pow(2);
-        let mut values = vec![0.0f32; count];
+        resize_scratch(values, count, 0.0);
         for y in 0..height {
             for x in 0..width {
                 for channel in 0..4 {
@@ -424,19 +489,21 @@ fn convolve(
     } else {
         // Process narrow columns so all vertical tap rows fit in the per-core
         // cache. This is the same finite kernel, with no radius approximation.
-        let opaque = input.iter().all(|p| p[3] == 255.0);
-        let packed: Vec<f32> = if opaque {
-            input.iter().flat_map(|p| [p[0], p[1], p[2]]).collect()
-        } else {
-            Vec::new()
-        };
+        if opaque {
+            resize_scratch(packed, input.len() * 3, 0.0);
+            for (out, p) in packed.as_chunks_mut::<3>().0.iter_mut().zip(input.iter()) {
+                *out = [p[0], p[1], p[2]];
+            }
+        }
         let channels = if opaque { 3 } else { 4 };
         let samples = if opaque {
             packed.as_slice()
         } else {
             input.as_flattened()
         };
-        let result = separable(samples, channels, stride, width, height, weights);
+        separable_into(
+            samples, channels, stride, width, height, weights, result, horizontal,
+        );
         for (p, values) in out.iter_mut().zip(result.chunks_exact(channels)) {
             *p = [
                 values[0],
@@ -452,7 +519,7 @@ fn convolve(
             amount, threshold, ..
         } => (amount, f32::from(threshold)),
         Filter::Sharpen { amount } => (amount, 0.0),
-        _ => return out,
+        _ => return,
     };
     for y in 0..height {
         for x in 0..width {
@@ -476,24 +543,26 @@ fn convolve(
             out[y * width + x] = p;
         }
     }
-    out
 }
 #[inline(never)]
-fn separable(
+#[allow(clippy::too_many_arguments)]
+fn separable_into(
     input: &[f32],
     channels: usize,
     stride: usize,
     width: usize,
     height: usize,
     weights: &[f32],
-) -> Vec<f32> {
+    result: &mut Vec<f32>,
+    horizontal: &mut Vec<f32>,
+) {
     let r = weights.len() / 2;
     let full_pitch = width * channels;
     let stride = stride * channels;
-    let mut result = vec![0.0; full_pitch * height];
+    resize_scratch(result, full_pitch * height, 0.0);
     for bx in (0..width).step_by(32) {
         let pitch = (width - bx).min(32) * channels;
-        let mut horizontal = vec![0.0; pitch * (height + 2 * r)];
+        resize_scratch(horizontal, pitch * (height + 2 * r), 0.0);
         for y in 0..height + 2 * r {
             let start = y * stride + bx * channels;
             convolution_line(
@@ -513,6 +582,53 @@ fn separable(
             );
         }
     }
+}
+#[cfg(test)]
+fn convolve(
+    input: &[[f32; 4]],
+    stride: usize,
+    width: usize,
+    height: usize,
+    filter: &Filter,
+    weights: &[f32],
+) -> Vec<[f32; 4]> {
+    let opaque = input.iter().all(|p| p[3] == 255.0);
+    let mut workspace = FilterWorkspace {
+        input: input.to_vec(),
+        ..Default::default()
+    };
+    convolve_into(
+        &mut workspace,
+        stride,
+        width,
+        height,
+        filter,
+        weights,
+        opaque,
+    );
+    workspace.output
+}
+#[cfg(test)]
+fn separable(
+    input: &[f32],
+    channels: usize,
+    stride: usize,
+    width: usize,
+    height: usize,
+    weights: &[f32],
+) -> Vec<f32> {
+    let mut result = Vec::new();
+    let mut horizontal = Vec::new();
+    separable_into(
+        input,
+        channels,
+        stride,
+        width,
+        height,
+        weights,
+        &mut result,
+        &mut horizontal,
+    );
     result
 }
 #[inline(never)]
@@ -1146,6 +1262,26 @@ mod tests {
                     assert!(j.allocated_bytes() <= 3 * (TILE_PIXELS * 4) as u64);
                 }
             }
+        }
+    }
+    #[test]
+    fn reused_scratch_stays_within_reservation_when_opaque_and_alpha_tiles_alternate() {
+        let mut scratch = FilterWorkspace {
+            input: vec![[127.0, 83.0, 41.0, 255.0]; 384 * 384],
+            ..Default::default()
+        };
+        let f = Filter::Gaussian { radius: 64 };
+        let weights = f.weights();
+        for opaque in [true, false, true, false] {
+            scratch.input[0][3] = if opaque { 255.0 } else { 128.0 };
+            convolve_into(&mut scratch, 384, 256, 256, &f, &weights, opaque);
+            let capacity = (scratch.input.capacity() + scratch.output.capacity()) * 16
+                + (scratch.packed.capacity()
+                    + scratch.result.capacity()
+                    + scratch.horizontal.capacity()
+                    + scratch.median.capacity())
+                    * 4;
+            assert!(capacity as u64 + 3 * (TILE_PIXELS * 4) as u64 <= FILTER_SCRATCH);
         }
     }
 }
