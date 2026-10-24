@@ -30,6 +30,8 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.fotoeditor-brush]
 opt-level = 3
+[profile.release.package.fotoeditor-select]
+opt-level = 3
 [profile.release.package.image]
 opt-level = 3
 [profile.release.package.png]

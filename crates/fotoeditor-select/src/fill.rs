@@ -55,6 +55,10 @@ pub struct FillJob {
     label: &'static str,
 }
 impl FillJob {
+    pub fn named(mut self, label: &'static str) -> Self {
+        self.label = label;
+        self
+    }
     pub fn new(
         document: &Document,
         layer: LayerId,
@@ -119,6 +123,7 @@ impl FillJob {
         }
     }
     pub fn visit_candidates(&self, visitor: &mut dyn FnMut(TileRef<'_>)) {
+        self.before.visit_tiles(visitor);
         self.candidate.visit_tiles(visitor);
         if let Some(s) = &self.region {
             for t in s.tiles().values() {

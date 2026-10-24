@@ -145,6 +145,19 @@ impl<P: Pixel> TileSurface<P> {
             }
         }
     }
+    /// Bounded job primitive: compact one resident tile without scanning a surface.
+    pub fn compact_tile(&mut self, coord: TileCoord) -> Result<(), String> {
+        let empty = match self.tiles.get(&coord) {
+            Some(t) => t.pin()?.pixels.iter().all(|p| *p == self.default),
+            None => return Ok(()),
+        };
+        if empty {
+            self.tiles.remove(&coord);
+        } else if let Some(t) = self.tiles.get_mut(&coord) {
+            t.refresh_opacity();
+        }
+        Ok(())
+    }
     pub fn bytes(&self) -> u64 {
         let mut seen = HashSet::new();
         self.tiles
