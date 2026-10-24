@@ -96,7 +96,8 @@ fn premul(p: Rgba8) -> [f32; 4] {
     ]
 }
 fn quantize(v: f32) -> u8 {
-    (v.clamp(0.0, 255.0) + 0.5) as u8
+    // Rust's float-to-byte conversion saturates, including the endpoints.
+    (v + 0.5) as u8
 }
 pub fn filtered_sample(
     original: Rgba8,
@@ -126,10 +127,11 @@ pub fn filtered_sample(
     if alpha == 0 {
         return Rgba8([original.0[0], original.0[1], original.0[2], 0]);
     }
+    let scale = 255.0 / p[3];
     Rgba8([
-        quantize(p[0] * 255.0 / p[3]),
-        quantize(p[1] * 255.0 / p[3]),
-        quantize(p[2] * 255.0 / p[3]),
+        quantize(p[0] * scale),
+        quantize(p[1] * scale),
+        quantize(p[2] * scale),
         alpha,
     ])
 }
@@ -137,6 +139,7 @@ pub fn filtered_sample(
 pub struct FilterJob {
     pub before: Document,
     pub candidate: Document,
+    pub full: Document,
     pub layer: LayerId,
     pub filter: Filter,
     coordinates: Vec<TileCoord>,
@@ -174,6 +177,7 @@ impl FilterJob {
         Ok(Self {
             before: document.clone(),
             candidate: document.clone(),
+            full: document.clone(),
             layer,
             weights: filter.weights(),
             filter,
@@ -186,9 +190,15 @@ impl FilterJob {
     pub fn done(&self) -> bool {
         self.next == self.coordinates.len()
     }
+    /// Conservative cumulative new-generation capacity. Source generations are
+    /// counted separately; paging may reduce actual residency below this bound.
+    pub fn allocated_bytes(&self) -> u64 {
+        self.allocated
+    }
     pub fn visit_tiles(&self, visitor: &mut dyn FnMut(TileRef<'_>)) {
         self.before.visit_tiles(visitor);
         self.candidate.visit_tiles(visitor);
+        self.full.visit_tiles(visitor);
     }
     fn bounds(&self, c: TileCoord) -> (u32, u32, u32, u32) {
         let r = self.filter.radius();
@@ -231,7 +241,7 @@ impl FilterJob {
         if self.done() {
             return Ok(true);
         }
-        if FILTER_SCRATCH + self.allocated + (TILE_PIXELS * 4) as u64 > self.available {
+        if FILTER_SCRATCH + self.allocated + (TILE_PIXELS * 8) as u64 > self.available {
             return Err("Filter exceeds shared CPU budget; document unchanged".into());
         }
         let c = self.coordinates[self.next];
@@ -283,6 +293,7 @@ impl FilterJob {
                 x += count;
             }
         }
+        let opaque = input.iter().all(|p| p[3] == 255.0);
         let output = convolve(&input, stride, width, height, &self.filter, &self.weights);
         let selection = self.before.selection.as_ref();
         let mask = selection
@@ -293,24 +304,57 @@ impl FilterJob {
             .get(&c)
             .map_or_else(|| vec![surface.default; TILE_PIXELS], |t| t.pixels.clone());
         let alpha_lock = self.before.layer(self.layer)?.properties.locks.alpha;
+        let mut full = selection.map(|_| pixels.clone());
         let mut changed = false;
-        for y in 0..height {
-            for x in 0..width {
-                let i = y * 256 + x;
-                let coverage = mask
-                    .as_ref()
-                    .map_or_else(|| selection.map_or(255, |s| s.default.0), |s| s.pixels[i].0);
-                let result =
-                    filtered_sample(pixels[i], output[y * width + x], coverage, alpha_lock);
-                changed |= result != pixels[i];
-                pixels[i] = result;
+        if opaque && selection.is_none() {
+            changed = apply_opaque_full(&mut pixels, &output, width, height);
+        } else {
+            for y in 0..height {
+                for x in 0..width {
+                    let i = y * 256 + x;
+                    let coverage = mask
+                        .as_ref()
+                        .map_or_else(|| selection.map_or(255, |s| s.default.0), |s| s.pixels[i].0);
+                    let result =
+                        filtered_sample(pixels[i], output[y * width + x], coverage, alpha_lock);
+                    if coverage > 0 {
+                        if let Some(full) = &mut full {
+                            full[i] =
+                                filtered_sample(pixels[i], output[y * width + x], 255, alpha_lock);
+                        }
+                    }
+                    changed |= result != pixels[i];
+                    pixels[i] = result;
+                }
             }
         }
+        let shared = full.as_ref().is_none_or(|f| f == &pixels);
         if changed {
             self.candidate
                 .layer_mut(self.layer)?
                 .raster_samples_mut()?
                 .insert(c, pixels);
+            self.allocated += (TILE_PIXELS * 4) as u64;
+        }
+        if shared {
+            let tile = self
+                .candidate
+                .layer(self.layer)?
+                .raster_samples()?
+                .tiles()
+                .get(&c)
+                .cloned();
+            let surface = self.full.layer_mut(self.layer)?.raster_samples_mut()?;
+            if let Some(tile) = tile {
+                surface.insert_handle(c, tile)?;
+            } else {
+                surface.insert(c, vec![surface.default; TILE_PIXELS]);
+            }
+        } else if let Some(full) = full {
+            self.full
+                .layer_mut(self.layer)?
+                .raster_samples_mut()?
+                .insert(c, full);
             self.allocated += (TILE_PIXELS * 4) as u64;
         }
         self.next += 1;
@@ -325,6 +369,27 @@ impl FilterJob {
                 .named(self.filter.label()),
         )
     }
+}
+
+#[inline(never)]
+fn apply_opaque_full(
+    pixels: &mut [Rgba8],
+    output: &[[f32; 4]],
+    width: usize,
+    height: usize,
+) -> bool {
+    let mut changed = false;
+    for y in 0..height {
+        for (old, p) in pixels[y * 256..y * 256 + width]
+            .iter_mut()
+            .zip(&output[y * width..(y + 1) * width])
+        {
+            let after = Rgba8([quantize(p[0]), quantize(p[1]), quantize(p[2]), 255]);
+            changed |= *old != after;
+            *old = after;
+        }
+    }
+    changed
 }
 
 #[inline(never)]
@@ -357,24 +422,31 @@ fn convolve(
             }
         }
     } else {
-        let mut horizontal = vec![[0.0f32; 4]; width * (height + 2 * r)];
-        for y in 0..height + 2 * r {
-            convolution_line(
-                &mut horizontal[y * width..(y + 1) * width],
-                &input[y * stride..(y + 1) * stride],
-                1,
-                weights,
-            );
-        }
-        for y in 0..height {
-            convolution_line(
-                &mut out[y * width..(y + 1) * width],
-                &horizontal[y * width..(y + 2 * r + 1) * width],
-                width,
-                weights,
-            );
+        // Process narrow columns so all vertical tap rows fit in the per-core
+        // cache. This is the same finite kernel, with no radius approximation.
+        let opaque = input.iter().all(|p| p[3] == 255.0);
+        let packed: Vec<f32> = if opaque {
+            input.iter().flat_map(|p| [p[0], p[1], p[2]]).collect()
+        } else {
+            Vec::new()
+        };
+        let channels = if opaque { 3 } else { 4 };
+        let samples = if opaque {
+            packed.as_slice()
+        } else {
+            input.as_flattened()
+        };
+        let result = separable(samples, channels, stride, width, height, weights);
+        for (p, values) in out.iter_mut().zip(result.chunks_exact(channels)) {
+            *p = [
+                values[0],
+                values[1],
+                values[2],
+                if opaque { 255.0 } else { values[3] },
+            ];
         }
     }
+
     let (amount, threshold) = match *filter {
         Filter::UnsharpMask {
             amount, threshold, ..
@@ -407,11 +479,50 @@ fn convolve(
     out
 }
 #[inline(never)]
-fn convolution_line(out: &mut [[f32; 4]], input: &[[f32; 4]], step: usize, weights: &[f32]) {
+fn separable(
+    input: &[f32],
+    channels: usize,
+    stride: usize,
+    width: usize,
+    height: usize,
+    weights: &[f32],
+) -> Vec<f32> {
+    let r = weights.len() / 2;
+    let full_pitch = width * channels;
+    let stride = stride * channels;
+    let mut result = vec![0.0; full_pitch * height];
+    for bx in (0..width).step_by(32) {
+        let pitch = (width - bx).min(32) * channels;
+        let mut horizontal = vec![0.0; pitch * (height + 2 * r)];
+        for y in 0..height + 2 * r {
+            let start = y * stride + bx * channels;
+            convolution_line(
+                &mut horizontal[y * pitch..(y + 1) * pitch],
+                &input[start..start + pitch + 2 * r * channels],
+                channels,
+                weights,
+            );
+        }
+        for y in 0..height {
+            let start = y * full_pitch + bx * channels;
+            convolution_line(
+                &mut result[start..start + pitch],
+                &horizontal[y * pitch..(y + 2 * r + 1) * pitch],
+                pitch,
+                weights,
+            );
+        }
+    }
+    result
+}
+#[inline(never)]
+fn convolution_line(out: &mut [f32], input: &[f32], step: usize, weights: &[f32]) {
     let r = weights.len() / 2;
     assert!(input.len() >= out.len() + 2 * r * step);
     #[cfg(any(target_arch = "x86_64", target_arch = "wasm32"))]
     {
+        #[cfg(target_arch = "wasm32")]
+        use std::arch::wasm32::f32x4_relaxed_madd as madd;
         #[cfg(target_arch = "wasm32")]
         use std::arch::wasm32::{
             f32x4_add as add, f32x4_mul as mul, f32x4_splat as splat, v128_load as load,
@@ -426,66 +537,60 @@ fn convolution_line(out: &mut [[f32; 4]], input: &[[f32; 4]], step: usize, weigh
         // Checked slice bounds cover all vector loads, including halos.
         // Four independent accumulators avoid one long dependency chain.
         unsafe {
+            #[cfg(target_arch = "x86_64")]
+            let madd = |a, b, c| add(c, mul(a, b));
             let mut x = 0;
-            while x + 4 <= out.len() {
+            while x + 16 <= out.len() {
                 let base = input.as_ptr().add(x + r * step);
                 let w = splat(weights[r]);
                 let mut a = mul(load(base.cast()), w);
-                let mut b = mul(load(base.add(1).cast()), w);
-                let mut c = mul(load(base.add(2).cast()), w);
-                let mut d = mul(load(base.add(3).cast()), w);
+                let mut b = mul(load(base.add(4).cast()), w);
+                let mut c = mul(load(base.add(8).cast()), w);
+                let mut d = mul(load(base.add(12).cast()), w);
                 for k in 1..=r {
                     let w = splat(weights[r + k]);
                     let left = base.sub(k * step);
                     let right = base.add(k * step);
-                    a = add(a, mul(add(load(left.cast()), load(right.cast())), w));
-                    b = add(
+                    a = madd(add(load(left.cast()), load(right.cast())), w, a);
+                    b = madd(
+                        add(load(left.add(4).cast()), load(right.add(4).cast())),
+                        w,
                         b,
-                        mul(add(load(left.add(1).cast()), load(right.add(1).cast())), w),
                     );
-                    c = add(
+                    c = madd(
+                        add(load(left.add(8).cast()), load(right.add(8).cast())),
+                        w,
                         c,
-                        mul(add(load(left.add(2).cast()), load(right.add(2).cast())), w),
                     );
-                    d = add(
+                    d = madd(
+                        add(load(left.add(12).cast()), load(right.add(12).cast())),
+                        w,
                         d,
-                        mul(add(load(left.add(3).cast()), load(right.add(3).cast())), w),
                     );
                 }
-                store(out[x].as_mut_ptr().cast(), a);
-                store(out[x + 1].as_mut_ptr().cast(), b);
-                store(out[x + 2].as_mut_ptr().cast(), c);
-                store(out[x + 3].as_mut_ptr().cast(), d);
-                x += 4;
+                store(out.as_mut_ptr().add(x).cast(), a);
+                store(out.as_mut_ptr().add(x + 4).cast(), b);
+                store(out.as_mut_ptr().add(x + 8).cast(), c);
+                store(out.as_mut_ptr().add(x + 12).cast(), d);
+                x += 16;
             }
             while x < out.len() {
-                let base = input.as_ptr().add(x + r * step);
-                let mut v = mul(load(base.cast()), splat(weights[r]));
+                let center = x + r * step;
+                let mut v = input[center] * weights[r];
                 for k in 1..=r {
-                    v = add(
-                        v,
-                        mul(
-                            add(
-                                load(base.sub(k * step).cast()),
-                                load(base.add(k * step).cast()),
-                            ),
-                            splat(weights[r + k]),
-                        ),
-                    );
+                    v += (input[center - k * step] + input[center + k * step]) * weights[r + k];
                 }
-                store(out[x].as_mut_ptr().cast(), v);
+                out[x] = v;
                 x += 1;
             }
         }
     }
     #[cfg(not(any(target_arch = "x86_64", target_arch = "wasm32")))]
     for (x, out) in out.iter_mut().enumerate() {
-        *out = input[x + r * step].map(|v| v * weights[r]);
+        let center = x + r * step;
+        *out = input[center] * weights[r];
         for k in 1..=r {
-            for c in 0..4 {
-                out[c] +=
-                    (input[x + (r - k) * step][c] + input[x + (r + k) * step][c]) * weights[r + k];
-            }
+            *out += (input[center - k * step] + input[center + k * step]) * weights[r + k];
         }
     }
 }
@@ -493,7 +598,7 @@ fn convolution_line(out: &mut [[f32; 4]], input: &[[f32; 4]], step: usize, weigh
 /// Fade interpolates once from immutable original samples, with the existing
 /// sRGB blend functions. Normal/100% and 0% return byte-exact endpoints.
 pub fn fade_sample(before: Rgba8, after: Rgba8, opacity: f64, mode: BlendMode) -> Rgba8 {
-    if opacity == 0.0 || before == after {
+    if opacity == 0.0 || (before == after && mode == BlendMode::Normal) {
         return before;
     }
     if opacity == 1.0 && mode == BlendMode::Normal {
@@ -508,7 +613,11 @@ pub fn fade_sample(before: Rgba8, after: Rgba8, opacity: f64, mode: BlendMode) -
     );
     let mut result = Composite::from_straight(after);
     for (i, v) in rgb.into_iter().enumerate() {
-        result.0[i] = v * result.0[3];
+        // Hidden backdrop RGB must not color newly spread alpha. Blend functions
+        // contribute only where the pre-filter backdrop has coverage.
+        let base_alpha = f64::from(before.0[3]) / 255.0;
+        let source = f64::from(after.0[i]) / 255.0;
+        result.0[i] = (source + (v - source) * base_alpha) * result.0[3];
     }
     let result = Composite::from_straight(before).interpolate(result, opacity);
     let mut out = result.straight();
@@ -521,6 +630,7 @@ pub fn fade_sample(before: Rgba8, after: Rgba8, opacity: f64, mode: BlendMode) -
 pub struct FadeJob {
     pub before: Document,
     pub filtered: Document,
+    pub full: Document,
     pub current: Document,
     pub candidate: Document,
     pub layer: LayerId,
@@ -532,10 +642,15 @@ pub struct FadeJob {
     allocated: u64,
 }
 impl FadeJob {
+    pub fn allocated_bytes(&self) -> u64 {
+        self.allocated
+    }
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         current: &Document,
         before: &Document,
         filtered: &Document,
+        full: &Document,
         layer: LayerId,
         opacity: f64,
         mode: BlendMode,
@@ -551,6 +666,7 @@ impl FadeJob {
             .tiles()
             .keys()
             .chain(filtered.layer(layer)?.raster_samples()?.tiles().keys())
+            .chain(full.layer(layer)?.raster_samples()?.tiles().keys())
             .copied()
             .collect();
         if available < FILTER_SCRATCH {
@@ -559,6 +675,7 @@ impl FadeJob {
         Ok(Self {
             before: before.clone(),
             filtered: filtered.clone(),
+            full: full.clone(),
             current: current.clone(),
             candidate: current.clone(),
             layer,
@@ -574,13 +691,19 @@ impl FadeJob {
         self.next == self.coordinates.len()
     }
     pub fn visit_tiles(&self, visitor: &mut dyn FnMut(TileRef<'_>)) {
-        for d in [&self.before, &self.filtered, &self.current, &self.candidate] {
+        for d in [
+            &self.before,
+            &self.filtered,
+            &self.full,
+            &self.current,
+            &self.candidate,
+        ] {
             d.visit_tiles(visitor);
         }
     }
     pub fn needed(&self, visitor: &mut dyn FnMut(TileRef<'_>)) {
         if let Some(c) = self.coordinates.get(self.next) {
-            for d in [&self.before, &self.filtered, &self.current] {
+            for d in [&self.before, &self.filtered, &self.full, &self.current] {
                 if let Some(t) = d
                     .layer(self.layer)
                     .unwrap()
@@ -592,6 +715,14 @@ impl FadeJob {
                     visitor(TileRef::Rgba(t));
                 }
             }
+            if let Some(t) = self
+                .before
+                .selection
+                .as_ref()
+                .and_then(|s| s.tiles().get(c))
+            {
+                visitor(TileRef::Gray(t));
+            }
         }
     }
     pub fn step(&mut self) -> Result<bool, String> {
@@ -602,13 +733,18 @@ impl FadeJob {
             return Err("Fade exceeds shared CPU budget; document unchanged".into());
         }
         let c = self.coordinates[self.next];
-        let surfaces = [&self.before, &self.filtered, &self.current]
+        let surfaces = [&self.before, &self.filtered, &self.full, &self.current]
             .map(|d| d.layer(self.layer).unwrap().raster_samples().unwrap());
         let tiles = surfaces
             .map(|s| s.tiles().get(&c).map(|t| t.pin()).transpose())
             .into_iter()
             .collect::<Result<Vec<_>, _>>()?;
-        let mut pixels = tiles[2]
+        let selection = self.before.selection.as_ref();
+        let mask = selection
+            .and_then(|s| s.tiles().get(&c))
+            .map(|t| t.pin())
+            .transpose()?;
+        let mut pixels = tiles[3]
             .as_ref()
             .map_or_else(|| vec![Rgba8::default(); TILE_PIXELS], |t| t.pixels.clone());
         let mut changed = false;
@@ -620,7 +756,19 @@ impl FadeJob {
                         .as_ref()
                         .map_or(surfaces[j].default, |t| t.pixels[i])
                 };
-                let p = fade_sample(sample(0), sample(1), self.opacity, self.mode);
+                let coverage = mask
+                    .as_ref()
+                    .map_or_else(|| selection.map_or(255, |s| s.default.0), |m| m.pixels[i].0);
+                let p = if self.mode == BlendMode::Normal {
+                    fade_sample(sample(0), sample(1), self.opacity, self.mode)
+                } else {
+                    fade_sample(
+                        sample(0),
+                        sample(2),
+                        self.opacity * f64::from(coverage) / 255.0,
+                        self.mode,
+                    )
+                };
                 changed |= pixels[i] != p;
                 pixels[i] = p;
             }
@@ -851,7 +999,10 @@ mod tests {
         );
         for mode in BlendMode::ALL {
             assert_eq!(fade_sample(b, a, 0.0, mode), b);
-            assert_eq!(fade_sample(b, b, 1.0, mode), b);
+            assert_eq!(
+                fade_sample(Rgba8([0, 0, 0, 0]), a, 0.5, mode),
+                fade_sample(Rgba8([255, 37, 91, 0]), a, 0.5, mode)
+            );
         }
         let mut d = Document::blank(3, 1, 72.0).unwrap();
         d.raster_mut().write(1, 0, b);
@@ -871,6 +1022,7 @@ mod tests {
                 &d,
                 &source,
                 &result,
+                &result,
                 id,
                 opacity,
                 BlendMode::Multiply,
@@ -887,5 +1039,113 @@ mod tests {
         }
         while history.undo(&mut d) {}
         assert_eq!(d.raster().sample(1, 0), b);
+    }
+    #[test]
+    fn packed_opaque_and_rgba_kernels_agree_for_odd_widths_and_large_radius() {
+        for r in [0usize, 1, 20, 64] {
+            let w = 37;
+            let h = 5;
+            let stride = w + 2 * r;
+            let input: Vec<_> = (0..stride * (h + 2 * r))
+                .map(|i| {
+                    [
+                        (i * 7 % 256) as f32,
+                        (i * 13 % 256) as f32,
+                        (i * 31 % 256) as f32,
+                        255.0,
+                    ]
+                })
+                .collect();
+            let filter = Filter::Gaussian { radius: r as u32 };
+            let weights = filter.weights();
+            let result = convolve(&input, stride, w, h, &filter, &weights);
+            let reference = separable(input.as_flattened(), 4, stride, w, h, &weights);
+            for (p, q) in result.iter().zip(reference.as_chunks::<4>().0) {
+                for c in 0..4 {
+                    assert!((p[c] - q[c]).abs() < 0.001);
+                }
+            }
+        }
+    }
+    #[test]
+    fn fade_blend_clips_fractional_selection_once_and_includes_unchanged_selected_samples() {
+        let mut d = Document::blank(513, 3, 72.0).unwrap();
+        for y in 0..3 {
+            for x in 0..513 {
+                d.raster_mut()
+                    .write(x, y, Rgba8([if x == 255 { 128 } else { 64 }; 4]));
+            }
+        }
+        // The fixture is opaque; RGB uses a one-column detail at the tile seam.
+        for y in 0..3 {
+            for x in 0..513 {
+                let mut p = d.raster().sample(x, y);
+                p.0[3] = 255;
+                d.raster_mut().write(x, y, p);
+            }
+        }
+        let mut s = TileSurface::new(513, 3);
+        for y in 0..3 {
+            s.write(255, y, Gray8(128));
+            s.write(256, y, Gray8(255));
+            s.write(257, y, Gray8(128));
+        }
+        d.selection = Some(Arc::new(s));
+        let j = run(&d, Filter::BoxBlur { radius: 1 });
+        let mut fade = FadeJob::new(
+            &j.candidate,
+            &d,
+            &j.candidate,
+            &j.full,
+            d.layers[0].id,
+            1.0,
+            BlendMode::Multiply,
+            128 << 20,
+        )
+        .unwrap();
+        while !fade.step().unwrap() {}
+        for (x, value) in [(254, 64), (255, 85), (256, 21), (257, 40), (258, 64)] {
+            assert_eq!(
+                fade.candidate.raster().sample(x, 1),
+                Rgba8([value, value, value, 255])
+            );
+        }
+    }
+    #[test]
+    fn allocation_bound_counts_shared_endpoints_once_and_covers_partial_selection_candidates() {
+        for selected in [false, true] {
+            let mut d = Document::blank(513, 3, 72.0).unwrap();
+            d.raster_mut().write(255, 1, Rgba8([255, 31, 97, 255]));
+            if selected {
+                let mut s = TileSurface::new(513, 3);
+                s.write(256, 1, Gray8(128));
+                d.selection = Some(Arc::new(s));
+            }
+            let mut original = std::collections::HashSet::new();
+            d.visit_tiles(&mut |t| {
+                original.insert(t.id());
+            });
+            let mut j = FilterJob::new(
+                &d,
+                d.layers[0].id,
+                Filter::Gaussian { radius: 20 },
+                64 << 20,
+            )
+            .unwrap();
+            while !j.done() {
+                j.step().unwrap();
+                let mut seen = original.clone();
+                let mut actual = 0;
+                j.visit_tiles(&mut |t| {
+                    if seen.insert(t.id()) {
+                        actual += t.bytes();
+                    }
+                });
+                assert!(actual <= j.allocated_bytes());
+                if !selected {
+                    assert!(j.allocated_bytes() <= 3 * (TILE_PIXELS * 4) as u64);
+                }
+            }
+        }
     }
 }
