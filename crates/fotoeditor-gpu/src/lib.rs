@@ -2,6 +2,8 @@
 #[cfg(target_arch = "wasm32")]
 mod compositor;
 #[cfg(target_arch = "wasm32")]
+mod preview;
+#[cfg(target_arch = "wasm32")]
 mod renderer;
 #[cfg(target_arch = "wasm32")]
 pub use renderer::Renderer;
@@ -12,6 +14,17 @@ mod viewport;
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn preview_shader_is_valid_portable_wgsl() {
+        let module =
+            naga::front::wgsl::parse_str(include_str!("preview.wgsl")).expect("preview WGSL");
+        naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::empty(),
+        )
+        .validate(&module)
+        .expect("portable preview shader");
+    }
     #[test]
     fn selection_shader_is_valid_portable_wgsl() {
         let module =

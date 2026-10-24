@@ -21,6 +21,9 @@ pub struct Renderer {
     viewport: ViewportRenderer,
     compositor: Option<crate::compositor::Compositor>,
     selection: crate::selection::SelectionRenderer,
+    preview: Option<crate::preview::PreviewFrame>,
+    preview_visible: bool,
+    preview_cancelled: Arc<std::sync::atomic::AtomicBool>,
 }
 
 async fn device_for(adapter: &Adapter) -> Result<(Device, Queue), String> {
@@ -204,6 +207,9 @@ impl Renderer {
             viewport,
             compositor: None,
             selection,
+            preview: None,
+            preview_visible: false,
+            preview_cancelled: Arc::new(std::sync::atomic::AtomicBool::new(true)),
         };
         renderer.resize(renderer.canvas.width(), renderer.canvas.height());
         Ok(renderer)
@@ -265,6 +271,7 @@ impl Renderer {
         self.viewport.bytes()
             + self.compositor.as_ref().map_or(0, |c| c.bytes())
             + self.selection.gpu_bytes()
+            + self.preview.as_ref().map_or(0, |p| p.bytes())
     }
     pub fn selection_cpu_bytes(&self) -> u64 {
         self.selection.cpu_bytes()
@@ -284,7 +291,8 @@ impl Renderer {
                     .as_ref()
                     .map_or(0, |_| crate::compositor::COMPOSITE_RESERVE)
                     + 8 * 1024 * 1024
-                    + 32,
+                    + 32
+                    + self.preview.as_ref().map_or(0, |p| p.bytes()),
             ),
         );
         self.selection.prepare(
@@ -303,11 +311,103 @@ impl Renderer {
         self.viewport.budget(
             fotoeditor_core::GPU_BUDGET
                 - crate::compositor::COMPOSITE_RESERVE
-                - self.selection.gpu_bytes(),
+                - self.selection.gpu_bytes()
+                - self.preview.as_ref().map_or(0, |p| p.bytes()),
         );
         self.compositor
             .get_or_insert_with(|| crate::compositor::Compositor::new(&self.device))
             .compose(&self.device, &self.queue, plan)
+    }
+    pub fn clear_preview(&mut self) {
+        self.preview_cancelled
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        self.preview = None;
+        self.preview_visible = false;
+        self.viewport.budget(
+            fotoeditor_core::GPU_BUDGET
+                - self
+                    .compositor
+                    .as_ref()
+                    .map_or(0, |_| crate::compositor::COMPOSITE_RESERVE)
+                - self.selection.gpu_bytes(),
+        );
+    }
+    pub fn preview_hide(&mut self) {
+        self.preview_visible = false;
+    }
+    pub fn preview_begin(&mut self, width: u32, height: u32) -> Result<(), String> {
+        self.clear_preview();
+        self.preview_cancelled = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let bytes =
+            u64::from(width.div_ceil(256) * 256) * u64::from(height.div_ceil(256) * 256) * 4 + 16;
+        let reserved = crate::compositor::COMPOSITE_RESERVE + 8 * 1024 * 1024 + bytes;
+        if reserved + 48 > fotoeditor_core::GPU_BUDGET {
+            return Err("Preview exceeds the shared GPU budget".into());
+        }
+        self.viewport.budget(fotoeditor_core::GPU_BUDGET - reserved);
+        self.preview = Some(crate::preview::PreviewFrame::new(
+            &self.device,
+            self.config.format,
+            width,
+            height,
+        )?);
+        Ok(())
+    }
+    pub fn preview_tile(
+        &mut self,
+        coord: fotoeditor_core::TileCoord,
+        plan: &fotoeditor_core::CompositePlan,
+    ) -> Result<(), String> {
+        let frame = self.preview.as_ref().ok_or("No viewport preview")?;
+        if coord.0 >= frame.width.div_ceil(256) || coord.1 >= frame.height.div_ceil(256) {
+            return Err("Preview tile is outside the frame".into());
+        }
+        let texture = self
+            .compositor
+            .get_or_insert_with(|| crate::compositor::Compositor::new(&self.device))
+            .compose_texture(&self.device, &self.queue, plan)?;
+        frame.accept(&self.device, &self.queue, coord, &texture);
+        Ok(())
+    }
+    pub fn preview_present(&mut self) {
+        self.preview_visible = self.preview.is_some();
+    }
+    /// Initial pipeline work must finish before controls report ready. No image
+    /// readback is needed; WebGL2 progresses its queue fence by async polling.
+    pub fn preview_settled(&self, diagnostic_hold: bool) -> js_sys::Promise {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let complete = Arc::new(AtomicBool::new(false));
+        let signal = complete.clone();
+        if !diagnostic_hold {
+            self.queue
+                .on_submitted_work_done(move || signal.store(true, Ordering::Relaxed));
+        }
+        let device = self.device.clone();
+        let cancelled = self.preview_cancelled.clone();
+        wasm_bindgen_futures::future_to_promise(async move {
+            while !complete.load(Ordering::Relaxed) {
+                if cancelled.load(Ordering::Relaxed) {
+                    return Err(wasm_bindgen::JsValue::from_str("Preview cancelled"));
+                }
+                device.poll(PollType::Poll).map_err(|e| {
+                    wasm_bindgen::JsValue::from_str(&format!("Preview queue failed: {e}"))
+                })?;
+                if complete.load(Ordering::Relaxed) {
+                    break;
+                }
+                let delay = js_sys::Promise::new(&mut |resolve, _| {
+                    use wasm_bindgen::{JsCast, JsValue};
+                    if let Ok(timer) =
+                        js_sys::Reflect::get(&js_sys::global(), &JsValue::from_str("setTimeout"))
+                    {
+                        let timer = timer.unchecked_into::<js_sys::Function>();
+                        let _ = timer.call2(&JsValue::NULL, &resolve, &JsValue::from_f64(4.0));
+                    }
+                });
+                wasm_bindgen_futures::JsFuture::from(delay).await?;
+            }
+            Ok(wasm_bindgen::JsValue::UNDEFINED)
+        })
     }
     pub fn visible_tiles(&self) -> u32 {
         self.viewport.visible
@@ -331,8 +431,13 @@ impl Renderer {
         if !self.diagnostic {
             self.selection
                 .update_time(&self.queue, (self.config.width, self.config.height));
-            self.viewport
-                .prepare(&self.device, &self.queue, doc, view, dpr)?;
+            if self.preview_visible {
+                self.viewport
+                    .prepare_background(&self.queue, view, dpr, doc.is_some());
+            } else {
+                self.viewport
+                    .prepare(&self.device, &self.queue, doc, view, dpr)?;
+            }
         }
         let output = match self.surface.get_current_texture() {
             CurrentSurfaceTexture::Success(frame) | CurrentSurfaceTexture::Suboptimal(frame) => {
@@ -375,7 +480,14 @@ impl Renderer {
                 pass.set_bind_group(0, &self.bind_group, &[]);
                 pass.draw(0..3, 0..1);
             } else {
-                self.viewport.draw(&mut pass, view);
+                if self.preview_visible {
+                    self.viewport.draw_background(&mut pass);
+                    if let Some(preview) = &self.preview {
+                        preview.draw(&mut pass);
+                    }
+                } else {
+                    self.viewport.draw(&mut pass, view);
+                }
                 self.selection.draw(&mut pass);
             }
         }
@@ -385,9 +497,13 @@ impl Renderer {
     }
 
     pub fn dispose(&self) {
+        self.preview_cancelled
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         self.device.destroy();
     }
     pub fn simulate_device_loss(&self) {
+        self.preview_cancelled
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         self.device.destroy();
     }
 }

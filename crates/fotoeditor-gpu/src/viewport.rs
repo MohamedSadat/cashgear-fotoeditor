@@ -311,15 +311,7 @@ impl ViewportRenderer {
         }
         None
     }
-    pub fn prepare(
-        &mut self,
-        device: &Device,
-        queue: &Queue,
-        doc: Option<&Document>,
-        view: &View,
-        dpr: f64,
-    ) -> Result<(), String> {
-        let active = doc.is_some();
+    pub fn prepare_background(&mut self, queue: &Queue, view: &View, dpr: f64, active: bool) {
         queue.write_buffer(
             &self.uniform,
             0,
@@ -338,6 +330,22 @@ impl ViewportRenderer {
                 0.0,
             ]),
         );
+        self.refining = 0;
+    }
+    pub fn draw_background(&self, pass: &mut RenderPass<'_>) {
+        pass.set_pipeline(&self.background);
+        pass.set_bind_group(0, &self.binding, &[]);
+        pass.draw(0..3, 0..1);
+    }
+    pub fn prepare(
+        &mut self,
+        device: &Device,
+        queue: &Queue,
+        doc: Option<&Document>,
+        view: &View,
+        dpr: f64,
+    ) -> Result<(), String> {
+        self.prepare_background(queue, view, dpr, doc.is_some());
         for page in &mut self.pages {
             page.instances = 0;
         }

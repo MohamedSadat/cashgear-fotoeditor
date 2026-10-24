@@ -6,11 +6,13 @@ use fotoeditor_filters::*;
 pub(super) struct AdjustmentRuntime {
     pub apply: Option<AdjustmentJob>,
     pub histogram: Option<HistogramJob>,
+    pub preview: Option<super::preview::PreviewRuntime>,
 }
 impl AdjustmentRuntime {
     pub fn scratch_bytes(&self) -> u64 {
         u64::from(self.apply.is_some()) * ADJUSTMENT_SCRATCH
             + u64::from(self.histogram.is_some()) * HISTOGRAM_SCRATCH
+            + u64::from(self.preview.is_some()) * PREVIEW_SCRATCH
     }
     pub fn visit_tiles(&self, visitor: &mut dyn FnMut(TileRef<'_>)) {
         if let Some(j) = &self.apply {
@@ -18,6 +20,9 @@ impl AdjustmentRuntime {
         }
         if let Some(j) = &self.histogram {
             j.visit_tiles(visitor);
+        }
+        if let Some(p) = &self.preview {
+            p.job.visit_tiles(visitor);
         }
     }
 }
@@ -27,6 +32,7 @@ fn js(e: impl ToString) -> JsValue {
 #[wasm_bindgen]
 impl Engine {
     pub fn adjustment_begin(&mut self, encoded: &str) -> Result<(), JsValue> {
+        self.preview_cancel();
         if encoded.len() > 4096 {
             return Err(js("Adjustment settings exceed 4 KiB"));
         }

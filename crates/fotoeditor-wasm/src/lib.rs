@@ -3,6 +3,7 @@
 mod bridge {
     mod adjustments;
     mod layers;
+    mod preview;
     mod selection;
     use fotoeditor_brush::{BrushSettings, Sample, StrokeCommand};
     use fotoeditor_core::{Document, History, HistoryLimits, Residency, ResolutionCommand, View};
@@ -64,6 +65,7 @@ mod bridge {
                     self.paint_time = 0.0;
                     self.paint_complete_time = 0.0;
                     self.renderer.clear_tiles();
+                    self.renderer.clear_preview();
                     self.layered = layers::LayerRuntime::default();
                     self.selected.cancel();
                     self.selected.quick_mask = false;
@@ -166,6 +168,9 @@ mod bridge {
             self.view.height = self.renderer.height() as f64 / self.dpr;
         }
         pub fn frame(&mut self) -> Result<bool, JsValue> {
+            if self.adjusted.preview.is_some() && !self.preview_valid() {
+                self.preview_cancel();
+            }
             if self.layered.display.is_some()
                 || self.layered.requires_composite(self.document.as_ref())
             {
@@ -217,6 +222,7 @@ mod bridge {
             Ok(())
         }
         pub fn undo(&mut self) -> bool {
+            self.preview_cancel();
             let only_selection = self
                 .history
                 .selection_only_jump(self.history.depths().0.saturating_sub(1));
@@ -233,6 +239,7 @@ mod bridge {
             changed
         }
         pub fn redo(&mut self) -> bool {
+            self.preview_cancel();
             let only_selection = self
                 .history
                 .selection_only_jump(self.history.depths().0 + 1);
@@ -270,6 +277,7 @@ mod bridge {
             Ok(())
         }
         pub fn history_jump(&mut self, target: u32) -> Result<(), JsValue> {
+            self.preview_cancel();
             let only_selection = self.history.selection_only_jump(target as usize);
             let before = self.revision;
             let doc = self
@@ -311,6 +319,7 @@ mod bridge {
             Ok(())
         }
         pub fn stroke_begin(&mut self, settings: &str) -> Result<(), JsValue> {
+            self.preview_cancel();
             self.layered.invalidate_memory();
             if self.stroke.is_some() {
                 return Err(JsValue::from_str("Finish the current stroke first"));
@@ -540,7 +549,8 @@ mod bridge {
                 .map_err(|e| JsValue::from_str(&e))
         }
         pub fn cancel_job(&mut self) {
-            self.adjusted = adjustments::AdjustmentRuntime::default();
+            self.adjusted.apply = None;
+            self.adjusted.histogram = None;
             self.selected.cancel();
             self.layered.cancel();
             self.import = None;
@@ -664,6 +674,7 @@ mod bridge {
             let r = self.residency();
             let v = &self.view;
             serde_json::json!({"document":self.document.as_ref().map(|d|serde_json::json!({"width":d.width,"height":d.height,"dpi":d.dpi,"tiles":d.tile_count()})),
+                "adjustmentPreview":{"cached":self.preview_ready(),"active":self.preview_valid() && self.adjusted.preview.as_ref().is_some_and(|p| p.settings.is_some() && p.next == p.job.output.width.div_ceil(256)*p.job.output.height.div_ceil(256))},
                 "layers":self.layer_json(),
                 "selection":self.selection_json(),
                 "view":{"zoom":v.zoom,"rotation":v.rotation,"flipped":v.flipped,"panX":v.pan_x,"panY":v.pan_y,"screenWidth":v.width,"screenHeight":v.height},

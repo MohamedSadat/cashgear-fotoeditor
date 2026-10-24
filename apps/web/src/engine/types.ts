@@ -41,6 +41,7 @@ export interface DocumentSnapshot {
     compositing: number;
   };
   projectTiming?: { copyMs: number; validateMs: number; compositeMs: number };
+  adjustmentPreview?: { cached: boolean; active: boolean };
   revision: number;
   contentRevision: number;
   operation?: string;
@@ -101,6 +102,12 @@ export interface Interaction {
   sample?: [number, number, number, number, number, number];
 }
 export interface EngineApi {
+  previewAdjustment(
+    adjustment: Adjustment,
+    target: AdjustmentPreviewTarget,
+  ): Promise<AdjustmentPreviewTiming>;
+  endAdjustmentPreview(): Promise<void>;
+  diagnosticPreviewFault(fault: 'pause-before-render' | 'hold-gpu-wait' | 'budget'): Promise<void>;
   applyAdjustment(adjustment: Adjustment): Promise<DocumentSnapshot>;
   histogram(target: number): Promise<Histogram>;
   diagnosticAdjustmentFault(fault: 'pause-before-commit' | 'budget'): Promise<void>;
@@ -163,6 +170,18 @@ export type Adjustment =
   | { kind: 'curves'; points: [number, number][] }
   | { kind: 'exposure'; stops: number; offset: number; gamma: number }
   | { kind: 'hue-saturation'; hue: number; saturation: number; lightness: number };
+export type AdjustmentPreviewTarget =
+  | { kind: 'pixels' | 'layer'; target: number }
+  | { kind: 'new-layer'; parent: number | null; index: number };
+export interface AdjustmentPreviewTiming {
+  serial: number;
+  preparationMs: number;
+  updateMs: number;
+  renderSubmitMs: number;
+  frameWaitMs: number;
+  width: number;
+  height: number;
+}
 export interface Histogram {
   bins: number[][];
   weight: number;

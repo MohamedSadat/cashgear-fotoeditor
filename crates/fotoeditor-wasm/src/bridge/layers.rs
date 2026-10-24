@@ -53,6 +53,7 @@ impl LayerRuntime {
             && !selection.has_tiles()
             && adjustment.apply.is_none()
             && adjustment.histogram.is_none()
+            && adjustment.preview.is_none()
         {
             return 0;
         }
@@ -311,6 +312,7 @@ impl Engine {
 #[wasm_bindgen]
 impl Engine {
     pub fn select_layer(&mut self, target: u32) -> Result<(), JsValue> {
+        self.preview_cancel();
         self.document
             .as_ref()
             .ok_or("No document")?
@@ -326,6 +328,7 @@ impl Engine {
         Ok(())
     }
     pub fn select_mask(&mut self, target: u32, view: bool) -> Result<(), JsValue> {
+        self.preview_cancel();
         self.document
             .as_ref()
             .ok_or("No document")?
@@ -348,6 +351,10 @@ impl Engine {
         self.layered.display_revision = None;
     }
     pub fn layer_action(&mut self, action: &str) -> Result<(), JsValue> {
+        self.preview_cancel();
+        if action.len() > 16 * 1024 {
+            return Err(js("Layer command exceeds its 16 KiB bound".into()));
+        }
         if self.stroke.is_some() {
             return Err(JsValue::from_str("Finish the stroke first"));
         }
@@ -409,6 +416,7 @@ impl Engine {
         Ok(())
     }
     pub fn apply_mask(&mut self, target: u32) -> Result<(), JsValue> {
+        self.preview_cancel();
         let command = apply_raster_mask(
             self.document.as_ref().ok_or("No document")?,
             target,
@@ -440,6 +448,7 @@ impl Engine {
         ))
     }
     pub fn merge_begin(&mut self, kind: &str, target: u32) -> Result<(), JsValue> {
+        self.preview_cancel();
         self.layered.incremental = false;
         let recipe = MergeRecipe::new(self.document.as_ref().ok_or("No document")?, kind, target)
             .map_err(js)?;
@@ -733,6 +742,18 @@ impl Engine {
             }
         };
         match scope {
+            "preview" => {
+                if let Some(p) = &self.adjusted.preview {
+                    p.job.needed(&mut add).map_err(js)?;
+                }
+            }
+            "preview-render" => {
+                if let Some(p) = &self.adjusted.preview {
+                    if let Some((_, plan)) = p.plan().map_err(js)? {
+                        plan.visit_tiles(&mut add);
+                    }
+                }
+            }
             "adjustment" => {
                 if let Some(j) = &self.adjusted.apply {
                     j.needed(&mut add);

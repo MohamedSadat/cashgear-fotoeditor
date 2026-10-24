@@ -42,6 +42,12 @@ let adjustmentTiming: DocumentSnapshot['adjustmentTiming'];
 let adjustmentFault: 'pause-before-commit' | 'budget' | undefined;
 let releaseAdjustmentPause: (() => void) | undefined;
 let histogramRunning = false;
+let previewRequest = 0;
+let previewKey: string | undefined;
+let previewRunning = false;
+let previewCompletion: Promise<void> | undefined;
+let previewFault: 'pause-before-render' | 'hold-gpu-wait' | 'budget' | undefined;
+let releasePreviewPause: (() => void) | undefined;
 function beginJob() {
   cancelAllowed = true;
   return ++job;
@@ -263,6 +269,134 @@ function replaced(fileName: string) {
   sampledColor = undefined;
 }
 const api: EngineApi = {
+  async diagnosticPreviewFault(fault) {
+    if (!diagnostic) throw new Error('Diagnostics are disabled');
+    previewFault = fault;
+  },
+  async previewAdjustment(adjustment, target) {
+    const e = requireIdle();
+    const request = ++previewRequest;
+    const token = job;
+    busy = true;
+    previewRunning = true;
+    let finishPreview: () => void = () => {};
+    const completion = new Promise<void>((resolve) => {
+      finishPreview = resolve;
+    });
+    previewCompletion = completion;
+    cancelAllowed = true;
+    const fault = previewFault;
+    previewFault = undefined;
+    const priorExternal = externalBytes;
+    const current = () => {
+      cancelled(token);
+      if (request !== previewRequest) throw new Error('Preview cancelled');
+    };
+    const start = performance.now();
+    let preparationMs = 0;
+    let cold = false;
+    try {
+      if (fault === 'budget') {
+        e.preview_cancel();
+        previewKey = undefined;
+        const memory = snapshot().memory;
+        external(
+          priorExternal + 768 * 1048576 - memory.document - memory.history - memory.temporary,
+        );
+      }
+      const state = snapshot();
+      const key = JSON.stringify([state.revision, state.view, size, target]);
+      if (previewKey !== key || !e.preview_valid()) {
+        cold = true;
+        e.preview_begin(JSON.stringify(target));
+        previewKey = key;
+        let slice = performance.now();
+        while (!e.preview_ready()) {
+          current();
+          await pages.hydrate(e, 'preview');
+          current();
+          e.preview_step();
+          if (performance.now() - slice >= 4) {
+            await yieldProjectTask();
+            slice = performance.now();
+          }
+        }
+        preparationMs = performance.now() - start;
+      }
+      current();
+      if (fault === 'pause-before-render') {
+        operation = 'Preview ready to render (diagnostic)…';
+        await new Promise<void>((resolve) => {
+          releasePreviewPause = resolve;
+        });
+        current();
+      }
+      const updated = performance.now();
+      e.preview_update(JSON.stringify(adjustment));
+      let done = false;
+      while (!done) {
+        current();
+        await pages.hydrate(e, 'preview-render');
+        current();
+        done = e.preview_render_step();
+      }
+      const submitted = performance.now();
+      dirty = true;
+      await new Promise<void>((resolve, reject) => {
+        presentation = { resolve, reject };
+      });
+      current();
+      const presented = performance.now();
+      if (cold) {
+        // Include asynchronous GPU pipeline initialization in preparation.
+        if (fault === 'hold-gpu-wait') operation = 'Preview GPU wait (diagnostic)…';
+        await e.preview_settled(fault === 'hold-gpu-wait');
+        current();
+        preparationMs += performance.now() - presented;
+      }
+      return {
+        serial: request,
+        preparationMs,
+        updateMs: presented - updated,
+        renderSubmitMs: submitted - updated,
+        frameWaitMs: presented - submitted,
+        width: Math.min(e.width(), 2048),
+        height: Math.min(e.height(), 2048),
+      };
+    } catch (error) {
+      if (!disposed && token === job && request === previewRequest) {
+        previewKey = undefined;
+        e.preview_cancel();
+        dirty = true;
+      }
+      throw error;
+    } finally {
+      if (token === job) {
+        external(priorExternal);
+        busy = false;
+        operation = undefined;
+        releasePreviewPause = undefined;
+      }
+      finishPreview();
+      if (previewCompletion === completion) {
+        previewRunning = false;
+        previewCompletion = undefined;
+      }
+    }
+  },
+  async endAdjustmentPreview() {
+    const completion = previewCompletion;
+    ++previewRequest;
+    releasePreviewPause?.();
+    previewKey = undefined;
+    if (!disposed && engine) engine.preview_cancel();
+    if (previewRunning) {
+      presentation?.resolve();
+      presentation = undefined;
+    }
+    dirty = true;
+    await completion;
+  },
   async diagnosticAdjustmentFault(fault) {
     if (!diagnostic) throw new Error('Diagnostics are disabled');
     adjustmentFault = fault;
@@ -1002,6 +1136,7 @@ const api: EngineApi = {
   dispose() {
     ++job;
     releaseAdjustmentPause?.();
+    releasePreviewPause?.();
     releaseAdjustmentPause = undefined;
     busy = false;
     presentation?.reject(new Error('Engine disposed'));
@@ -1180,6 +1315,10 @@ const api: EngineApi = {
     )
       return false;
     ++job;
+    ++previewRequest;
+    previewKey = undefined;
+    requireEngine().preview_cancel();
+    releasePreviewPause?.();
     releaseSelectionPause?.();
     releaseAdjustmentPause?.();
     releaseAdjustmentPause = undefined;

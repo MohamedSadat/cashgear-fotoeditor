@@ -438,6 +438,7 @@ impl Engine {
         Ok(())
     }
     pub fn selection_begin(&mut self, action: &str) -> Result<(), JsValue> {
+        self.preview_cancel();
         if self.selected.job.is_some() || self.stroke.is_some() {
             return Err(js("Finish the current operation"));
         }
