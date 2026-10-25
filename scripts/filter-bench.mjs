@@ -205,7 +205,9 @@ try {
 } finally {
   server?.kill();
   const assets = resolve('apps/web/dist/assets');
-  const wasm = (await readdir(assets)).find((p) => p.endsWith('.wasm'));
+  const files = await readdir(assets);
+  const wasm = files.find((p) => p.endsWith('.wasm'));
+  const worker = files.find((p) => p.startsWith('worker-') && p.endsWith('.js'));
   await writeFile(
     process.env.PERF_OUTPUT ?? 'bench/results/p6-m3-filter-performance.json',
     JSON.stringify(
@@ -217,6 +219,12 @@ try {
           file: wasm,
           sha256: createHash('sha256')
             .update(await readFile(resolve(assets, wasm)))
+            .digest('hex'),
+        },
+        worker: {
+          file: worker,
+          sha256: createHash('sha256')
+            .update(await readFile(resolve(assets, worker)))
             .digest('hex'),
         },
         dataset: {

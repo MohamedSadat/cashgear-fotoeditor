@@ -252,7 +252,9 @@ try {
 } finally {
   server?.kill();
   const assets = resolve('apps/web/dist/assets');
-  const wasm = (await readdir(assets)).find((p) => p.endsWith('.wasm'));
+  const files = await readdir(assets);
+  const wasm = files.find((p) => p.endsWith('.wasm'));
+  const worker = files.find((p) => p.startsWith('worker-') && p.endsWith('.js'));
   await writeFile(
     process.env.PERF_OUTPUT ??
       `bench/results/p6-m3-preview-${actualPixels ? 'actual-' : ''}performance.json`,
@@ -262,6 +264,7 @@ try {
         machine: { os: os.version(), cpu: os.cpus()[0].model, ram: os.totalmem() },
         viewport: { width: 1280, height: 850, dpr: 1, viewMode },
         wasm: { file: wasm, sha256: hash(await readFile(resolve(assets, wasm))) },
+        worker: { file: worker, sha256: hash(await readFile(resolve(assets, worker))) },
         dataset: {
           path: fixture,
           sha256: hash(await readFile(fixture)),
