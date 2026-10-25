@@ -10,6 +10,33 @@ The user answered all four questions: Lanczos3 default, non-destructive crop,
 warp/puppet warp after v1 and content-aware scale outside v1. DECISIONS.md records
 these choices.
 
+The next increment adds bounded Rust nearest/bilinear/bicubic/Lanczos3 sampling,
+image size/DPI, anchored canvas size, canvas rotation/flipping and their controls.
+Whole-tree jobs include nested rasters, masks, selection and guides, publish one
+exact document command, and hydrate/yield/persist through the existing pager.
+Identity shares generations; integer permutations preserve exact straight samples.
+Image resizing uses fast_image_resize 6.1.0 with temporary premultiplied float
+blocks; the approved license inventory now contains 451 dependencies.
+
+The independent image 0.25.10 reference at 50% Lanczos3 measures maximum RGBA
+error `[1, 0, 1, 0]` on the recorded 1030x518 opaque fixture. All 139 Rust tests,
+native/WASM clippy, formatting, TypeScript, ESLint and 16 Vitest cases pass.
+Release WASM is 3,724,728 bytes / gzip9 1,392,252. Sixty installed Chrome/Edge
+GPU/viewport/crop/size cases pass on one attempt each without skips or retries;
+12 size cases pass again after the final control layout review. The Windows
+shell builds and hardware WebView2 passes both APIs, including exact canvas
+rotation/resize/undo and the existing crop/reopen and P6 checks. Raw evidence is
+`bench/results/p7-resample-*` and `p7-lanczos-reference.log`.
+
+The first browser reference incorrectly compared retained columns outside the
+visible export window. The corrected test uses Reveal All before checking every
+original sample, then verifies undo/redo and two flips exactly. The superseded
+report and trace remain under `p7-size-export-window-fixture-failure*`.
+P7 sessions/GPU transform preview, move/nudge/auto-select, crop gestures/ratios/
+straightening/thirds, snapping, full performance and final gates remain.
+
+### Earlier canvas-window checkpoint
+
 The canvas-window increment adds metadata-only non-destructive crop, Reveal All,
 exact whole-document geometry commands, editable persistent guides, ruler/guide
 overlays, visible-window PNG export and schema-4 streamed project/recovery metadata

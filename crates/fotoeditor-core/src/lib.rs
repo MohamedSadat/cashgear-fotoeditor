@@ -8,9 +8,15 @@ mod color_adjustments;
 mod commands;
 mod composite;
 mod display;
+mod geometry_jobs;
+#[cfg(test)]
+mod geometry_jobs_tests;
 mod layer_jobs;
 mod layers;
 mod paging;
+mod resample;
+#[cfg(test)]
+mod resample_tests;
 mod selection;
 mod selection_display;
 mod tiles;
@@ -23,9 +29,11 @@ pub use canvas::*;
 pub use commands::*;
 pub use composite::*;
 pub use display::*;
+pub use geometry_jobs::*;
 pub use layer_jobs::*;
 pub use layers::*;
 pub use paging::*;
+pub use resample::*;
 pub use selection::*;
 pub use selection_display::*;
 pub use tiles::*;

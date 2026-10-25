@@ -60,6 +60,7 @@ impl LayerRuntime {
         preview: Option<&Document>,
         selection: &super::selection::SelectionRuntime,
         adjustment: &super::adjustments::AdjustmentRuntime,
+        geometry: &super::geometry::GeometryRuntime,
     ) -> u64 {
         if self.render.is_none()
             && self.thumbnail.is_none()
@@ -69,6 +70,7 @@ impl LayerRuntime {
             && adjustment.histogram.is_none()
             && adjustment.preview.is_none()
             && !adjustment.filter.has_tiles()
+            && !geometry.has_tiles()
         {
             return 0;
         }
@@ -104,6 +106,7 @@ impl LayerRuntime {
         }
         selection.visit_tiles(&mut count);
         adjustment.visit_tiles(&mut count);
+        geometry.visit_tiles(&mut count);
         bytes
     }
     pub fn cancel(&mut self) {
@@ -312,6 +315,7 @@ impl Engine {
         }
         self.selected.visit_tiles(&mut add);
         self.adjusted.visit_tiles(&mut add);
+        self.geometric.visit_tiles(&mut add);
         self.layered.pages = pages;
     }
     pub(super) fn layer_json(&self) -> serde_json::Value {
@@ -784,6 +788,7 @@ impl Engine {
             }
         };
         match scope {
+            "geometry" => self.geometric.needed(&mut add),
             "filter" => self.adjusted.filter.needed(&mut add),
             "preview" => {
                 if let Some(p) = &self.adjusted.preview {

@@ -738,6 +738,54 @@ try {
     expect(result.canvas.history).toBe(0);
     expect(result.canvas.revealed).toMatchObject({ width: 32, height: 24, cropped: false });
     expect(result.canvas.exactReveal).toBe(true);
+    result.geometry = await page.evaluate(async () => {
+      const api = window.__fotoeditor;
+      const digest = async () =>
+        Array.from(
+          new Uint8Array(await crypto.subtle.digest('SHA-256', await api.exportPng())),
+        ).join(',');
+      const before = await digest();
+      const initial = await api.geometryAction({
+        kind: 'canvas-rotate',
+        degrees: 90,
+        interpolation: 'lanczos3',
+      });
+      await api.geometryAction({ kind: 'canvas-rotate', degrees: -90, interpolation: 'lanczos3' });
+      const exactRotation = before === (await digest());
+      await api.geometryAction({
+        kind: 'image-size',
+        width: 64,
+        height: 48,
+        dpi: 300,
+        interpolation: 'nearest',
+      });
+      const resized = await api.geometryAction({
+        kind: 'image-size',
+        width: 32,
+        height: 24,
+        dpi: 72,
+        interpolation: 'nearest',
+      });
+      const exactResize = before === (await digest());
+      const grown = await api.geometryAction({
+        kind: 'canvas-size',
+        width: 40,
+        height: 32,
+        anchor: [0.5, 0.5],
+      });
+      await api.historyJump(resized.history.undo);
+      return {
+        rotated: initial.document,
+        exactRotation,
+        exactResize,
+        grown: grown.document,
+        exactUndo: before === (await digest()),
+      };
+    });
+    expect(result.geometry.rotated).toMatchObject({ width: 24, height: 32 });
+    expect(result.geometry.grown).toMatchObject({ width: 40, height: 32 });
+    for (const key of ['exactRotation', 'exactResize', 'exactUndo'])
+      expect(result.geometry[key], key).toBe(true);
     result.software = process.env.GPU_TEST_SOFTWARE === '1';
     await mkdir(join(root, 'bench/results'), { recursive: true });
     await page.screenshot({ path: join(root, 'bench/results/desktop-p4-' + backend + '.png') });

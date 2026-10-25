@@ -93,6 +93,7 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | equivalent | 1.0.3 | Apache-2.0 OR MIT |
 | Cargo | erased-serde | 0.4.10 | MIT OR Apache-2.0 |
 | Cargo | euclid | 0.22.14 | MIT OR Apache-2.0 |
+| Cargo | fast_image_resize | 6.1.0 | MIT OR Apache-2.0 |
 | Cargo | fastrand | 2.5.0 | Apache-2.0 OR MIT |
 | Cargo | fdeflate | 0.3.7 | MIT OR Apache-2.0 |
 | Cargo | find-msvc-tools | 0.1.15 | MIT OR Apache-2.0 |

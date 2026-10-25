@@ -6,6 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+fast_image_resize = { version = "=6.1.0", default-features = false, features = ["std"] }
 serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]

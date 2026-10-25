@@ -39,6 +39,7 @@ let selectionTiming: DocumentSnapshot['selection']['timing'];
 let selectionFault: 'pause-before-commit' | 'budget' | undefined;
 let releaseSelectionPause: (() => void) | undefined;
 let filterTiming: DocumentSnapshot['filterTiming'];
+let geometryTiming: DocumentSnapshot['geometryTiming'];
 let adjustmentTiming: DocumentSnapshot['adjustmentTiming'];
 let adjustmentFault: 'pause-before-commit' | 'budget' | 'budget-after-step' | undefined;
 let releaseAdjustmentPause: (() => void) | undefined;
@@ -68,6 +69,7 @@ function snapshot(): DocumentSnapshot {
     projectTiming,
     adjustmentTiming,
     filterTiming,
+    geometryTiming,
     recovery,
     // A completed stroke can have the next stroke waiting behind it. Keep the
     // entire queued edit busy so open/export cannot interleave in that gap.
@@ -449,6 +451,74 @@ async function runFilter(begin: (engine: Engine) => void) {
   }
 }
 const api: EngineApi = {
+  async geometryAction(action) {
+    const e = requireIdle();
+    busy = true;
+    operation = 'Updating geometry…';
+    const token = beginJob();
+    const start = performance.now();
+    const fault = adjustmentFault;
+    adjustmentFault = undefined;
+    const priorExternal = externalBytes;
+    let kernelMs = 0;
+    try {
+      await pages.persist(e);
+      cancelled(token);
+      if (fault === 'budget') {
+        const m = snapshot().memory;
+        external(priorExternal + 768 * 1048576 - m.document - m.history - m.temporary);
+      }
+      e.geometry_begin(JSON.stringify(action));
+      let slice = performance.now();
+      let persistedTemporary = snapshot().memory.temporary;
+      while (!e.geometry_ready()) {
+        cancelled(token);
+        await pages.hydrate(e, 'geometry');
+        cancelled(token);
+        const t = performance.now();
+        e.geometry_step();
+        kernelMs += performance.now() - t;
+        if (fault === 'budget-after-step') {
+          const m = snapshot().memory;
+          external(priorExternal + 768 * 1048576 - m.document - m.history - m.temporary);
+        }
+        if (performance.now() - slice >= 4) {
+          const temporary = snapshot().memory.temporary;
+          if (temporary - persistedTemporary >= 32 * CHUNK) {
+            await pages.persist(e);
+            persistedTemporary = temporary;
+          }
+          await yieldProjectTask();
+          slice = performance.now();
+        }
+      }
+      if (fault === 'pause-before-commit') {
+        operation = 'Geometry ready (diagnostic)…';
+        await new Promise<void>((resolve) => {
+          releaseAdjustmentPause = resolve;
+        });
+      }
+      cancelled(token);
+      e.geometry_commit();
+      cancelAllowed = false;
+      await recompose(token);
+      geometryTiming = {
+        kernelMs,
+        totalMs: performance.now() - start,
+        cpuPeakBytes: e.geometry_cpu_peak(),
+      };
+      dirty = true;
+      return snapshot();
+    } finally {
+      if (token === job) {
+        external(priorExternal);
+        releaseAdjustmentPause = undefined;
+        e.geometry_cancel();
+        busy = false;
+        operation = undefined;
+      }
+    }
+  },
   async compareFilterCompositors(index?: number) {
     if (!diagnostic) throw new Error('Diagnostics are disabled');
     const e = requireIdle();

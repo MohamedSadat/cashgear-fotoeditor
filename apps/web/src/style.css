@@ -1241,6 +1241,21 @@ select {
   font-size: 11px;
   padding: 7px;
 }
+.geometry-panel fieldset > button,
+.geometry-panel fieldset > p,
+.geometry-panel fieldset > label:has(input[type='checkbox']),
+.geometry-actions,
+.geometry-actions + label,
+.geometry-panel label:has(select[aria-label='Canvas anchor']) {
+  grid-column: 1 / -1;
+}
+.geometry-actions {
+  display: flex;
+  gap: 8px;
+}
+.geometry-actions button {
+  flex: 1;
+}
 .guide-row {
   grid-column: 1 / -1;
   display: flex;

@@ -46,6 +46,7 @@ mod bridge {
         layered: layers::LayerRuntime,
         selected: selection::SelectionRuntime,
         adjusted: adjustments::AdjustmentRuntime,
+        geometric: geometry::GeometryRuntime,
     }
 
     // Lifecycle replacement starts a new editing session and releases its history.
@@ -89,6 +90,7 @@ mod bridge {
                     self.selected.cancel();
                     self.selected.quick_mask = false;
                     self.adjusted = adjustments::AdjustmentRuntime::default();
+                    self.geometric = geometry::GeometryRuntime::default();
                     self.revision = self.revision.wrapping_add(1);
                     self.content_revision = self.content_revision.wrapping_add(1);
                 }
@@ -104,12 +106,14 @@ mod bridge {
                     + self.layered.bytes()
                     + self.selected.scratch_bytes()
                     + self.adjusted.scratch_bytes()
+                    + self.geometric.scratch_bytes()
                     + self.layered.extra_source_bytes(
                         self.document.as_ref(),
                         &self.history,
                         self.stroke.as_ref().map(|s| &s.preview),
                         &self.selected,
                         &self.adjusted,
+                        &self.geometric,
                     )
                     + self.export.as_ref().map_or(0, |j| j.temporary_bytes())
                     + self
@@ -162,6 +166,7 @@ mod bridge {
                 layered: layers::LayerRuntime::default(),
                 selected: selection::SelectionRuntime::default(),
                 adjusted: adjustments::AdjustmentRuntime::default(),
+                geometric: geometry::GeometryRuntime::default(),
             })
         }
         pub fn backend(&self) -> String {
@@ -579,6 +584,7 @@ mod bridge {
                 .map_err(|e| JsValue::from_str(&e))
         }
         pub fn cancel_job(&mut self) {
+            self.geometry_cancel();
             self.filter_cancel();
             self.adjusted.apply = None;
             self.adjusted.histogram = None;

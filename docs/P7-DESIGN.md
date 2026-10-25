@@ -36,6 +36,52 @@ round-trips within 1e-8 document pixels. This is geometry coverage, not the late
 pixel-resampling or visual acceptance. The new APIs are not yet wired into engine
 commands, samplers or controls. No P7 Apply/preview performance is claimed.
 
+## Resampling and whole-document geometry increment
+
+`SurfaceResampleJob` uses fast_image_resize 6.1.0's typed F32x4 API for
+axis-aligned image resizing, with globally phased padded source blocks. The
+dependency enables only `std`, under MIT OR Apache-2.0; it adds no browser/GPU
+types to the processing crates. Temporary buffers contain premultiplied floats,
+and quantization/unpremultiplication happen once at final RGBA8 reconstruction.
+An early U16 implementation failed the independent reference because integer
+intermediate clipping changed ringing edges; the float implementation passes.
+
+Arbitrary matrices use the four corresponding Rust kernels, with Jacobian-based
+support expansion for reductions. Integer permutations copy complete straight
+samples, including hidden RGB, without interpolation. Identity shares original
+generations. Other zero-alpha outputs keep the nearest source's hidden RGB;
+outside the retained source they use the explicitly selected field default.
+Selection growth uses zero outside even when its sparse source default is 255.
+
+FIR input and intermediate blocks are bounded to 2 MiB apiece within a conservative
+16 MiB scratch reservation. Generic steps yield after 256 output pixels or a
+source-tap budget, visiting one tile dependency at a time for extreme reductions.
+Candidates compact all-default tiles and expose every retained generation for
+shared residency and durable paging. The worker checks CPU admission, hydrates
+dependencies, yields, persists growing candidates and publishes one final command.
+
+`GeometryJob` handles image size/DPI, anchored canvas size, canvas rotation and
+flipping throughout nested raster layers, masks, selection and guides. Anchored
+canvas growth rebases retained samples with an exact integer translation; shrinking
+within the retained extent changes only the visible window. Half-pixel anchor ties
+round away from zero. Image size scales retained content as well as the visible
+window, aligning its new origin to an integer and retaining the requested visible
+dimensions exactly. All jobs use COW document commands and preserve redo on no-op,
+refusal and cancellation.
+
+Right-angle rotations exchange guide axes and map positions exactly. Arbitrary
+rotation keeps axis-aligned guides at their canvas-relative offsets, clamped to
+the new retained extent; the format does not introduce angled guides.
+
+The independent image 0.25.10 float Lanczos3 implementation verifies a 1030x518
+opaque RGBA fixture at 50%. Maximum RGBA error is `[1, 0, 1, 0]`, within two.
+The fixture formula/version and full settings are in `resample_reference.rs`;
+raw output is `bench/results/p7-lanczos-reference.log`. Separate tests cover
+fractional alpha/hidden color, all four kernels, odd tile/block boundaries,
+perspective nearest sampling, fractional bilinear reference, cold extreme
+reduction, exact permutations, nested masks/selections and command restoration.
+Free-transform sessions and their GPU preview remain the next P7 increment.
+
 ## Processing and integration contracts
 
 Geometry and pixel processing remain browser/UI/GPU-independent Rust. TypeScript

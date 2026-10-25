@@ -27,6 +27,7 @@ export interface FrameResult extends PhysicalSize {
 export interface DocumentSnapshot {
   canFade: boolean;
   filterTiming?: { kernelMs: number; totalMs: number; cpuPeakBytes: number };
+  geometryTiming?: { kernelMs: number; totalMs: number; cpuPeakBytes: number };
   adjustmentTiming?: { kernelMs: number; totalMs: number };
   selection: {
     active: boolean;
@@ -117,6 +118,7 @@ export interface Interaction {
 }
 export interface EngineApi {
   geometryMetadata(action: GeometryMetadata): Promise<DocumentSnapshot>;
+  geometryAction(action: GeometryAction): Promise<DocumentSnapshot>;
   applyFilter(filter: SpatialFilter): Promise<DocumentSnapshot>;
   fadeFilter(opacity: number, blend: string): Promise<DocumentSnapshot>;
   previewFilter(filter: SpatialFilter, target: number): Promise<AdjustmentPreviewTiming>;
@@ -189,6 +191,12 @@ export interface CanvasRect {
 }
 export type GeometryMetadata =
   { kind: 'crop'; rect: CanvasRect | null } | { kind: 'guides'; guides: Guide[] };
+export type Interpolation = 'nearest' | 'bilinear' | 'bicubic' | 'lanczos3';
+export type GeometryAction =
+  | { kind: 'image-size'; width: number; height: number; dpi: number; interpolation: Interpolation }
+  | { kind: 'canvas-size'; width: number; height: number; anchor: [number, number] }
+  | { kind: 'canvas-rotate'; degrees: number; interpolation: Interpolation }
+  | { kind: 'canvas-flip'; horizontal: boolean };
 
 export type SpatialFilter =
   | { kind: 'gaussian' | 'box-blur' | 'median'; radius: number }
