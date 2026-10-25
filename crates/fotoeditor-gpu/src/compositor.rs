@@ -1,7 +1,8 @@
 //! Portable fragment passes with float32 premultiplied intermediates. One tile
 //! is read back at a time; authoritative straight-alpha sources are never changed.
 use fotoeditor_core::{
-    AdjustmentKernel, CompositeMask, CompositePlan, CompositeStep, LayerProperties, TILE_SIZE,
+    Adjustment, AdjustmentKernel, CompositeMask, CompositePlan, CompositeStep, LayerProperties,
+    TILE_SIZE,
 };
 use wasm_bindgen::JsValue;
 use wgpu::*;
@@ -183,10 +184,24 @@ impl Compositor {
         let kind = adjustment.map_or(0u32, |(kernel, _)| match kernel {
             AdjustmentKernel::Lut(_) => 1,
             AdjustmentKernel::Hsl(_) => 2,
+            AdjustmentKernel::Color(a) => match **a {
+                Adjustment::Vibrance { .. } => 3,
+                Adjustment::ColorBalance { .. } => 4,
+                Adjustment::BlackWhite { .. } => 5,
+                Adjustment::Threshold { .. } => 6,
+                Adjustment::GradientMap { .. } => 7,
+                _ => unreachable!(),
+            },
         });
         params.extend(kind.to_le_bytes());
         let settings = match adjustment {
             Some((AdjustmentKernel::Hsl(settings), _)) => *settings,
+            Some((AdjustmentKernel::Color(a), _)) => match &**a {
+                Adjustment::Vibrance { amount } => [*amount, 0.0, 0.0],
+                Adjustment::Threshold { level } => [f64::from(*level), 0.0, 0.0],
+                Adjustment::GradientMap { stops } => [stops.len() as f64, 0.0, 0.0],
+                _ => [0.0; 3],
+            },
             _ => [0.0; 3],
         };
         for value in settings {
@@ -204,11 +219,34 @@ impl Compositor {
         }
         for i in 0..256 {
             let value = match adjustment {
-                Some((AdjustmentKernel::Lut(lut), _)) => lut[i] as f32,
-                _ => 0.0,
+                Some((AdjustmentKernel::Lut(lut), _)) => [lut[i], 0.0, 0.0, 0.0],
+                Some((AdjustmentKernel::Color(a), _)) => match &**a {
+                    Adjustment::ColorBalance {
+                        shadows,
+                        midtones,
+                        highlights,
+                        preserve_luminosity,
+                    } => {
+                        let rgb = match i {
+                            0 => *shadows,
+                            1 => *midtones,
+                            2 => *highlights,
+                            3 => [f64::from(u8::from(*preserve_luminosity)), 0.0, 0.0],
+                            _ => [0.0; 3],
+                        };
+                        [rgb[0], rgb[1], rgb[2], 0.0]
+                    }
+                    Adjustment::BlackWhite { weights } => {
+                        [weights.get(i).copied().unwrap_or(0.0), 0.0, 0.0, 0.0]
+                    }
+                    Adjustment::GradientMap { stops } => stops.get(i).copied().unwrap_or([0.0; 4]),
+                    _ => [0.0; 4],
+                },
+                _ => [0.0; 4],
             };
-            params.extend(value.to_le_bytes());
-            params.extend([0; 12]);
+            for v in value {
+                params.extend((v as f32).to_le_bytes());
+            }
         }
         queue.write_buffer(&self.uniform, 0, &params);
         if let Some(tile) = &mask.tile {

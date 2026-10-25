@@ -78,7 +78,10 @@ mod tests {
     }
     #[test]
     fn layer_matches_destructive_math_at_alpha_selection_and_tile_boundaries() {
-        for settings in settings() {
+        for settings in settings()
+            .into_iter()
+            .chain(crate::color_adjustments::settings())
+        {
             let kernel = settings.compile().unwrap();
             let mut doc = Document::blank(513, 3, 72.0).unwrap();
             let mut mask = TileSurface::new(513, 3);

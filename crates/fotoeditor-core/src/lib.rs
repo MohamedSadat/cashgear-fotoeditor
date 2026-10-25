@@ -3,6 +3,7 @@ mod adjustment;
 #[cfg(test)]
 mod adjustment_layers;
 mod blend;
+mod color_adjustments;
 mod commands;
 mod composite;
 mod display;

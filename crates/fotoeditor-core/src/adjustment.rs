@@ -31,6 +31,29 @@ pub enum Adjustment {
         saturation: f64,
         lightness: f64,
     },
+    Vibrance {
+        amount: f64,
+    },
+    ColorBalance {
+        shadows: [f64; 3],
+        midtones: [f64; 3],
+        highlights: [f64; 3],
+        #[serde(rename = "preserveLuminosity")]
+        preserve_luminosity: bool,
+    },
+    BlackWhite {
+        weights: [f64; 6],
+    },
+    Invert,
+    Threshold {
+        level: u8,
+    },
+    Posterize {
+        levels: u32,
+    },
+    GradientMap {
+        stops: Vec<[f64; 4]>,
+    },
 }
 fn range(v: f64, min: f64, max: f64) -> bool {
     v.is_finite() && (min..=max).contains(&v)
@@ -59,6 +82,26 @@ fn quantize(v: f64) -> u8 {
 impl Adjustment {
     pub fn validate(&self) -> Result<(), String> {
         let valid = match self {
+            Self::Vibrance { amount } => range(*amount, -1.0, 1.0),
+            Self::ColorBalance {
+                shadows,
+                midtones,
+                highlights,
+                ..
+            } => [shadows, midtones, highlights]
+                .into_iter()
+                .flatten()
+                .all(|v| range(*v, -1.0, 1.0)),
+            Self::BlackWhite { weights } => weights.iter().all(|v| range(*v, -2.0, 2.0)),
+            Self::Invert | Self::Threshold { .. } => true,
+            Self::Posterize { levels } => (2..=256).contains(levels),
+            Self::GradientMap { stops } => {
+                (2..=16).contains(&stops.len())
+                    && stops.first().is_some_and(|p| p[0] == 0.0)
+                    && stops.last().is_some_and(|p| p[0] == 1.0)
+                    && stops.iter().flatten().all(|v| unit(*v))
+                    && stops.windows(2).all(|p| p[0][0] < p[1][0])
+            }
             Self::BrightnessContrast {
                 brightness,
                 contrast,
@@ -115,10 +158,21 @@ impl Adjustment {
             Self::Curves { .. } => "Curves",
             Self::Exposure { .. } => "Exposure",
             Self::HueSaturation { .. } => "Hue / Saturation",
+            Self::Vibrance { .. } => "Vibrance",
+            Self::ColorBalance { .. } => "Color balance",
+            Self::BlackWhite { .. } => "Black & white",
+            Self::Invert => "Invert",
+            Self::Threshold { .. } => "Threshold",
+            Self::Posterize { .. } => "Posterize",
+            Self::GradientMap { .. } => "Gradient map",
         }
     }
     fn channel(&self, v: f64) -> f64 {
         match self {
+            Self::Invert => 1.0 - v,
+            Self::Posterize { levels } => {
+                (v * f64::from(levels - 1)).round() / f64::from(levels - 1)
+            }
             Self::BrightnessContrast {
                 brightness,
                 contrast,
@@ -150,12 +204,17 @@ impl Adjustment {
                     .clamp(0.0, 1.0)
                     .powf(1.0 / gamma),
             ),
-            Self::HueSaturation { .. } => unreachable!("HSL is not separable"),
+            _ => unreachable!("Color transform is not separable"),
         }
     }
     pub fn compile(&self) -> Result<AdjustmentKernel, String> {
         self.validate()?;
         Ok(match self {
+            Self::Vibrance { .. }
+            | Self::ColorBalance { .. }
+            | Self::BlackWhite { .. }
+            | Self::Threshold { .. }
+            | Self::GradientMap { .. } => AdjustmentKernel::Color(Box::new(self.clone())),
             Self::HueSaturation {
                 hue,
                 saturation,
@@ -171,6 +230,7 @@ impl Adjustment {
 pub enum AdjustmentKernel {
     Lut(Box<[f64; 256]>),
     Hsl([f64; 3]),
+    Color(Box<Adjustment>),
 }
 impl AdjustmentKernel {
     /// Straight color interpolation happens once, before quantization. Fully
@@ -182,12 +242,19 @@ impl AdjustmentKernel {
         let rgb = match self {
             Self::Lut(lut) => std::array::from_fn(|c| lut[before.0[c] as usize]),
             Self::Hsl(settings) => hsl(before.0, *settings),
+            Self::Color(settings) => settings.color(before.0),
         };
         let coverage = f64::from(coverage) / 255.0;
         let mut out = before;
         for (c, value) in rgb.into_iter().enumerate() {
             let old = f64::from(before.0[c]) / 255.0;
-            out.0[c] = quantize(old + (value - old) * coverage);
+            let v = old + (value - old) * coverage;
+            out.0[c] = if matches!(self, Self::Color(_)) {
+                // Snap sub-byte evaluation noise before half-byte rounding.
+                ((v.clamp(0.0, 1.0) * 255.0 * 1024.0).round() / 1024.0 + 0.5) as u8
+            } else {
+                quantize(v)
+            };
         }
         out
     }

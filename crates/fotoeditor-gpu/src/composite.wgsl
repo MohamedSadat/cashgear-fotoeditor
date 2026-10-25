@@ -25,7 +25,7 @@ fn adjusted(color: vec3<f32>, coverage: f32) -> vec3<f32> {
     if params.adjustment_kind == 1u {
         let indices = vec3<u32>(floor(before * 255.0 + 0.5));
         result = vec3<f32>(params.lut[indices.r].x, params.lut[indices.g].x, params.lut[indices.b].x);
-    } else {
+    } else if params.adjustment_kind == 2u {
         let high = max(max(before.r, before.g), before.b);
         let low = min(min(before.r, before.g), before.b);
         let delta = high - low;
@@ -52,8 +52,49 @@ fn adjusted(color: vec3<f32>, coverage: f32) -> vec3<f32> {
         else if hue < 5.0 { rgb = vec3<f32>(x, 0.0, chroma); }
         else { rgb = vec3<f32>(chroma, 0.0, x); }
         result = rgb + vec3<f32>(light - chroma * 0.5);
+    } else {
+        let luma = dot(before, vec3<f32>(54.0,183.0,19.0)) / 256.0;
+        let bin = floor(dot(floor(before * 255.0 + 0.5),vec3<f32>(54.0,183.0,19.0)) / 256.0 + 0.5);
+        if params.adjustment_kind == 3u {
+            let spread = max(max(before.r,before.g),before.b)-min(min(before.r,before.g),before.b);
+            var gain = params.adjustment.x;
+            if gain>0.0 {gain *= 1.0-spread;}
+            result = clamp(before+gain*(before-vec3<f32>(luma)),vec3<f32>(0.0),vec3<f32>(1.0));
+        } else if params.adjustment_kind == 4u {
+            let s=max(0.0,1.0-2.0*luma); let h=max(0.0,2.0*luma-1.0);
+            result=before+params.lut[0].xyz*s+params.lut[1].xyz*(1.0-s-h)+params.lut[2].xyz*h;
+            if params.lut[3].x>0.5 {
+                result+=vec3<f32>(luma-dot(result,vec3<f32>(54.0,183.0,19.0))/256.0);
+                let low=min(min(result.r,result.g),result.b);let high=max(max(result.r,result.g),result.b);
+                var scale=1.0;
+                if low<0.0 {scale=min(scale,luma/(luma-low));}
+                if high>1.0 {scale=min(scale,(1.0-luma)/(high-luma));}
+                result=vec3<f32>(luma)+(result-vec3<f32>(luma))*scale;
+            }
+            result=clamp(result,vec3<f32>(0.0),vec3<f32>(1.0));
+        } else if params.adjustment_kind == 5u {
+            let b=floor(before*255.0+0.5);
+            var low:f32;var high:f32;var middle:f32;var i:u32;var j:u32;
+            if b.r>=b.g && b.g>=b.b {low=b.b;high=b.r;middle=b.g;i=0u;j=1u;}
+            else if b.g>=b.r && b.r>=b.b {low=b.b;high=b.g;middle=b.r;i=2u;j=1u;}
+            else if b.g>=b.b && b.b>=b.r {low=b.r;high=b.g;middle=b.b;i=2u;j=3u;}
+            else if b.b>=b.g && b.g>=b.r {low=b.r;high=b.b;middle=b.g;i=4u;j=3u;}
+            else if b.b>=b.r && b.r>=b.g {low=b.g;high=b.b;middle=b.r;i=4u;j=5u;}
+            else {low=b.g;high=b.r;middle=b.b;i=0u;j=5u;}
+            result=vec3<f32>(clamp(low+(high-low)*params.lut[i].x+(middle-low)*(params.lut[j].x-params.lut[i].x),0.0,255.0)/255.0);
+        } else if params.adjustment_kind == 6u {
+            result=vec3<f32>(select(0.0,1.0,bin>=params.adjustment.x));
+        } else {
+            let v=bin/255.0;
+            for(var i=1u;i<u32(params.adjustment.x);i++) {
+                let a=params.lut[i-1u];let b=params.lut[i];
+                if v<=b.x {result=mix(a.yzw,b.yzw,(v-a.x)/(b.x-a.x));break;}
+            }
+        }
     }
-    return floor(clamp(mix(before, result, coverage), vec3<f32>(0.0), vec3<f32>(1.0)) * 255.0 + 0.5) / 255.0;
+    var bytes=clamp(mix(before, result, coverage), vec3<f32>(0.0), vec3<f32>(1.0)) * 255.0;
+    if params.adjustment_kind>=3u { bytes=floor(bytes*1024.0+0.5)/1024.0; }
+    return floor(bytes+0.5)/255.0;
 }
 
 fn luminosity(c: vec3<f32>) -> f32 { return dot(c, vec3<f32>(0.3, 0.59, 0.11)); }

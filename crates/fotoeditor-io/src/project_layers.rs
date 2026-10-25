@@ -571,6 +571,61 @@ impl LayerProjectReader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn remaining_adjustment_settings_roundtrip_with_cold_masks_and_hidden_rgb() {
+        use fotoeditor_core::Adjustment;
+        let controls = [
+            Adjustment::Vibrance { amount: -0.4 },
+            Adjustment::ColorBalance {
+                shadows: [-0.2, 0.1, 0.4],
+                midtones: [0.1, -0.1, 0.0],
+                highlights: [0.3, 0.2, -0.1],
+                preserve_luminosity: true,
+            },
+            Adjustment::BlackWhite {
+                weights: [0.3, 0.89, 0.59, 0.7, 0.11, 0.41],
+            },
+            Adjustment::Invert,
+            Adjustment::Threshold { level: 128 },
+            Adjustment::Posterize { levels: 7 },
+            Adjustment::GradientMap {
+                stops: vec![
+                    [0.0, 0.2, 0.0, 0.7],
+                    [0.37, 1.0, 0.2, 0.0],
+                    [1.0, 0.7, 1.0, 0.9],
+                ],
+            },
+        ];
+        for settings in controls {
+            let mut doc = Document::blank(513, 3, 72.0).unwrap();
+            doc.raster_mut().write(256, 1, Rgba8([87, 33, 19, 0]));
+            let mut mask = TileSurface::new(513, 3);
+            mask.write(256, 1, Gray8(128));
+            let mut layer = Layer::adjustment(settings.label().into(), settings.clone());
+            layer.mask = Some(LayerMask {
+                enabled: true,
+                samples: Arc::new(mask),
+            });
+            doc.layers.push(Layer::group("Group".into(), vec![layer]));
+            let bytes = encode(&doc);
+            let decoded = read(&bytes).unwrap();
+            hydrate(&decoded, &bytes);
+            assert_eq!(decoded.raster().sample(256, 1), Rgba8([87, 33, 19, 0]));
+            let LayerContent::Group(children) = &decoded.layers[1].content else {
+                panic!()
+            };
+            let LayerContent::Adjustment(actual) = &children[0].content else {
+                panic!()
+            };
+            assert_eq!(actual, &settings);
+            assert_eq!(children[0].mask.as_ref().unwrap().samples.default, Gray8(0));
+            assert_eq!(
+                children[0].mask.as_ref().unwrap().samples.sample(256, 1),
+                Gray8(128)
+            );
+            assert_eq!(encode(&decoded), bytes);
+        }
+    }
     use fotoeditor_core::BlendMode;
     #[test]
     fn adjustment_settings_and_sparse_mask_defaults_roundtrip_without_baking_pixels() {
