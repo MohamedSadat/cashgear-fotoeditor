@@ -219,3 +219,70 @@ run while it waits; disposal releases pending waits, and preview cancellation
 is independent of the ordinary frame fence.
 Snapshots and backing dimensions are captured at submission, so a command that
 arrives during the GPU wait cannot attach newer metadata to the older frame.
+
+## M4 numerical contract
+
+M4 was explicitly authorized on 2026-10-25, from accepted M3 at `e24b231`.
+The complete original roadmap P6 section on printed pages 14–15 was read again.
+Existing product decisions apply. These are deterministic FotoEditor controls;
+the formulas do not claim Photoshop equivalence. All M1 alpha, selection,
+atomic-command and residency rules continue to apply.
+
+The sRGB luma used by the new controls is `(54R + 183G + 19B) / 256`.
+Threshold and gradient map round this luma to a byte before evaluation.
+
+- Vibrance [-1,1] adds `gain * (color - luma)` to each channel. Negative gain
+  is the amount; positive gain is amount times `(1 - maxRGB + minRGB)`, giving
+  less change to already saturated colors. Clamp at the final color boundary.
+- Color balance has RGB offsets [-1,1] for shadows, midtones and highlights.
+  At normalized luma L their weights are `max(0,1-2L)`, `1-S-H` and
+  `max(0,2L-1)`. Optional luminosity preservation subtracts the luma change,
+  then compresses out-of-gamut values around the original luma before clipping.
+- Black & white interpolates six hue weights, ordered red, yellow, green,
+  cyan, blue, magenta, each [-2,2]. Output is `minRGB + chroma * hueWeight`.
+  Defaults are [0.30,0.89,0.59,0.70,0.11,0.41]; neutrals stay neutral.
+- Invert is `1-color`. Threshold emits white at luma byte >= level [0,255].
+- Posterize [2,256] rounds each channel to one of N equally spaced levels.
+- Gradient map linearly interpolates 2–16 ordered `[position,R,G,B]` stops in
+  sRGB, with endpoints at positions zero and one and components in [0,1].
+  Positions and colors remain editable layer metadata. Invalid settings reject
+  before allocation; schema 3 already supports these validated enum variants.
+
+The new color transforms snap intermediate output bytes to 1/1024 of a byte
+before final half-up quantization. This stabilizes f64/f32 half-byte ties that
+can otherwise be amplified by Color Burn/Dodge and nonseparable blend modes.
+Black & white evaluates its six sectors directly as linear byte expressions,
+avoiding division and hue wrapping near red on WebGL2.
+
+Destructive processing and CPU compositing share the Rust definitions. Portable
+GPU shaders use the same controls, packed into the existing bounded uniform
+table. Document alpha and fully transparent hidden RGB remain exact. No new
+dependency, project framing or budget increase is required.
+
+The five remaining filters share the M3 immutable-input jobs, selection clipping,
+alpha lock, exact undo/redo, paging, Fade endpoints and bounded scratch:
+
+- Motion blur averages `2*radius+1` nearest samples along the specified angle.
+  Radius is 0–64, angle -180–180 degrees, positive toward increasing image Y.
+  Integer offsets round away from zero at ties; canvas edges clamp.
+- High pass is `128 + original - Gaussian`, clamped in straight sRGB, retaining
+  original alpha. It uses the M3 Gaussian weights. Radius zero is identity.
+- Add noise retains alpha and adds normalized amount [0,1] times a coordinate-
+  and seed-keyed random value to straight RGB. Uniform values range [-1,1];
+  Gaussian values use Box–Muller with standard deviation 1/3. The saved u32 seed
+  and monochrome/color choice make repeated Apply/preview deterministic.
+- Emboss compares two samples at plus/minus radius along its angle, outputting
+  `128 + depth*(positive-negative)/2` in straight RGB, retaining original alpha.
+  Radius is 0–64, depth 0–5; zero radius or depth is identity. Neighbor colors
+  with zero alpha contribute zero, so hidden RGB cannot tint visible samples.
+- Pixelate averages premultiplied samples in square cells of size 1–64, anchored
+  to document (0,0). Partial cells at canvas edges average their actual samples.
+  Size one is identity. A tile uses a halo of size minus one, crossing both axes.
+
+GPU previews reuse the 64-sample halo and the existing 2128-byte uniform buffer.
+Motion and emboss directions follow document rotation/flip into the viewport.
+Pixelate uses separable cell averages in document axes; noise hashes document
+coordinates. As with M3, nearest-resampled fitted/rotated views are interactive
+approximations; actual-pixel checks and final CPU Apply use document coordinates.
+Shader scratch, cache residency and asynchronous frame/preview fences retain the
+M3 budget and scheduling contract.

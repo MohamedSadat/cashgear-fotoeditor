@@ -197,7 +197,7 @@ M1 was accepted on 2026-10-24; see P6-M1-REPORT.md. M2 implementation and local
 acceptance are complete on 2026-10-24; see P6-M2-REPORT.md. Its task completion
 records the final pushed CI/deployment gate. M3 implementation and local
 acceptance are complete on 2026-10-25; see P6-M3-REPORT.md. Its task completion
-records the final pushed CI/deployment gate. M4 remains pending.
+records the final pushed CI/deployment gate. M4 implementation is in progress from 2026-10-25.
 
 1. M1: brightness/contrast, levels, curves, exposure and hue/saturation as bounded,
    selection-clipped destructive commands; exact undo/redo, locks, paging,

@@ -11,8 +11,9 @@ of P4's layers, groups, masks and streamed projects. P5 acceptance is still in
 progress; the Photoshop feather comparison is pending. See
 [progress](docs/PROGRESS.md) and [selection contracts](docs/P5-DESIGN.md).
 
-P6 adds brightness/contrast, levels, master RGB curves, exposure and hue/saturation,
-an active-raster histogram, and editable adjustment layers. Use Adjust in the
+P6 adds brightness/contrast, levels, master RGB curves, exposure, hue/saturation,
+vibrance, color balance, black & white, invert, threshold, posterize and gradient
+map, plus an active-raster histogram and editable adjustment layers. Use Adjust in the
 inspector, change controls, then Apply adjustment, or choose Create adjustment
 layer above selection. Select an adjustment layer to edit and save its settings.
 A selection becomes its editable mask. Each confirmation creates one undo step.
@@ -27,13 +28,15 @@ Uncheck preview to cancel; saving pixels/projects always uses committed content.
 Adjustment layers work with groups, masks, clipping, opacity and blend modes and
 remain editable in project/recovery files.
 
-Use Filters in the inspector for Gaussian blur, box blur, unsharp mask, sharpen
-and median. Live filter preview covers the visible area; Apply filter processes
+Use Filters in the inspector for Gaussian blur, box blur, motion blur, unsharp
+mask, sharpen, high pass, add noise, median, emboss and pixelate. Noise has a
+repeatable seed, uniform/Gaussian distribution and monochrome/color controls;
+pixelate cells anchor to the document origin. Live filter preview covers the visible area; Apply filter processes
 the full selected area as one undoable edit. Fade last filter changes opacity and
 blend from the original filter endpoints, until another document edit or history
 navigation. Destructive filter results persist in projects and recovery. See the
-[M3 report](docs/P6-M3-REPORT.md). The remaining adjustments/filters and phase-wide
-acceptance belong to M4. See [milestone contracts](docs/P6-DESIGN.md).
+[M4 report](docs/P6-M4-REPORT.md) for phase-wide acceptance status and
+[milestone contracts](docs/P6-DESIGN.md) for numerical definitions.
 
 Use New canvas or Open image, or drop an image into the viewport. Wheel/two-finger
 gestures scroll; Ctrl/Cmd+wheel or trackpad pinch zooms around the pointer.

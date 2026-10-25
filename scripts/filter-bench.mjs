@@ -84,7 +84,23 @@ try {
         await page.getByTestId('open-image').setInputFiles(fixture);
         await expect(page.getByTestId('operation-status')).toHaveText(/Opened in/);
         const scenarios = [];
-        for (const filter of [{ kind: 'gaussian', radius: 20 }]) {
+        const filters =
+          process.env.PERF_FILTERS === 'remaining'
+            ? [
+                { kind: 'motion-blur', radius: 20, angle: 31 },
+                { kind: 'high-pass', radius: 20 },
+                {
+                  kind: 'add-noise',
+                  amount: 0.1,
+                  seed: 123,
+                  monochrome: false,
+                  distribution: 'gaussian',
+                },
+                { kind: 'emboss', radius: 3, angle: 135, amount: 1 },
+                { kind: 'pixelate', size: 32 },
+              ]
+            : [{ kind: 'gaussian', radius: 20 }];
+        for (const filter of filters) {
           const trials = [];
           for (let trial = 0; trial < trialCount; trial++) {
             trials.push(
@@ -209,7 +225,7 @@ try {
   const wasm = files.find((p) => p.endsWith('.wasm'));
   const worker = files.find((p) => p.startsWith('worker-') && p.endsWith('.js'));
   await writeFile(
-    process.env.PERF_OUTPUT ?? 'bench/results/p6-m3-filter-performance.json',
+    process.env.PERF_OUTPUT ?? 'bench/results/p6-m4-filter-performance.json',
     JSON.stringify(
       {
         measuredAt: new Date().toISOString(),

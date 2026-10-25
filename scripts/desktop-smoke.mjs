@@ -476,6 +476,80 @@ try {
       offset: 0,
       gamma: 1,
     });
+    result.remainingAdjustments = await page.evaluate(async () => {
+      const api = Reflect.get(window, '__fotoeditor');
+      const hash = async () =>
+        Array.from(
+          new Uint8Array(await crypto.subtle.digest('SHA-256', await api.exportPng())),
+        ).join(',');
+      const checks = [];
+      for (const adjustment of [
+        { kind: 'vibrance', amount: -0.7 },
+        {
+          kind: 'color-balance',
+          shadows: [-0.3, 0.1, 0.4],
+          midtones: [0.2, -0.4, 0.1],
+          highlights: [0.3, 0.1, -0.2],
+          preserveLuminosity: true,
+        },
+        { kind: 'black-white', weights: [0.3, 0.89, 0.59, 0.7, 0.11, 0.41] },
+        { kind: 'invert' },
+        { kind: 'threshold', level: 128 },
+        { kind: 'posterize', levels: 4 },
+        {
+          kind: 'gradient-map',
+          stops: [
+            [0, 1, 0, 0],
+            [1, 0, 0, 1],
+          ],
+        },
+      ]) {
+        const doc = await api.newDocument(128, 128, 72);
+        await api.selectionAction({ kind: 'fill', color: [128, 64, 0, 255] });
+        const original = await hash();
+        await api.previewAdjustment(adjustment, { kind: 'pixels', target: doc.layers.nodes[0].id });
+        const previewDoesNotMutate = (await hash()) === original;
+        await api.endAdjustmentPreview();
+        await api.applyAdjustment(adjustment);
+        const destructive = await hash();
+        await api.historyJump(1);
+        const exactUndo = (await hash()) === original;
+        const added = await api.layerAction({
+          kind: 'add-adjustment',
+          parent: null,
+          index: 1,
+          adjustment,
+        });
+        const layered = await hash();
+        const directory = await navigator.storage.getDirectory();
+        const handle = await directory.getFileHandle('desktop-remaining.cgfoto', { create: true });
+        await api.saveProjectFile(handle);
+        const reopened = await api.openProjectFile(await handle.getFile());
+        checks.push({
+          kind: adjustment.kind,
+          previewDoesNotMutate,
+          changed: destructive !== original,
+          exactUndo,
+          layerMatches: layered === destructive,
+          exactRoundtrip: (await hash()) === layered,
+          settingsPreserved:
+            JSON.stringify(reopened.layers.nodes[1].adjustment) ===
+            JSON.stringify(added.layers.nodes[1].adjustment),
+        });
+      }
+      return checks;
+    });
+    expect(result.remainingAdjustments).toHaveLength(7);
+    for (const check of result.remainingAdjustments)
+      for (const key of [
+        'previewDoesNotMutate',
+        'changed',
+        'exactUndo',
+        'layerMatches',
+        'exactRoundtrip',
+        'settingsPreserved',
+      ])
+        expect(check[key], check.kind + ' ' + key).toBe(true);
     result.filters = await page.evaluate(async () => {
       const api = Reflect.get(window, '__fotoeditor');
       const hash = async () =>
@@ -500,6 +574,11 @@ try {
         { kind: 'unsharp-mask', radius: 3, amount: 1, threshold: 0 },
         { kind: 'sharpen', amount: 1 },
         { kind: 'median', radius: 1 },
+        { kind: 'motion-blur', radius: 7, angle: 31 },
+        { kind: 'high-pass', radius: 3 },
+        { kind: 'add-noise', amount: 0.4, seed: 123, monochrome: false, distribution: 'gaussian' },
+        { kind: 'emboss', radius: 4, angle: -41, amount: 1.3 },
+        { kind: 'pixelate', size: 37 },
       ]) {
         await api.previewFilter(filter, s.layers.nodes[0].id);
         const previewDoesNotMutate = (await hash()) === original;
@@ -529,7 +608,7 @@ try {
       const reopened = await api.openProject(bytes.slice().buffer, 'desktop-filters.cgfoto');
       return { checks, exactRoundtrip: (await hash()) === faded, clearedFade: !reopened.canFade };
     });
-    expect(result.filters.checks).toHaveLength(5);
+    expect(result.filters.checks).toHaveLength(10);
     for (const check of result.filters.checks) {
       for (const key of [
         'previewDoesNotMutate',

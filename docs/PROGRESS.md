@@ -1,5 +1,27 @@
 # Progress
 
+## P6 - M4 implementation in progress
+
+Resumed 2026-10-25 in the explicitly requested fresh session from accepted M3
+`e24b231`. Read AGENTS.md, phase records, all P6 milestone reports and the original
+roadmap P6 section on printed pages 14-15. M3 CI 40171088637 and deployment
+40171088675 are green. Work stays on main without a worktree or agents.
+
+The seven remaining color controls have Rust math, editable metadata, portable
+GPU compositing and UI controls (`32aef5e`, `92bc9a2`). Five remaining spatial
+filters and previews are in `073d008`. All 115 Rust tests and static/unit/license
+checks pass. The optimized release is 1,344,806 bytes gzipped. All 144 M4 hardware
+feature cases pass on installed Chrome/Edge and both APIs, without failures,
+skips or retries. The frozen Windows shell builds and both hardware WebView2 APIs pass the
+expanded smoke, including all seven remaining adjustments and ten filters.
+Phase-wide regression, serial hardware measurements and remote gates remain
+pending. See P6-M4-REPORT.md for numerical contracts and development corrections.
+
+M3 frame completion fences, captured snapshots/preview acknowledgements and busy
+admission scheduling remain in place. No P6 tag is authorized yet. P5 Photoshop
+feather comparison remains pending without p5-select; physical pen validation
+retains its explicitly approved deferral. Stop before P7.
+
 ## P6 — M3 implementation and local acceptance complete; phase in progress
 
 Started 2026-10-24 in the explicitly requested fresh session, on clean synchronized

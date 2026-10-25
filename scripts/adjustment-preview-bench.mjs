@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import os from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
+const phase = process.env.PERF_PHASE ?? 'p6-m4';
 const base = process.env.PERF_BASE_URL ?? 'http://127.0.0.1:4188';
 const server = process.env.PERF_BASE_URL
   ? undefined
@@ -81,6 +82,36 @@ try {
         for (const scenario of [
           { kind: 'exposure', field: 'stops', label: 'Exposure (stops) slider', step: 0.1 },
           { kind: 'hue-saturation', field: 'hue', label: 'Hue (degrees) slider', step: 7 },
+          { kind: 'vibrance', field: 'amount', label: 'Vibrance (%) slider', step: 4, scale: 100 },
+          {
+            kind: 'color-balance',
+            field: 'midtones.0',
+            label: 'midtones Cyan / Red (%) slider',
+            step: 2,
+            scale: 100,
+          },
+          {
+            kind: 'black-white',
+            field: 'weights.0',
+            label: 'Reds (%) slider',
+            step: 3,
+            scale: 100,
+          },
+          { kind: 'threshold', field: 'level', label: 'Threshold level slider', step: 10 },
+          {
+            kind: 'posterize',
+            field: 'levels',
+            label: 'Posterize levels slider',
+            step: 1,
+            offset: 2,
+          },
+          {
+            kind: 'gradient-map',
+            field: 'stops.0.1',
+            label: 'Gradient red 1',
+            step: 4,
+            scale: 100,
+          },
         ]) {
           await page.getByRole('checkbox', { name: 'Live viewport preview' }).uncheck();
           await page.getByLabel('Adjustment', { exact: true }).selectOption(scenario.kind);
@@ -119,7 +150,10 @@ try {
                       const settings = JSON.parse(status.dataset.settings ?? 'null');
                       if (
                         settings?.kind !== scenario.kind ||
-                        Math.abs(settings[scenario.field] - value) > 1e-8
+                        Math.abs(
+                          scenario.field.split('.').reduce((v, k) => v?.[k], settings) -
+                            value / (scenario.scale ?? 1),
+                        ) > 1e-8
                       )
                         return;
                       observer.disconnect();
@@ -152,7 +186,7 @@ try {
                     input.dispatchEvent(new Event('change', { bubbles: true }));
                   });
                 },
-                { scenario, value: i * scenario.step },
+                { scenario, value: i * scenario.step + (scenario.offset ?? 0) },
               ),
             );
           controls.push({
@@ -165,7 +199,7 @@ try {
           });
         }
         await page.screenshot({
-          path: `bench/results/p6-m2-${channel}-${backend.toLowerCase()}-preview.png`,
+          path: `bench/results/${phase}-${channel}-${backend.toLowerCase()}-preview.png`,
         });
         const api = await page.evaluate(async () => {
           const api = Reflect.get(window, '__fotoeditor');
@@ -198,6 +232,26 @@ try {
             },
             { kind: 'exposure', stops: 0.75, offset: 0, gamma: 1 },
             { kind: 'hue-saturation', hue: 20, saturation: 0.15, lightness: 0 },
+            { kind: 'vibrance', amount: 0.7 },
+            {
+              kind: 'color-balance',
+              shadows: [-0.3, 0.1, 0.4],
+              midtones: [0.2, -0.4, 0.1],
+              highlights: [0.3, 0.1, -0.2],
+              preserveLuminosity: true,
+            },
+            { kind: 'black-white', weights: [0.4, 0.8, 0.3, 0.7, -0.2, 1.1] },
+            { kind: 'invert' },
+            { kind: 'threshold', level: 128 },
+            { kind: 'posterize', levels: 4 },
+            {
+              kind: 'gradient-map',
+              stops: [
+                [0, 0.2, 0, 0.4],
+                [0.37, 1, 0.1, 0.2],
+                [1, 0.8, 1, 0.2],
+              ],
+            },
           ];
           const scenarios = [];
           const memories = [];
@@ -254,7 +308,7 @@ try {
   const assets = resolve('apps/web/dist/assets');
   const wasm = (await readdir(assets)).find((p) => p.endsWith('.wasm'));
   await writeFile(
-    'bench/results/p6-m2-preview-performance.json',
+    process.env.PERF_OUTPUT ?? `bench/results/${phase}-adjustment-preview-performance.json`,
     JSON.stringify(
       {
         measuredAt: new Date().toISOString(),
@@ -268,7 +322,7 @@ try {
           credit: 'NASA/JPL-Caltech/IPGP',
         },
         method:
-          'Hardware only. Resident 6000×4000 source, fitted view. Exposure/HSL controls run first: initial preparation and first render/GPU initialization are recorded separately, then 20 DOM slider input events per control are measured through completed React status and the following UI frame. Five settings then each have one first and ten warm API/present trials, reusing the visible source cache. Rust nearest-samples the visible source at bounded display resolution; final Apply uses full document resolution. Logical residency excludes allocator/browser/driver overhead.',
+          'Hardware only. Resident 6000×4000 source, fitted view. Eight representative controls run first (including gradient stop numeric input): initial preparation and first render/GPU initialization are recorded separately, then 20 DOM slider input events per control are measured through completed React status and the following UI frame. Twelve settings then each have one first and ten warm API/present trials, reusing the visible source cache. Rust nearest-samples the visible source at bounded display resolution; final Apply uses full document resolution. Logical residency excludes allocator/browser/driver overhead.',
         results,
       },
       null,

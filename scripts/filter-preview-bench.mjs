@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import os from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
+const phase = process.env.PERF_PHASE ?? 'p6-m4';
 const viewMode = process.env.PERF_VIEW ?? 'fit';
 if (!['fit', 'actual'].includes(viewMode)) throw new Error('PERF_VIEW must be fit or actual');
 const actualPixels = viewMode === 'actual';
@@ -99,6 +100,11 @@ try {
           { kind: 'unsharp-mask', field: 'amount', label: 'Sharpen amount slider', step: 0.1 },
           { kind: 'sharpen', field: 'amount', label: 'Sharpen amount slider', step: 0.1 },
           { kind: 'median', field: 'radius', label: 'Filter radius (px) slider', step: 1 },
+          { kind: 'motion-blur', field: 'angle', label: 'Filter angle (degrees) slider', step: 7 },
+          { kind: 'high-pass', field: 'radius', label: 'Filter radius (px) slider', step: 1 },
+          { kind: 'add-noise', field: 'amount', label: 'Noise amount slider', step: 0.025 },
+          { kind: 'emboss', field: 'amount', label: 'Emboss depth slider', step: 0.1 },
+          { kind: 'pixelate', field: 'size', label: 'Pixelate cell size (px) slider', step: 2 },
         ]) {
           await page.getByRole('checkbox', { name: 'Live filter preview' }).uncheck();
           await page.getByLabel('Filter', { exact: true }).selectOption(scenario.kind);
@@ -181,7 +187,7 @@ try {
           });
         }
         await page.screenshot({
-          path: `bench/results/p6-m3-${channel}-${backend.toLowerCase()}-${actualPixels ? 'actual-' : ''}preview.png`,
+          path: `bench/results/${phase}-${channel}-${backend.toLowerCase()}-${actualPixels ? 'actual-' : ''}preview.png`,
         });
         await page.getByRole('checkbox', { name: 'Live filter preview' }).uncheck();
         const api = await page.evaluate(async (actualPixels) => {
@@ -198,6 +204,17 @@ try {
             { kind: 'unsharp-mask', radius: actualPixels ? 64 : 3, amount: 1.3, threshold: 7 },
             { kind: 'sharpen', amount: 1.2 },
             { kind: 'median', radius: 5 },
+            { kind: 'motion-blur', radius: actualPixels ? 64 : 20, angle: 31 },
+            { kind: 'high-pass', radius: actualPixels ? 64 : 20 },
+            {
+              kind: 'add-noise',
+              amount: 0.4,
+              seed: 123,
+              monochrome: false,
+              distribution: 'gaussian',
+            },
+            { kind: 'emboss', radius: actualPixels ? 64 : 20, angle: -41, amount: 1.3 },
+            { kind: 'pixelate', size: 64 },
           ];
           const scenarios = [];
           const memories = [];
@@ -257,7 +274,7 @@ try {
   const worker = files.find((p) => p.startsWith('worker-') && p.endsWith('.js'));
   await writeFile(
     process.env.PERF_OUTPUT ??
-      `bench/results/p6-m3-preview-${actualPixels ? 'actual-' : ''}performance.json`,
+      `bench/results/${phase}-preview-${actualPixels ? 'actual-' : ''}performance.json`,
     JSON.stringify(
       {
         measuredAt: new Date().toISOString(),
@@ -272,7 +289,7 @@ try {
           credit: 'NASA/JPL-Caltech/IPGP',
         },
         method:
-          'Hardware only. Resident 6000×4000 source at the recorded view mode. Five filter controls run first: initial preparation and first render/GPU initialization are recorded separately, then 20 DOM slider input events per control are measured through completed React status and the following UI frame. Five filters then each have one first and ten warm API/present trials, reusing the visible source cache. Actual-pixel API cases use maximum convolution/median radii. Rust nearest-samples the visible source at bounded display resolution; final Apply uses full document resolution. Logical residency excludes allocator/browser/driver overhead.',
+          'Hardware only. Resident 6000×4000 source at the recorded view mode. Ten filter controls run first: initial preparation and first render/GPU initialization are recorded separately, then 20 DOM slider input events per control are measured through completed React status and the following UI frame. Ten filters then each have one first and ten warm API/present trials, reusing the visible source cache. Actual-pixel API cases use maximum supported radii and pixelate size. Rust nearest-samples the visible source at bounded display resolution; final Apply uses full document resolution. Logical residency excludes allocator/browser/driver overhead.',
         results,
       },
       null,
