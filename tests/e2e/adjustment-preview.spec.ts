@@ -272,7 +272,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       await page.goto(query);
       await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');
       await expect(page.getByTestId('gpu-backend')).toHaveText(backend);
-      const base = await page.evaluate(async () => {
+      const { base, revision } = await page.evaluate(async () => {
         const api = Reflect.get(window, '__fotoeditor') as EngineApi;
         const s = await api.newDocument(512, 128, 72);
         const base = s.layers.nodes[0].id;
@@ -292,16 +292,21 @@ for (const backend of ['WebGPU', 'WebGL2']) {
           properties: { ...node.properties, blend: 'multiply', opacity: 0.7 },
         });
         await api.selectLayer(base);
-        await api.selectionAction({
+        const selected = await api.selectionAction({
           kind: 'shape',
           shape: { kind: 'rectangle', x0: 128, y0: 32, x1: 384, y1: 96 },
           antialias: false,
           mode: 'new',
         });
         await api.interact([{ kind: 'actual', x: 0, y: 0, amount: 0 }]);
-        return base;
+        return { base, revision: selected.revision };
       });
-      await expect.poll(async () => (await state(page)).view.zoom).toBe(1);
+      await expect
+        .poll(async () => {
+          const s = await state(page);
+          return [s.revision, s.view.zoom];
+        })
+        .toEqual([revision, 1]);
       const before = await image(page);
       const history = (await state(page)).history.undo;
       const original = await whenIdle(page, () =>

@@ -13,7 +13,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       await page.goto(query);
       await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');
       await expect(page.getByTestId('gpu-backend')).toHaveText(backend);
-      await page.evaluate(async () => {
+      const revision = await page.evaluate(async () => {
         const api = Reflect.get(window, '__fotoeditor') as EngineApi;
         await api.newDocument(513, 3, 72);
         await api.selectionAction({ kind: 'fill', color: [128, 64, 0, 255] });
@@ -36,14 +36,20 @@ for (const backend of ['WebGPU', 'WebGL2']) {
           },
         });
         await api.selectionAction({ kind: 'none' });
-        await api.selectLayer(s.layers.nodes[1].id, true);
+        const selected = await api.selectLayer(s.layers.nodes[1].id, true);
         await api.interact([{ kind: 'actual', x: 0, y: 0, amount: 0 }]);
+        return selected.revision;
       });
       const snapshot = async () =>
         JSON.parse(
           (await page.getByTestId('gpu-canvas').getAttribute('data-snapshot'))!,
         ) as DocumentSnapshot;
-      await expect.poll(async () => (await snapshot()).view.zoom).toBe(1);
+      await expect
+        .poll(async () => {
+          const s = await snapshot();
+          return [s.revision, s.view.zoom];
+        })
+        .toEqual([revision, 1]);
       await whenIdle(page, () =>
         page.evaluate(
           async (settings) => {

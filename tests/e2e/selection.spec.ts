@@ -360,19 +360,25 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       test.setTimeout(180000);
       await page.goto('/?diagnostic=1&document=1' + (backend === 'WebGL2' ? '&gpu=webgl2' : ''));
       await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');
-      await page.evaluate(async () => {
+      const revision = await page.evaluate(async () => {
         const api = Reflect.get(window, '__fotoeditor') as EngineApi;
         await api.newDocument(512, 128, 72);
         await api.selectionAction({ kind: 'fill', color: [0, 255, 0, 255] });
-        await api.selectionAction({
+        const selected = await api.selectionAction({
           kind: 'shape',
           shape: { kind: 'rectangle', x0: 128, y0: 32, x1: 384, y1: 96 },
           mode: 'new',
           antialias: false,
         });
         await api.interact([{ kind: 'actual', x: 0, y: 0, amount: 0 }]);
+        return selected.revision;
       });
-      await expect.poll(async () => (await snap(page))?.view.zoom).toBe(1);
+      await expect
+        .poll(async () => {
+          const s = await snap(page);
+          return [s.revision, s.view.zoom];
+        })
+        .toEqual([revision, 1]);
       await page.getByRole('combobox', { name: 'Brush preset' }).selectOption('Pixel pencil');
       await page.getByRole('textbox', { name: 'Color hex' }).fill('#0000ff');
       const canvas = page.getByTestId('gpu-canvas');
@@ -578,12 +584,18 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       test.setTimeout(180000);
       await page.goto('/?diagnostic=1&document=1' + (backend === 'WebGL2' ? '&gpu=webgl2' : ''));
       await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');
-      await page.evaluate(async () => {
+      const revision = await page.evaluate(async () => {
         const api = Reflect.get(window, '__fotoeditor') as EngineApi;
-        await api.newDocument(128, 128, 72);
+        const s = await api.newDocument(128, 128, 72);
         await api.interact([{ kind: 'actual', x: 0, y: 0, amount: 0 }]);
+        return s.revision;
       });
-      await expect.poll(async () => (await snap(page))?.view.zoom).toBe(1);
+      await expect
+        .poll(async () => {
+          const s = await snap(page);
+          return [s.revision, s.view.zoom];
+        })
+        .toEqual([revision, 1]);
       const canvas = page.getByTestId('gpu-canvas');
       const box = (await canvas.boundingBox())!;
       const cx = box.x + box.width / 2,

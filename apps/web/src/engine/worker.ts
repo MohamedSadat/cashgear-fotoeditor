@@ -1219,6 +1219,7 @@ const api: EngineApi = {
     // queue old viewport/selection frames while they own admission, especially
     // on a slow adapter. A prepared live preview still needs one presentation
     // before it can release that admission slot.
+    const pendingPresentation = presentation;
     const presented =
       (!busy || presentation !== undefined) &&
       (dirty ||
@@ -1230,25 +1231,41 @@ const api: EngineApi = {
         ? engine.frame()
         : false;
     if (presented) dirty = false;
+    // Capture the state/dimensions that this frame actually submitted. Commands
+    // can change them while its asynchronous GPU fence waits.
+    const submitted = performance.now();
+    const state = snapshot();
+    const snapshotMs = performance.now() - submitted;
+    const width = engine.width(),
+      height = engine.height();
+    refining = state.refining > 0;
+    if (presented) {
+      // FramePump holds its slot until this RPC returns. Include GPU completion
+      // so animation cannot queue frames faster than a slow adapter draws them.
+      await engine.frame_settled();
+      if (disposed || !engine) throw new Error('Engine is unavailable');
+    }
     const rendered = performance.now();
     if (presented) {
       frames++;
-      presentation?.resolve();
-      presentation = undefined;
+      // A new preview can reach presentation while this frame's GPU fence
+      // waits. Only acknowledge the preview that was submitted in this frame.
+      if (presentation === pendingPresentation) {
+        presentation?.resolve();
+        presentation = undefined;
+      }
     }
-    const state = snapshot();
-    refining = state.refining > 0;
     state.timing = {
       paintMs: painted - start,
-      renderMs: rendered - painted,
-      snapshotMs: performance.now() - rendered,
+      renderMs: rendered - painted - snapshotMs,
+      snapshotMs,
     };
     return {
       presented,
       presentedAt: presented ? performance.timeOrigin + rendered : undefined,
       frames,
-      width: engine.width(),
-      height: engine.height(),
+      width,
+      height,
       snapshot: state,
     };
   },

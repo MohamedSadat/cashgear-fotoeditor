@@ -215,6 +215,9 @@ mod bridge {
                 )
                 .map_err(|error| JsValue::from_str(&error))
         }
+        pub fn frame_settled(&self) -> js_sys::Promise {
+            self.renderer.frame_settled()
+        }
         pub fn dispose(&self) {
             self.renderer.dispose();
             ERROR_CALLBACK.with(|callback| *callback.borrow_mut() = None);

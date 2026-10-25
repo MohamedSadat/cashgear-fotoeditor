@@ -17,24 +17,25 @@ tests, native/WASM clippy, Rust/JS formatting, TypeScript, ESLint, 16 Vitest cas
 and the 450-expression license inventory pass.
 
 All 24 measured Gaussian radius-20 applications on the resident 6000×4000 photo
-pass: worst API-return p95 1.480 seconds; visible p95 at most 1.636 seconds.
+pass: worst API-return p95 1.512 seconds; visible p95 at most 1.715 seconds.
 All 800 fitted/actual-pixel warm slider events pass 100 ms, with worst p95
-54.04 ms and maximum 63.19 ms. Actual-pixel API cases include maximum convolution
+64.60 ms and maximum 81.46 ms. Actual-pixel API cases include maximum convolution
 and median radii. Initial source/GPU preparation is recorded separately. Logical CPU
 peak is 304 MiB for Apply; preview peaks at 105.063 MiB CPU / 26.616 MiB GPU.
 These are serial hardware measurements on verified NVIDIA APIs, not software
-results. Release WASM is 3,485,650 bytes / gzip9 1,318,701 bytes.
+results. Release WASM is 3,485,823 bytes / gzip9 1,318,717 bytes.
 
 The initial 3.1–4.0-second Gaussian misses, WASM heap-growth profiling, later
 2.17-second Edge miss and opaque/SIMD correction are disclosed in P6-M3-REPORT.md.
 That report also records the corrected WebGL2 median translation and stale test
 baseline. Superseded raw evidence remains under `bench/results/p6-m3-*`.
 
-The full 204-case hardware and 149-case software regressions pass without
-failures, skips or retries, as do both hardware WebView2 APIs. Presentation and
-export-admission timing corrections pass 18 repeated software and eight hardware
-follow-ups; the first full software run's two failures are disclosed in the report.
-Final pushed CI/deployment and verification-artifact inspection are the remaining
+The current full 164-case software regression and 68 hardware feature cases pass
+without failures, skips or retries, as do both hardware and both software
+WebView2 APIs. The preceding worker also passed all 224 deployed hardware cases.
+The final deployment repeats that full suite. Earlier software fixture timing
+failures and their trace-based corrections are disclosed in the report.
+Final deployed hardware regression, pushed CI/deployment and artifact inspection are the remaining
 milestone gates; the completion message names their immutable run links.
 The first pushed CI run passed 146 cases, timed out the combined five-filter
 workflow and retried two selection fixtures. Trace-based corrections isolate
@@ -49,7 +50,16 @@ now pause during busy command work, while a prepared preview can still present.
 The changed worker passes 68 hardware and 102 repeated software feature cases,
 all 107 Rust tests and static/unit/license checks. Performance, full regression,
 desktop and exact-head CI/deployment evidence are refreshed before acceptance.
-See the report for both failed runs and diagnostic evidence.
+The third CI run passed 163 cases and exhausted the older selected-raster
+preview workflow's deadline. Its trace confirms cancellation completed, with
+19-58-second screenshots and a 31-second DOM read on the hosted software GPU.
+The frame pump now waits for submitted GPU work before releasing its RPC slot,
+bounding animated-selection submissions on slow adapters. Final checks and
+measurements are refreshed for this change. Four zoom-only fixtures also await
+their acknowledged revision; the first local fence run's stale baseline is
+preserved with its trace. Frame snapshots describe the submitted pixels, and
+an older frame cannot acknowledge a newly prepared preview during its wait.
+See the report for all failed runs and diagnostic evidence.
 P6 is in progress without `p6-filters`; M4 is not started. Its
 proposed scope is the remaining seven adjustments and five filters, followed by
 phase-wide validation. Stop before M4. The P5 Photoshop feather comparison and

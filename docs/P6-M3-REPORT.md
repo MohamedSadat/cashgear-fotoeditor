@@ -4,7 +4,8 @@ Work began on 2026-10-24 from synchronized main at `77ec974`, following the
 user's fresh-session request. Existing P6 decisions and the complete original
 roadmap section on printed pages 14-15 apply. Work remains directly on main,
 without agents or a worktree. Implementation and local acceptance are complete.
-Pushed CI/deployment remain the final milestone gates. M4 is not started;
+Expanded deployed hardware regression and pushed CI/deployment remain the final
+milestone gates. M4 is not started;
 M3 does not authorize the `p6-filters` phase tag.
 
 ## Delivered behavior
@@ -76,23 +77,24 @@ Independent float64 Gaussian tests cover canvas and tile edges. Browser cases
 also cover exact undo/redo, repeated Fade, persistence, atomic cancellation,
 mid-operation budget refusal and temporary/coalesced UI preview.
 
-The pre-CI installed Chrome/Edge hardware regression passes all 204 cases, without
-failures, skips or retries. The native Windows shell builds against the same
-frozen distribution and both hardware WebView2 APIs pass the expanded smoke:
+The current full software regression passes all 164 cases without failures,
+skips or retries, as do the 68 installed Chrome/Edge feature cases. The preceding
+worker also passed the complete 224-case deployed hardware suite; that full
+suite is repeated against the final deployment. The native Windows shell builds
+against the same frozen distribution and both hardware and both software
+WebView2 APIs pass the expanded smoke:
 all five previews/filters, exact undo, Fade endpoints and streamed persistence.
-WebView2 Runtime is 155.0.4283.62 with NVIDIA hardware verified. The pre-CI software
-regression passes all 149 cases without failures, skips or retries. The two
-presentation/admission corrections also pass 18 repeated software cases and all
-eight installed-browser hardware follow-ups. Completion requires green CI and
+WebView2 Runtime is 155.0.4283.62 with NVIDIA hardware verified for hardware runs;
+software results are explicitly labelled. Completion requires green CI and
 deployment for the pushed head and inspection of their verification artifacts.
 The task's completion message records immutable run links. No phase completion
 tag is authorized.
 
-Local release WASM is 3,485,650 bytes / gzip9 1,318,701 bytes, below 1,500,000.
+Local release WASM is 3,485,823 bytes / gzip9 1,318,717 bytes, below 1,500,000.
 The frozen measured distribution has SHA-256
-`faee92a2341085a363057aec120da833ec1ce2d455028cb63a20c9df1bdf4f3e`.
-The measured worker is `worker-XWG10rC8.js`, SHA-256
-`7edd4c2586101e877b2835d8bf463190223ad981f7bb287f9379bf83b9affff4`.
+`7dd758d5e31657aba6e8bea04084e5b5ea01a6b66e9e1fbbb97439c5de51ca18`.
+The measured worker is `worker-CsXEZ83I.js`, SHA-256
+`a8111a5f1adccbac5fb4beb0e3a40d25be870111addddc60e291e910d3180cb9`.
 Hardware measurements ran serially, without competing builds or GPU tests, on
 Windows 10 Pro, Xeon E5-2680 v3 at 2.50 GHz, about 32 GiB RAM and NVIDIA GTX 1650. Chrome is 156.0.8078.47; Edge is 156.0.4314.42. The WebGPU adapter is
 verified non-fallback NVIDIA; WebGL2 reports NVIDIA D3D11 ANGLE. Viewport is
@@ -112,21 +114,21 @@ largest sample.
 
 | Browser / API | First apply | Warm apply p50 / p95 | Warm visible p95 |
 | ------------- | ----------: | -------------------: | ---------------: |
-| Chrome WebGPU |     1.364 s |      1.287 / 1.395 s |          1.583 s |
-| Chrome WebGL2 |     1.224 s |      1.271 / 1.480 s |          1.636 s |
-| Edge WebGPU   |     1.334 s |      1.301 / 1.438 s |          1.635 s |
-| Edge WebGL2   |     1.330 s |      1.311 / 1.384 s |          1.550 s |
+| Chrome WebGPU |     1.433 s |      1.336 / 1.456 s |          1.685 s |
+| Chrome WebGL2 |     1.348 s |      1.364 / 1.512 s |          1.715 s |
+| Edge WebGPU   |     1.518 s |      1.291 / 1.452 s |          1.633 s |
+| Edge WebGL2   |     1.346 s |      1.338 / 1.371 s |          1.600 s |
 
 All 24 Gaussian radius-20 applications pass the two-second gate. Logical CPU
 peak including the allocator reservation is 304 MiB, GPU 16.11 MiB. Separate
-histogram warm p95 is at most 0.704 seconds.
+histogram warm p95 is at most 0.720 seconds.
 
 Preview measurements use the fitted resident photo and five filter controls.
 Twenty real DOM slider changes per control per backend measure input through
 completed React status and the following UI frame: 400 events total. All are
-below 100 ms, with worst p95 54.04 ms and maximum 63.19 ms. Separately, ten warm
-API trials per filter/backend have worst p95 38.83 ms. Initial Gaussian cache
-preparation plus first update is 0.48-0.53 seconds on WebGPU and 1.37-1.49
+below 100 ms, with worst p95 63.76 ms and maximum 64.61 ms. Separately, ten warm
+API trials per filter/backend have worst p95 43.19 ms. Initial Gaussian cache
+preparation plus first update is 0.53-0.60 seconds on WebGPU and 1.43-1.51
 seconds on WebGL2, including first shader/queue initialization; this is excluded
 from warm slider latency and remains visible as preparation. Other controls
 also record their first preparation separately. Logical preview residency peaks
@@ -136,9 +138,9 @@ Representative preview screenshots were visually inspected.
 
 An additional actual-pixel run exercises nonzero sharpening neighborhoods and
 maximum convolution radius 64 / median radius 5 API cases on all four hardware
-pairs. Its 400 DOM events have worst p95 47.66 ms and maximum 59.76 ms; warm API
-p95 is at most 39.46 ms. Initial Gaussian preparation plus first update is
-0.39-0.46 seconds on WebGPU and 1.27-1.33 seconds on WebGL2. Logical residency
+pairs. Its 400 DOM events have worst p95 64.60 ms and maximum 81.46 ms; warm API
+p95 is at most 52.10 ms. Initial Gaussian preparation plus first update is
+0.36-0.43 seconds on WebGPU and 1.38-1.40 seconds on WebGL2. Logical residency
 peaks at 105.063 MiB CPU / 26.508 MiB GPU. The combined 800 fitted/actual DOM
 events all pass 100 ms. Representative actual-pixel screenshots were inspected.
 Set `PERF_VIEW` to `actual` for this additional benchmark; its raw record is
@@ -146,7 +148,7 @@ Set `PERF_VIEW` to `actual` for this additional benchmark; its raw record is
 
 Raw records and reproducible scripts: `bench/results/p6-m3-filter-performance.json`
 (`pnpm bench:filters`), `p6-m3-preview-performance.json`
-(`pnpm bench:filter-preview`), and `p6-m3-scheduling-hardware.json`. The distribution
+(`pnpm bench:filter-preview`), and `p6-m3-fence-hardware.json`. The distribution
 remains frozen throughout browser verification. Software checks supply functional
 evidence only and are not included in these hardware timings.
 
@@ -203,6 +205,36 @@ Performance and complete regression evidence are refreshed for the changed worke
 The original pre-scheduling measurements remain in the three
 `p6-m3-before-scheduling-*-performance.json` records. The table and preview
 measurements above are the refreshed serial runs for the changed worker.
+
+The third [CI run 40166751118](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/runs/40166751118)
+again passed 163 cases without retries among the passing cases. An older
+selected-raster preview workflow exhausted its 120-second deadline. Its first
+trace confirms cancellation succeeded (`active: false`); canvas screenshots
+took 19 and 58 seconds. On retry, a DOM read took 31 seconds and the baseline
+screenshot took 42 seconds before the first preview. This exposed a separate
+queue bound: FramePump held one worker RPC, but that RPC returned immediately
+after GPU submission. Animated selections could continue submitting work faster
+than a slow adapter completed it. Frame RPCs now await an asynchronous GPU fence
+before releasing their slot. Progress and command cancellation can still run
+while the fence waits; renderer disposal cancels the wait. Preview cancellation
+does not cancel the ordinary frame fence. No test deadline or assertion changed.
+The complete 164-case local software suite and 224-case deployed hardware suite
+passed on the preceding worker; final regression and hardware measurements are
+refreshed for this additional correction before acceptance. Earlier timings are
+preserved in `p6-m3-before-fence-*-performance.json`.
+
+The first local fence regression passed 163 cases and failed a clipping fixture's
+history wait. Its trace read revision zero/undo zero after the fixture RPC had
+already acknowledged revision three (fill and selection, undo depth two). Zoom
+one also matched the old blank document, so input used a stale presented view.
+The four fixtures with that ambiguous zoom-only wait now also require their
+acknowledged document revision. Pixel and history assertions remain unchanged;
+the failed run and trace remain in `p6-m3-fence-software-stale-selection.*` and
+`p6-m3-fence-stale-selection-trace.zip`. A frame fence also captures its pending
+preview acknowledgement at submission, so it cannot release a newer preview
+that becomes ready during the asynchronous wait.
+Each frame captures its snapshot and dimensions before awaiting the fence, so
+metadata returned with that frame still describes the submitted pixels.
 
 ## Deferred scope and proposed next milestone
 

@@ -25,6 +25,7 @@ pub struct Renderer {
     filter: Option<crate::filter::FilterTile>,
     preview_visible: bool,
     preview_cancelled: Arc<std::sync::atomic::AtomicBool>,
+    disposed: Arc<std::sync::atomic::AtomicBool>,
 }
 
 async fn device_for(adapter: &Adapter) -> Result<(Device, Queue), String> {
@@ -212,6 +213,7 @@ impl Renderer {
             filter: None,
             preview_visible: false,
             preview_cancelled: Arc::new(std::sync::atomic::AtomicBool::new(true)),
+            disposed: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         };
         renderer.resize(renderer.canvas.width(), renderer.canvas.height());
         Ok(renderer)
@@ -446,6 +448,18 @@ impl Renderer {
     /// Initial pipeline work must finish before controls report ready. No image
     /// readback is needed; WebGL2 progresses its queue fence by async polling.
     pub fn preview_settled(&self, diagnostic_hold: bool) -> js_sys::Promise {
+        self.submitted_work_done(Some(self.preview_cancelled.clone()), diagnostic_hold)
+    }
+    /// Keep the UI frame pump bounded by completed GPU work, rather than just
+    /// command submission. Otherwise animated selections can flood slow queues.
+    pub fn frame_settled(&self) -> js_sys::Promise {
+        self.submitted_work_done(None, false)
+    }
+    fn submitted_work_done(
+        &self,
+        cancelled: Option<Arc<std::sync::atomic::AtomicBool>>,
+        diagnostic_hold: bool,
+    ) -> js_sys::Promise {
         use std::sync::atomic::{AtomicBool, Ordering};
         let complete = Arc::new(AtomicBool::new(false));
         let signal = complete.clone();
@@ -454,14 +468,20 @@ impl Renderer {
                 .on_submitted_work_done(move || signal.store(true, Ordering::Relaxed));
         }
         let device = self.device.clone();
-        let cancelled = self.preview_cancelled.clone();
+        let disposed = self.disposed.clone();
         wasm_bindgen_futures::future_to_promise(async move {
             while !complete.load(Ordering::Relaxed) {
-                if cancelled.load(Ordering::Relaxed) {
+                if disposed.load(Ordering::Relaxed) {
+                    return Err(wasm_bindgen::JsValue::from_str("Renderer disposed"));
+                }
+                if cancelled
+                    .as_ref()
+                    .is_some_and(|c| c.load(Ordering::Relaxed))
+                {
                     return Err(wasm_bindgen::JsValue::from_str("Preview cancelled"));
                 }
                 device.poll(PollType::Poll).map_err(|e| {
-                    wasm_bindgen::JsValue::from_str(&format!("Preview queue failed: {e}"))
+                    wasm_bindgen::JsValue::from_str(&format!("GPU queue failed: {e}"))
                 })?;
                 if complete.load(Ordering::Relaxed) {
                     break;
@@ -569,11 +589,15 @@ impl Renderer {
     }
 
     pub fn dispose(&self) {
+        self.disposed
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         self.preview_cancelled
             .store(true, std::sync::atomic::Ordering::Relaxed);
         self.device.destroy();
     }
     pub fn simulate_device_loss(&self) {
+        self.disposed
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         self.preview_cancelled
             .store(true, std::sync::atomic::Ordering::Relaxed);
         self.device.destroy();

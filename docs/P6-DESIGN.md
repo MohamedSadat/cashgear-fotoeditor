@@ -211,3 +211,11 @@ snapshots but do not submit ordinary viewport/selection redraws. Command GPU
 composition/readback must not compete with repeated old viewport frames. A
 prepared live preview's pending presentation is the exception: its frame must
 present before the preview can release admission and finish its GPU fence.
+Every presented frame also awaits submitted GPU work before returning its RPC.
+FramePump's single in-flight transaction therefore bounds GPU completion, not
+just submission, including animated selections on slow adapters. The wait uses
+asynchronous queue fences without pixel readback. Commands and cancellation can
+run while it waits; disposal releases pending waits, and preview cancellation
+is independent of the ordinary frame fence.
+Snapshots and backing dimensions are captured at submission, so a command that
+arrives during the GPU wait cannot attach newer metadata to the older frame.
