@@ -76,11 +76,11 @@ Independent float64 Gaussian tests cover canvas and tile edges. Browser cases
 also cover exact undo/redo, repeated Fade, persistence, atomic cancellation,
 mid-operation budget refusal and temporary/coalesced UI preview.
 
-The full installed Chrome/Edge hardware regression passes all 204 cases, without
+The pre-CI installed Chrome/Edge hardware regression passes all 204 cases, without
 failures, skips or retries. The native Windows shell builds against the same
 frozen distribution and both hardware WebView2 APIs pass the expanded smoke:
 all five previews/filters, exact undo, Fade endpoints and streamed persistence.
-WebView2 Runtime is 155.0.4283.62 with NVIDIA hardware verified. The full software
+WebView2 Runtime is 155.0.4283.62 with NVIDIA hardware verified. The pre-CI software
 regression passes all 149 cases without failures, skips or retries. The two
 presentation/admission corrections also pass 18 repeated software cases and all
 eight installed-browser hardware follow-ups. Completion requires green CI and
@@ -165,6 +165,22 @@ clicked Export while mask-view recomposition still held worker admission and
 then waited for a download that was refused. Its export helper now waits for
 idle admission. The trace and failed run remain in the raw evidence. These
 corrections retain the existing lock-input wait and brush-delivery fixes.
+
+The first pushed [CI run 40141591714](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/runs/40141591714)
+passed 146 browser cases, failed the combined five-filter workflow on its
+120-second software timeout, and retried two selection cases. The traces show
+successful filter/history/export calls progressing until the combined test's
+deadline, with later calls taking several seconds on the hosted software GPU.
+Each of the five filters now has its own seam/undo/redo test; Fade/persistence
+has a separate case. All sample assertions and timeout limits remain. The two
+selection fixtures now wait for autosave/recomposition admission before gesture
+boundaries and brush dabs. Their bounded software pointer delivery is preserved.
+This expands the full suites to 224 installed-browser and 164 software cases;
+final acceptance requires the expanded suites and pushed CI without retries.
+No processing or display implementation changed during these test corrections.
+The deployed build already passes 48 hardware adjustment/filter feature cases,
+with isolation headers and WASM MIME type verified. Final evidence records the
+last pushed head, CI/deployment links, artifacts and expanded suite results.
 
 ## Deferred scope and proposed next milestone
 

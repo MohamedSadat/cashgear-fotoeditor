@@ -36,6 +36,14 @@ export-admission timing corrections pass 18 repeated software and eight hardware
 follow-ups; the first full software run's two failures are disclosed in the report.
 Final pushed CI/deployment and verification-artifact inspection are the remaining
 milestone gates; the completion message names their immutable run links.
+The first pushed CI run passed 146 cases, timed out the combined five-filter
+workflow and retried two selection fixtures. Trace-based corrections isolate
+each filter case and await selection input admission, preserving all sample
+assertions and existing timeouts. The expanded suites contain 224 hardware and
+164 software cases; their final results and exact-head CI remain required.
+All 48 deployed hardware adjustment/filter feature cases and production
+isolation/WASM delivery checks already pass. No production code changed during
+these follow-ups. See the report for the failed run and diagnostic evidence.
 P6 is in progress without `p6-filters`; M4 is not started. Its
 proposed scope is the remaining seven adjustments and five filters, followed by
 phase-wide validation. Stop before M4. The P5 Photoshop feather comparison and
