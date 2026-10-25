@@ -228,6 +228,10 @@ for (const backend of ['WebGPU', 'WebGL2']) {
         });
       });
       await expect(page.getByTestId('operation-status')).toContainText('Filter ready');
+      const pausedFrame = await page.evaluate(() =>
+        (Reflect.get(window, '__fotoeditor') as EngineApi).frame(performance.now(), []),
+      );
+      expect(pausedFrame.presented).toBe(false);
       await page.evaluate(() => (Reflect.get(window, '__fotoeditor') as EngineApi).cancelJob());
       expect(await page.evaluate(async () => await Reflect.get(window, 'filterPending'))).toMatch(
         /cancelled/,

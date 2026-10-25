@@ -1215,13 +1215,18 @@ const api: EngineApi = {
     }
     // Input gets first use of the frame slot. A later preview request keeps an
     // active stroke on the display cadence even between spaced dabs.
+    // Commands already submit their own GPU composition/readback work. Do not
+    // queue old viewport/selection frames while they own admission, especially
+    // on a slow adapter. A prepared live preview still needs one presentation
+    // before it can release that admission slot.
     const presented =
-      dirty ||
-      refining ||
-      engine.selection_active() ||
-      engine.quick_mask_enabled() ||
-      (preview && engine.painting()) ||
-      engine.needs_render()
+      (!busy || presentation !== undefined) &&
+      (dirty ||
+        refining ||
+        engine.selection_active() ||
+        engine.quick_mask_enabled() ||
+        (preview && engine.painting()) ||
+        engine.needs_render())
         ? engine.frame()
         : false;
     if (presented) dirty = false;
