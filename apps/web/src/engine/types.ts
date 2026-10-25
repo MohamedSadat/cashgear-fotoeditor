@@ -20,6 +20,7 @@ export interface EngineInfo {
 export interface FrameResult extends PhysicalSize {
   presented: boolean;
   frames: number;
+  /** GPU submission time; the frame RPC still waits for GPU completion. */
   presentedAt?: number;
   snapshot?: DocumentSnapshot;
 }

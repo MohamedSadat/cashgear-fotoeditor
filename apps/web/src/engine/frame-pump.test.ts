@@ -88,7 +88,7 @@ describe('FramePump ownership and backpressure', () => {
       vi.useRealTimers();
     }
   });
-  it('uses worker presentation time when an RPC reply crosses a RAF boundary', async () => {
+  it('retains the submission slot while a GPU completion reply crosses a RAF boundary', async () => {
     let complete!: (value: FrameResult) => void;
     const api = {
       resize: vi.fn(),
@@ -108,6 +108,7 @@ describe('FramePump ownership and backpressure', () => {
     await settle();
     pump.input({ kind: 'stroke-sample', x: 1, y: 2, amount: 0 });
     pump.tick(116);
+    expect(api.frame).toHaveBeenCalledTimes(1);
     complete({ ...frame, presentedAt: performance.timeOrigin + 110 });
     await settle();
     await settle();

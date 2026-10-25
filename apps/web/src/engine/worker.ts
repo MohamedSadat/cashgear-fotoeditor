@@ -1326,7 +1326,10 @@ const api: EngineApi = {
     };
     return {
       presented,
-      presentedAt: presented ? performance.timeOrigin + rendered : undefined,
+      // The RPC still waits for GPU completion, but this frame used the slot
+      // in which it was submitted. A late fence must not consume the next
+      // RAF's input slot as well.
+      presentedAt: presented ? performance.timeOrigin + submitted : undefined,
       frames,
       width,
       height,
