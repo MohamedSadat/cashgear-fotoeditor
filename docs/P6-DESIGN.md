@@ -205,3 +205,9 @@ an interactive approximation; final Apply uses full-resolution document samples.
 The two panels share preview ownership. Document/view changes, cancellation and
 worker replacement release or rebuild temporary state; export/autosave only see
 committed content. CPU and GPU budgets include preview resources.
+
+While a command owns worker admission, frame ticks continue publishing progress
+snapshots but do not submit ordinary viewport/selection redraws. Command GPU
+composition/readback must not compete with repeated old viewport frames. A
+prepared live preview's pending presentation is the exception: its frame must
+present before the preview can release admission and finish its GPU fence.

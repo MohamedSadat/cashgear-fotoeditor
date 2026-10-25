@@ -67,7 +67,7 @@ work and the GPU queue fence; warm slider updates reuse those resources.
 ## Verification and performance
 
 All 107 Rust tests, native/WASM clippy, Rust/JS formatting, TypeScript, ESLint,
-16 Vitest cases and the 450-expression license inventory pass. The final 16
+16 Vitest cases and the 450-expression license inventory pass. The latest 68
 installed-browser feature cases pass without failures, retries or skips. They
 compare 56 complete GPU tiles with Rust references per browser/backend within
 one channel value, including opaque SIMD input, low/zero alpha, selections,
@@ -91,6 +91,8 @@ tag is authorized.
 Local release WASM is 3,485,650 bytes / gzip9 1,318,701 bytes, below 1,500,000.
 The frozen measured distribution has SHA-256
 `faee92a2341085a363057aec120da833ec1ce2d455028cb63a20c9df1bdf4f3e`.
+The measured worker is `worker-XWG10rC8.js`, SHA-256
+`7edd4c2586101e877b2835d8bf463190223ad981f7bb287f9379bf83b9affff4`.
 Hardware measurements ran serially, without competing builds or GPU tests, on
 Windows 10 Pro, Xeon E5-2680 v3 at 2.50 GHz, about 32 GiB RAM and NVIDIA GTX 1650. Chrome is 156.0.8078.47; Edge is 156.0.4314.42. The WebGPU adapter is
 verified non-fallback NVIDIA; WebGL2 reports NVIDIA D3D11 ANGLE. Viewport is
@@ -110,33 +112,33 @@ largest sample.
 
 | Browser / API | First apply | Warm apply p50 / p95 | Warm visible p95 |
 | ------------- | ----------: | -------------------: | ---------------: |
-| Chrome WebGPU |     1.247 s |      1.282 / 1.386 s |          1.550 s |
-| Chrome WebGL2 |     1.298 s |      1.264 / 1.389 s |          1.564 s |
-| Edge WebGPU   |     1.259 s |      1.286 / 1.314 s |          1.467 s |
-| Edge WebGL2   |     1.291 s |      1.244 / 1.316 s |          1.500 s |
+| Chrome WebGPU |     1.364 s |      1.287 / 1.395 s |          1.583 s |
+| Chrome WebGL2 |     1.224 s |      1.271 / 1.480 s |          1.636 s |
+| Edge WebGPU   |     1.334 s |      1.301 / 1.438 s |          1.635 s |
+| Edge WebGL2   |     1.330 s |      1.311 / 1.384 s |          1.550 s |
 
 All 24 Gaussian radius-20 applications pass the two-second gate. Logical CPU
 peak including the allocator reservation is 304 MiB, GPU 16.11 MiB. Separate
-histogram warm p95 is at most 0.677 seconds.
+histogram warm p95 is at most 0.704 seconds.
 
 Preview measurements use the fitted resident photo and five filter controls.
 Twenty real DOM slider changes per control per backend measure input through
 completed React status and the following UI frame: 400 events total. All are
-below 100 ms, with worst p95 47.82 ms and maximum 63.19 ms. Separately, ten warm
-API trials per filter/backend have worst p95 34.08 ms. Initial Gaussian cache
-preparation plus first update is 0.50-0.55 seconds on WebGPU and 1.35-1.42
+below 100 ms, with worst p95 54.04 ms and maximum 63.19 ms. Separately, ten warm
+API trials per filter/backend have worst p95 38.83 ms. Initial Gaussian cache
+preparation plus first update is 0.48-0.53 seconds on WebGPU and 1.37-1.49
 seconds on WebGL2, including first shader/queue initialization; this is excluded
 from warm slider latency and remains visible as preparation. Other controls
 also record their first preparation separately. Logical preview residency peaks
 at 105.063 MiB CPU / 26.616 MiB GPU. These measurements establish the specified
-workload, not every layer count, alpha distribution, zoom or radius. All four
-preview screenshots were visually inspected.
+workload, not every layer count, alpha distribution, zoom or radius.
+Representative preview screenshots were visually inspected.
 
 An additional actual-pixel run exercises nonzero sharpening neighborhoods and
 maximum convolution radius 64 / median radius 5 API cases on all four hardware
-pairs. Its 400 DOM events have worst p95 48.48 ms and maximum 64.50 ms; warm API
-p95 is at most 38.42 ms. Initial Gaussian preparation plus first update is
-0.38-0.45 seconds on WebGPU and 1.27-1.40 seconds on WebGL2. Logical residency
+pairs. Its 400 DOM events have worst p95 47.66 ms and maximum 59.76 ms; warm API
+p95 is at most 39.46 ms. Initial Gaussian preparation plus first update is
+0.39-0.46 seconds on WebGPU and 1.27-1.33 seconds on WebGL2. Logical residency
 peaks at 105.063 MiB CPU / 26.508 MiB GPU. The combined 800 fitted/actual DOM
 events all pass 100 ms. Representative actual-pixel screenshots were inspected.
 Set `PERF_VIEW` to `actual` for this additional benchmark; its raw record is
@@ -144,7 +146,7 @@ Set `PERF_VIEW` to `actual` for this additional benchmark; its raw record is
 
 Raw records and reproducible scripts: `bench/results/p6-m3-filter-performance.json`
 (`pnpm bench:filters`), `p6-m3-preview-performance.json`
-(`pnpm bench:filter-preview`), and `p6-m3-feature-hardware.json`. The distribution
+(`pnpm bench:filter-preview`), and `p6-m3-scheduling-hardware.json`. The distribution
 remains frozen throughout browser verification. Software checks supply functional
 evidence only and are not included in these hardware timings.
 
@@ -181,6 +183,26 @@ No processing or display implementation changed during these test corrections.
 The deployed build already passes 48 hardware adjustment/filter feature cases,
 with isolation headers and WASM MIME type verified. Final evidence records the
 last pushed head, CI/deployment links, artifacts and expanded suite results.
+
+The next [CI run 40163525830](https://github.com/MohamedSadat/cashgear-fotoeditor/actions/runs/40163525830)
+passed 163 of 164 browser cases with no flaky cases. The older combined
+adjustment workflow was refused by worker admission for over 60 seconds during
+Autosave; its retry progressed through successful history/export calls but
+exceeded the test deadline. The worker had continued submitting ordinary
+viewport/selection frames while command GPU composition/readback owned
+admission. These frames now pause while the worker is busy; progress snapshots
+continue. A pending prepared preview presentation is explicitly allowed so it
+can present and finish its GPU fence. A paused-filter assertion verifies that
+an ordinary frame is not presented, and existing live-preview cases verify the
+presentation exception. The scheduling change passes 68 hardware feature cases,
+102 repeated software feature cases, all 107 Rust tests, both clippy targets,
+TypeScript, ESLint, 16 Vitest cases and the 450-expression license inventory.
+The rebuilt Windows shell passes both hardware and both software WebView2 APIs
+with all five filters/previews, Fade endpoints, exact undo and project roundtrip.
+Performance and complete regression evidence are refreshed for the changed worker.
+The original pre-scheduling measurements remain in the three
+`p6-m3-before-scheduling-*-performance.json` records. The table and preview
+measurements above are the refreshed serial runs for the changed worker.
 
 ## Deferred scope and proposed next milestone
 

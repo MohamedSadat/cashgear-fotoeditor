@@ -11,15 +11,15 @@ Gaussian/box blur, unsharp mask, sharpen and median now have independent Rust
 kernels, bounded tile halos, selection clipping, exact commands and Fade jobs.
 GPU viewport preview, controls and worker/paging integration are implemented.
 Fade retains separate full and selected endpoints so blend changes apply
-fractional selection coverage once. The final 16 hardware feature cases pass,
+fractional selection coverage once. The latest 68 hardware feature cases pass,
 including 56 complete CPU/GPU tile comparisons per browser/backend. All 107 Rust
 tests, native/WASM clippy, Rust/JS formatting, TypeScript, ESLint, 16 Vitest cases
 and the 450-expression license inventory pass.
 
 All 24 measured Gaussian radius-20 applications on the resident 6000×4000 photo
-pass: worst API-return p95 1.389 seconds; visible p95 at most 1.564 seconds.
+pass: worst API-return p95 1.480 seconds; visible p95 at most 1.636 seconds.
 All 800 fitted/actual-pixel warm slider events pass 100 ms, with worst p95
-48.48 ms and maximum 64.50 ms. Actual-pixel API cases include maximum convolution
+54.04 ms and maximum 63.19 ms. Actual-pixel API cases include maximum convolution
 and median radii. Initial source/GPU preparation is recorded separately. Logical CPU
 peak is 304 MiB for Apply; preview peaks at 105.063 MiB CPU / 26.616 MiB GPU.
 These are serial hardware measurements on verified NVIDIA APIs, not software
@@ -42,8 +42,14 @@ each filter case and await selection input admission, preserving all sample
 assertions and existing timeouts. The expanded suites contain 224 hardware and
 164 software cases; their final results and exact-head CI remain required.
 All 48 deployed hardware adjustment/filter feature cases and production
-isolation/WASM delivery checks already pass. No production code changed during
-these follow-ups. See the report for the failed run and diagnostic evidence.
+isolation/WASM delivery checks passed before the final scheduling correction.
+The second CI run passed 163 cases, with one older adjustment workflow blocked
+by admission/Autosave and then timing out on retry. Ordinary viewport redraws
+now pause during busy command work, while a prepared preview can still present.
+The changed worker passes 68 hardware and 102 repeated software feature cases,
+all 107 Rust tests and static/unit/license checks. Performance, full regression,
+desktop and exact-head CI/deployment evidence are refreshed before acceptance.
+See the report for both failed runs and diagnostic evidence.
 P6 is in progress without `p6-filters`; M4 is not started. Its
 proposed scope is the remaining seven adjustments and five filters, followed by
 phase-wide validation. Stop before M4. The P5 Photoshop feather comparison and
