@@ -16,9 +16,42 @@ const names: Record<Kind, string> = {
   curves: 'Curves',
   exposure: 'Exposure',
   'hue-saturation': 'Hue / Saturation',
+  vibrance: 'Vibrance',
+  'color-balance': 'Color balance',
+  'black-white': 'Black & white',
+  invert: 'Invert',
+  threshold: 'Threshold',
+  posterize: 'Posterize',
+  'gradient-map': 'Gradient map',
 };
 function defaults(kind: Kind): Adjustment {
   switch (kind) {
+    case 'vibrance':
+      return { kind, amount: 0 };
+    case 'color-balance':
+      return {
+        kind,
+        shadows: [0, 0, 0],
+        midtones: [0, 0, 0],
+        highlights: [0, 0, 0],
+        preserveLuminosity: true,
+      };
+    case 'black-white':
+      return { kind, weights: [0.3, 0.89, 0.59, 0.7, 0.11, 0.41] };
+    case 'invert':
+      return { kind };
+    case 'threshold':
+      return { kind, level: 128 };
+    case 'posterize':
+      return { kind, levels: 4 };
+    case 'gradient-map':
+      return {
+        kind,
+        stops: [
+          [0, 0, 0, 0],
+          [1, 1, 1, 1],
+        ],
+      };
     case 'brightness-contrast':
       return { kind, brightness: 0, contrast: 0 };
     case 'levels':
@@ -42,6 +75,32 @@ function defaults(kind: Kind): Adjustment {
 type Field = [string, string, number, number, number, number];
 function fields(kind: Kind): Field[] {
   switch (kind) {
+    case 'vibrance':
+      return [['amount', 'Vibrance (%)', -100, 100, 1, 100]];
+    case 'threshold':
+      return [['level', 'Threshold level', 0, 255, 1, 1]];
+    case 'posterize':
+      return [['levels', 'Posterize levels', 2, 256, 1, 1]];
+    case 'color-balance':
+      return ['shadows', 'midtones', 'highlights'].flatMap((tone) =>
+        ['Cyan / Red', 'Magenta / Green', 'Yellow / Blue'].map((axis, i): Field => [
+          tone + '.' + i,
+          tone + ' ' + axis + ' (%)',
+          -100,
+          100,
+          1,
+          100,
+        ]),
+      );
+    case 'black-white':
+      return ['Reds', 'Yellows', 'Greens', 'Cyans', 'Blues', 'Magentas'].map((label, i): Field => [
+        'weights.' + i,
+        label + ' (%)',
+        -200,
+        200,
+        1,
+        100,
+      ]);
     case 'brightness-contrast':
       return [
         ['brightness', 'Brightness (%)', -100, 100, 1, 100],
@@ -70,6 +129,20 @@ function fields(kind: Kind): Field[] {
     default:
       return [];
   }
+}
+function valueAt(adjustment: Adjustment, field: string): number {
+  const [name, index] = field.split('.');
+  const value = (adjustment as unknown as Record<string, number | number[]>)[name];
+  return index === undefined ? (value as number) : (value as number[])[Number(index)];
+}
+function withValue(adjustment: Adjustment, field: string, value: number): Adjustment {
+  const [name, index] = field.split('.');
+  if (index === undefined) return { ...adjustment, [name]: value } as Adjustment;
+  const values = (adjustment as unknown as Record<string, number[]>)[name];
+  return {
+    ...adjustment,
+    [name]: values.map((v, i) => (i === Number(index) ? value : v)),
+  } as Adjustment;
 }
 function find(nodes: LayerNode[], id?: number): LayerNode | undefined {
   for (const node of nodes) {
@@ -269,14 +342,9 @@ export function AdjustmentPanel({ api, disabled }: { api?: EngineApi; disabled: 
                 min={min}
                 max={max}
                 step={step}
-                value={Number(
-                  ((adjustment as unknown as Record<string, number>)[field] * scale).toFixed(5),
-                )}
+                value={Number((valueAt(adjustment, field) * scale).toFixed(5))}
                 onChange={(e) =>
-                  setAdjustment({
-                    ...adjustment,
-                    [field]: Number(e.target.value) / scale,
-                  } as Adjustment)
+                  setAdjustment(withValue(adjustment, field, Number(e.target.value) / scale))
                 }
               />
               <input
@@ -285,16 +353,97 @@ export function AdjustmentPanel({ api, disabled }: { api?: EngineApi; disabled: 
                 min={min}
                 max={max}
                 step={step}
-                value={(adjustment as unknown as Record<string, number>)[field] * scale}
+                value={valueAt(adjustment, field) * scale}
                 onChange={(e) =>
-                  setAdjustment({
-                    ...adjustment,
-                    [field]: Number(e.target.value) / scale,
-                  } as Adjustment)
+                  setAdjustment(withValue(adjustment, field, Number(e.target.value) / scale))
                 }
               />
             </label>
           ))}
+          {adjustment.kind === 'color-balance' && (
+            <label className="check-label">
+              <input
+                type="checkbox"
+                checked={adjustment.preserveLuminosity}
+                onChange={(e) =>
+                  setAdjustment({ ...adjustment, preserveLuminosity: e.target.checked })
+                }
+              />
+              Preserve luminosity
+            </label>
+          )}
+          {adjustment.kind === 'gradient-map' && (
+            <div className="gradient-stops">
+              {adjustment.stops.map((stop, i) => (
+                <div key={i}>
+                  {stop.map((value, c) => (
+                    <label key={c}>
+                      {['Position', 'Red', 'Green', 'Blue'][c]} {i + 1}
+                      <input
+                        type="number"
+                        required
+                        min={0}
+                        max={100}
+                        step={0.1}
+                        disabled={c === 0 && (i === 0 || i === adjustment.stops.length - 1)}
+                        aria-label={`Gradient ${['position', 'red', 'green', 'blue'][c]} ${i + 1}`}
+                        value={Number((value * 100).toFixed(4))}
+                        onChange={(e) =>
+                          setAdjustment({
+                            ...adjustment,
+                            stops: adjustment.stops.map((p, j) =>
+                              j === i
+                                ? (p.map((v, k) =>
+                                    k === c ? Number(e.target.value) / 100 : v,
+                                  ) as [number, number, number, number])
+                                : p,
+                            ),
+                          })
+                        }
+                      />
+                    </label>
+                  ))}
+                  {i > 0 && i < adjustment.stops.length - 1 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAdjustment({
+                          ...adjustment,
+                          stops: adjustment.stops.filter((_, j) => j !== i),
+                        })
+                      }
+                    >
+                      Remove gradient stop {i + 1}
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button
+                type="button"
+                disabled={adjustment.stops.length >= 16}
+                onClick={() => {
+                  const stops = [...adjustment.stops];
+                  let index = 0;
+                  for (let i = 1; i < stops.length - 1; i++)
+                    if (stops[i + 1][0] - stops[i][0] > stops[index + 1][0] - stops[index][0])
+                      index = i;
+                  stops.splice(
+                    index + 1,
+                    0,
+                    stops[index].map((v, c) => (v + stops[index + 1][c]) / 2) as [
+                      number,
+                      number,
+                      number,
+                      number,
+                    ],
+                  );
+                  setAdjustment({ ...adjustment, stops });
+                }}
+              >
+                Add gradient stop
+              </button>
+            </div>
+          )}
           {adjustment.kind === 'curves' && (
             <>
               <svg viewBox="0 0 100 100" aria-label="Master RGB curve" role="img">

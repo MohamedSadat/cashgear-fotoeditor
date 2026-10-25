@@ -125,8 +125,8 @@ export interface EngineApi {
   clipboardImport(bytes: ArrayBuffer): Promise<void>;
   thumbnail(target: number): Promise<Uint8Array>;
   compareCompositors(): Promise<number[]>;
-  compareAdjustmentCompositors(): Promise<number[]>;
-  compareFilterCompositors(): Promise<number[]>;
+  compareAdjustmentCompositors(remaining?: boolean, index?: number): Promise<number[]>;
+  compareFilterCompositors(index?: number): Promise<number[]>;
   selectLayer(target: number, mask?: boolean, view?: boolean): Promise<DocumentSnapshot>;
   mergeLayers(kind: 'down' | 'visible' | 'flatten', target: number): Promise<DocumentSnapshot>;
   layerAction(action: LayerAction): Promise<DocumentSnapshot>;
@@ -168,7 +168,18 @@ export interface EngineApi {
 export type SpatialFilter =
   | { kind: 'gaussian' | 'box-blur' | 'median'; radius: number }
   | { kind: 'unsharp-mask'; radius: number; amount: number; threshold: number }
-  | { kind: 'sharpen'; amount: number };
+  | { kind: 'sharpen'; amount: number }
+  | { kind: 'motion-blur'; radius: number; angle: number }
+  | { kind: 'high-pass'; radius: number }
+  | {
+      kind: 'add-noise';
+      amount: number;
+      seed: number;
+      monochrome: boolean;
+      distribution: 'uniform' | 'gaussian';
+    }
+  | { kind: 'emboss'; radius: number; angle: number; amount: number }
+  | { kind: 'pixelate'; size: number };
 export type SelectionMode = 'new' | 'add' | 'subtract' | 'intersect';
 export type Adjustment =
   | { kind: 'brightness-contrast'; brightness: number; contrast: number }
@@ -182,7 +193,20 @@ export type Adjustment =
     }
   | { kind: 'curves'; points: [number, number][] }
   | { kind: 'exposure'; stops: number; offset: number; gamma: number }
-  | { kind: 'hue-saturation'; hue: number; saturation: number; lightness: number };
+  | { kind: 'hue-saturation'; hue: number; saturation: number; lightness: number }
+  | { kind: 'vibrance'; amount: number }
+  | {
+      kind: 'color-balance';
+      shadows: number[];
+      midtones: number[];
+      highlights: number[];
+      preserveLuminosity: boolean;
+    }
+  | { kind: 'black-white'; weights: number[] }
+  | { kind: 'invert' }
+  | { kind: 'threshold'; level: number }
+  | { kind: 'posterize'; levels: number }
+  | { kind: 'gradient-map'; stops: [number, number, number, number][] };
 export type AdjustmentPreviewTarget =
   | { kind: 'pixels' | 'layer'; target: number }
   | { kind: 'new-layer'; parent: number | null; index: number };

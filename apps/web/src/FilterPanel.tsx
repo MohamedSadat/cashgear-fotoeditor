@@ -9,6 +9,11 @@ const names: Record<Kind, string> = {
   'unsharp-mask': 'Unsharp mask',
   sharpen: 'Sharpen',
   median: 'Median',
+  'motion-blur': 'Motion blur',
+  'high-pass': 'High pass',
+  'add-noise': 'Add noise',
+  emboss: 'Emboss',
+  pixelate: 'Pixelate',
 };
 const modes = [
   'normal',
@@ -29,6 +34,12 @@ const modes = [
   'luminosity',
 ];
 function defaults(kind: Kind): SpatialFilter {
+  if (kind === 'motion-blur') return { kind, radius: 10, angle: 0 };
+  if (kind === 'high-pass') return { kind, radius: 3 };
+  if (kind === 'add-noise')
+    return { kind, amount: 0.1, seed: 1, monochrome: false, distribution: 'uniform' };
+  if (kind === 'emboss') return { kind, radius: 1, angle: 135, amount: 1 };
+  if (kind === 'pixelate') return { kind, size: 10 };
   if (kind === 'sharpen') return { kind, amount: 1 };
   if (kind === 'unsharp-mask') return { kind, radius: 3, amount: 1, threshold: 0 };
   return { kind, radius: kind === 'median' ? 1 : 3 };
@@ -92,7 +103,21 @@ export function FilterPanel({ api, disabled }: { api?: EngineApi; disabled: bool
   const fields: [string, string, number, number, number][] = [];
   if ('radius' in filter)
     fields.push(['radius', 'Filter radius (px)', 0, filter.kind === 'median' ? 5 : 64, 1]);
-  if ('amount' in filter) fields.push(['amount', 'Sharpen amount', 0, 5, 0.05]);
+  if ('amount' in filter)
+    fields.push([
+      'amount',
+      filter.kind === 'add-noise'
+        ? 'Noise amount'
+        : filter.kind === 'emboss'
+          ? 'Emboss depth'
+          : 'Sharpen amount',
+      0,
+      filter.kind === 'add-noise' ? 1 : 5,
+      0.01,
+    ]);
+  if ('angle' in filter) fields.push(['angle', 'Filter angle (degrees)', -180, 180, 1]);
+  if ('size' in filter) fields.push(['size', 'Pixelate cell size (px)', 1, 64, 1]);
+  if ('seed' in filter) fields.push(['seed', 'Noise seed', 0, 4294967295, 1]);
   if ('threshold' in filter) fields.push(['threshold', 'Unsharp threshold', 0, 255, 1]);
   return (
     <section className="filter-panel adjustment-panel" aria-label="Filters">
@@ -172,6 +197,31 @@ export function FilterPanel({ api, disabled }: { api?: EngineApi; disabled: bool
               ))}
             </label>
           ))}
+          {filter.kind === 'add-noise' && (
+            <>
+              <label className="check-label">
+                <input
+                  type="checkbox"
+                  checked={filter.monochrome}
+                  onChange={(e) => setFilter({ ...filter, monochrome: e.target.checked })}
+                />
+                Monochrome noise
+              </label>
+              <label>
+                Noise distribution
+                <select
+                  aria-label="Noise distribution"
+                  value={filter.distribution}
+                  onChange={(e) =>
+                    setFilter({ ...filter, distribution: e.target.value as 'uniform' | 'gaussian' })
+                  }
+                >
+                  <option value="uniform">Uniform</option>
+                  <option value="gaussian">Gaussian</option>
+                </select>
+              </label>
+            </>
+          )}
           <div className="adjustment-actions">
             <button type="button" onClick={() => setFilter(defaults(filter.kind))}>
               Reset filter

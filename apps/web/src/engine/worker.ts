@@ -449,30 +449,62 @@ async function runFilter(begin: (engine: Engine) => void) {
   }
 }
 const api: EngineApi = {
-  async compareFilterCompositors() {
+  async compareFilterCompositors(index?: number) {
     if (!diagnostic) throw new Error('Diagnostics are disabled');
     const e = requireIdle();
     busy = true;
     const errors: number[] = [];
     try {
-      for (const filter of [
-        { kind: 'gaussian', radius: 20 },
-        { kind: 'box-blur', radius: 20 },
-        { kind: 'unsharp-mask', radius: 3, amount: 1.3, threshold: 7 },
-        { kind: 'sharpen', amount: 1.2 },
-        { kind: 'median', radius: 1 },
-        { kind: 'gaussian', radius: 0 },
-      ]) {
+      const remaining: SpatialFilter[] = [
+        { kind: 'motion-blur', radius: 7, angle: 31 },
+        { kind: 'motion-blur', radius: 64, angle: -137 },
+        { kind: 'high-pass', radius: 3 },
+        { kind: 'high-pass', radius: 64 },
+        { kind: 'add-noise', amount: 0.4, seed: 123, monochrome: false, distribution: 'uniform' },
+        {
+          kind: 'add-noise',
+          amount: 0.4,
+          seed: 4294967295,
+          monochrome: true,
+          distribution: 'uniform',
+        },
+        { kind: 'add-noise', amount: 0.4, seed: 123, monochrome: false, distribution: 'gaussian' },
+        {
+          kind: 'add-noise',
+          amount: 0.4,
+          seed: 4294967295,
+          monochrome: true,
+          distribution: 'gaussian',
+        },
+        { kind: 'emboss', radius: 4, angle: -41, amount: 1.3 },
+        { kind: 'emboss', radius: 64, angle: 135, amount: 5 },
+        { kind: 'pixelate', size: 37 },
+        { kind: 'pixelate', size: 64 },
+        { kind: 'motion-blur', radius: 1, angle: 60 },
+        { kind: 'emboss', radius: 1, angle: 60, amount: 1 },
+      ];
+      for (const filter of index === undefined
+        ? [
+            { kind: 'gaussian', radius: 20 },
+            { kind: 'box-blur', radius: 20 },
+            { kind: 'unsharp-mask', radius: 3, amount: 1.3, threshold: 7 },
+            { kind: 'sharpen', amount: 1.2 },
+            { kind: 'median', radius: 1 },
+            { kind: 'gaussian', radius: 0 },
+          ]
+        : remaining.slice(index, index + 1)) {
         for (let tile = 0; tile < 9; tile++) {
           const bytes = (await e.filter_golden_begin(JSON.stringify(filter), tile)) as Uint8Array;
           errors.push(e.golden_compare(bytes));
           await yieldProjectTask();
         }
       }
-      for (const filter of [
-        { kind: 'gaussian', radius: 64 },
-        { kind: 'median', radius: 5 },
-      ]) {
+      for (const filter of index === undefined
+        ? [
+            { kind: 'gaussian', radius: 64 },
+            { kind: 'median', radius: 5 },
+          ]
+        : []) {
         const bytes = (await e.filter_golden_begin(JSON.stringify(filter), 0)) as Uint8Array;
         errors.push(e.golden_compare(bytes));
         await yieldProjectTask();
@@ -769,35 +801,67 @@ const api: EngineApi = {
       busy = false;
     }
   },
-  async compareAdjustmentCompositors() {
+  async compareAdjustmentCompositors(remaining = false, index?: number) {
     if (!diagnostic) throw new Error('Diagnostics are disabled');
     const e = requireIdle();
     busy = true;
     const errors: number[] = [];
-    const adjustments = [
-      { kind: 'brightness-contrast', brightness: 0.17, contrast: -0.3 },
-      {
-        kind: 'levels',
-        black: 0.12,
-        white: 0.85,
-        gamma: 1.7,
-        outputBlack: 0.04,
-        outputWhite: 0.94,
-      },
-      {
-        kind: 'curves',
-        points: [
-          [0, 0.9],
-          [0.3, 0.2],
-          [0.8, 0.7],
-          [1, 0.1],
-        ],
-      },
-      { kind: 'exposure', stops: 1.3, offset: -0.04, gamma: 0.8 },
-      { kind: 'hue-saturation', hue: -127, saturation: 0.27, lightness: -0.17 },
-    ];
+    const adjustments = remaining
+      ? [
+          { kind: 'vibrance', amount: 0.7 },
+          {
+            kind: 'color-balance',
+            shadows: [-0.3, 0.1, 0.4],
+            midtones: [0.2, -0.4, 0.1],
+            highlights: [0.3, 0.1, -0.2],
+            preserveLuminosity: true,
+          },
+          {
+            kind: 'color-balance',
+            shadows: [0.4, -0.7, 0.3],
+            midtones: [-0.6, 0.2, 0.4],
+            highlights: [0.3, -0.4, 0.7],
+            preserveLuminosity: false,
+          },
+          { kind: 'black-white', weights: [0.4, 0.8, 0.3, 0.7, -0.2, 1.1] },
+          { kind: 'invert' },
+          { kind: 'threshold', level: 128 },
+          { kind: 'posterize', levels: 5 },
+          {
+            kind: 'gradient-map',
+            stops: [
+              [0, 0.2, 0, 0.4],
+              [0.37, 1, 0.1, 0.2],
+              [1, 0.8, 1, 0.2],
+            ],
+          },
+        ]
+      : [
+          { kind: 'brightness-contrast', brightness: 0.17, contrast: -0.3 },
+          {
+            kind: 'levels',
+            black: 0.12,
+            white: 0.85,
+            gamma: 1.7,
+            outputBlack: 0.04,
+            outputWhite: 0.94,
+          },
+          {
+            kind: 'curves',
+            points: [
+              [0, 0.9],
+              [0.3, 0.2],
+              [0.8, 0.7],
+              [1, 0.1],
+            ],
+          },
+          { kind: 'exposure', stops: 1.3, offset: -0.04, gamma: 0.8 },
+          { kind: 'hue-saturation', hue: -127, saturation: 0.27, lightness: -0.17 },
+        ];
     try {
-      for (const adjustment of adjustments)
+      for (const adjustment of index === undefined
+        ? adjustments
+        : adjustments.slice(index, index + 1))
         for (let mode = 0; mode < 16; mode++)
           for (let scene = 0; scene < 5; scene++) {
             const bytes = (await e.golden_begin(
