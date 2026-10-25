@@ -1,5 +1,34 @@
 # Progress
 
+## P7 - Started; product questions pending
+
+Started 2026-10-25 at the user's explicit fresh-session request on clean main at
+`5a22595`, the verified `p6-filters` head. Read the required phase records and the
+complete original P7 roadmap on printed pages 15-16. PLAN.md now records the full
+acceptance scope; P7-DESIGN.md records processing/integration/verification contracts.
+The four unresolved questions (default interpolation, warp scope, crop retention,
+content-aware scale) were sent together. The first independent increment adds
+validated affine/projective Rust geometry and the four interpolation names,
+without selecting a default or changing document samples. Four geometry tests
+include 500 randomized inverse round-trips; see P7-DESIGN.md for the exact scope.
+
+All 119 Rust tests, native/WASM clippy, Rust/JS formatting, TypeScript, ESLint,
+16 Vitest cases, the 450-dependency license inventory and the production build
+pass. Release WASM is 3,588,418 bytes / gzip9 1,344,806 bytes. All 40 installed
+Chrome/Edge GPU/viewport regression cases pass on WebGPU/WebGL2, each on exactly
+one attempt, without failures, skips, retries or global errors. This is the
+applicable regression subset for unintegrated geometry, not full P7 acceptance.
+The Windows shell builds and WebView2 155.0.4283.62 passes the existing expanded
+smoke on hardware WebGPU (NVIDIA) and WebGL2 (NVIDIA GTX 1650 / D3D11). Raw evidence
+is `bench/results/p7-foundation-{rust-tests.log,browser-tests.json,desktop-smoke.json,
+wasm-size.json}`. No P7 pixel-resampling, live-transform preview, crop integration
+or hardware performance is claimed yet. This checkpoint is committed on main;
+remote checks are not P7 phase acceptance.
+
+P7 implementation and acceptance remain in progress; no `p7-transform` tag.
+P5's Photoshop feather reference is still pending without `p5-select`; the
+physical-pen deferral remains unchanged. No worktree or agents are used.
+
 ## P6 - M4 delivered; phase release gated by final verification
 
 Resumed 2026-10-25 in the explicitly requested fresh session from accepted M3

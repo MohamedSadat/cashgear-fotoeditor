@@ -200,7 +200,7 @@ acceptance are complete on 2026-10-25; see P6-M3-REPORT.md. Its task completion
 records the final pushed CI/deployment gate. M4 implementation and local acceptance
 are complete on 2026-10-25; see P6-M4-REPORT.md. The annotated p6-filters tag
 certifies final-head CI/deployment, inspected artifacts and full deployed hardware
-regression. P7 has not started.
+regression. P7 started on 2026-10-25 at the user's explicit request.
 
 1. M1: brightness/contrast, levels, curves, exposure and hue/saturation as bounded,
    selection-clipped destructive commands; exact undo/redo, locks, paging,
@@ -227,3 +227,54 @@ regression. P7 has not started.
   WebGPU/WebGL2, Windows/WebView2, size/license checks and remote CI/deployment.
   Publish p6-filters only after every P6 milestone and acceptance criterion passes.
   M1 is not phase completion. Stop before P7.
+
+## P7 acceptance
+
+Source: the complete P7 section on printed pages 15-16 of the original roadmap,
+read as text and rendered pages. P6 is complete at `5a22595`, with the remotely
+verified annotated `p6-filters` tag. P7 starts on main without agents/worktrees.
+See P7-DESIGN.md for implementation and evidence contracts.
+
+- Move tool with optional layer auto-select; arrow nudge by one pixel, Shift by ten.
+- Free transform of a raster layer or selected pixels: scale, rotate, skew,
+  distort and perspective, visible handles, Shift proportions, Enter commit and
+  Escape cancel. An uncommitted session always samples its immutable source.
+- Live GPU transform preview; one final CPU resample on commit. Nearest, bilinear,
+  bicubic and Lanczos3; fast_image_resize for axis-aligned scaling and an own
+  arbitrary-matrix sampler. Changing interpolation never edits document samples.
+- Image size and anchored canvas size dialogs; rotate canvas by 90/180/arbitrary
+  degrees and flip. Include masks, selections, nested layers and exact undo/redo.
+- Crop with ratio presets, straighten and rule-of-thirds overlay. Outside-pixel
+  retention behavior follows the unresolved product question below.
+- Rulers, editable guides and snapping in document coordinates, including rotated,
+  flipped and zoomed views. Persist document guide/crop metadata as appropriate.
+- A 10-degree rotation followed by its inverse within one uncommitted session
+  stays visually clean, with at most one resample on commit. Two committed
+  destructive transforms each resample, as already decided in DECISIONS.md.
+- A 50% Lanczos3 downscale matches an identifiable independent reference within
+  two values per channel. Cover canvas/tile boundaries, transparent edges and
+  masks; identity/integer translation/right-angle rotations preserve exact samples.
+- All crop, move, transform, size, rotation, flip and guide mutations use commands
+  with exact undo/redo. Cancellation, invalid/singular matrices, locks, paging
+  failures and budget refusal leave document/history/redo intact.
+- Preserve straight alpha/hidden RGB, paged generations, 768 MiB total logical CPU
+  and 128 MiB GPU budgets, 128 MiB image cap and 4 GiB streamed project cap. Include
+  retained transform sources, candidates, scratch and GPU previews in accounting.
+- Measure meaningful 6000x4000 hardware Apply and preview workloads with browser,
+  API, dataset, cold/warm conditions and percentile timings. The source specifies
+  no separate P7 millisecond target; do not invent a passed performance threshold.
+- Run formatting, native/WASM clippy, Cargo tests, TypeScript, ESLint, Vitest,
+  production build/size and license checks; installed Chrome/Edge WebGPU/WebGL2,
+  Windows/WebView2 on both APIs, exact-final-head remote CI/deployment and artifact
+  inspection for failures/skips/retries. Tag/push `p7-transform` only after every
+  criterion passes. Report shipped/deferred work, measurements and proposed P8;
+  stop before starting P8.
+- P5's identifiable Photoshop feather comparison remains pending without
+  `p5-select`. Physical Windows Ink validation retains its user-approved deferral.
+
+## P7 product questions (asked 2026-10-25; awaiting answers)
+
+1. Default interpolation: bicubic or Lanczos3?
+2. Warp and puppet warp in v1, or later?
+3. Crop deletes outside pixels, or hides them non-destructively?
+4. Content-aware scale outside v1?

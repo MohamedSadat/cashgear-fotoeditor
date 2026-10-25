@@ -1,5 +1,19 @@
 # Decisions
 
+## 2026-10-25 - P7 start and inherited boundaries
+
+- The user explicitly authorized starting P7 in this fresh session, directly on
+  main without worktrees or agents. P6 is complete at the remotely verified
+  `5a22595` / annotated `p6-filters` tag.
+- Read the complete original P7 section on printed pages 15-16 and recorded its
+  acceptance in PLAN.md. The four P7 product questions were asked together;
+  no answers or new product defaults have been assumed. Independent geometry
+  work can proceed while crop retention and optional feature scope are pending.
+- Preserve the existing decision that one resample applies to an uncommitted
+  transform session, not two separately committed destructive transforms.
+- Starting P7 neither waives P5's pending identifiable Photoshop feather
+  comparison nor changes the physical Windows Ink deferral. No `p5-select` tag.
+
 ## 2026-10-24 — P6 choices and sequencing
 
 - The user explicitly requested starting P6 in a fresh session while the P5
