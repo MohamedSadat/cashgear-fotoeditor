@@ -21,6 +21,13 @@ const exported = async (page: Page) =>
   );
 const pixel = (p: PNG, x: number, y = 1) =>
   Array.from(p.data.subarray((y * p.width + x) * 4, (y * p.width + x) * 4 + 4));
+const filterCases: [SpatialFilter, number, number][] = [
+  [{ kind: 'gaussian', radius: 3 }, 109, 79],
+  [{ kind: 'box-blur', radius: 1 }, 107, 85],
+  [{ kind: 'unsharp-mask', radius: 1, amount: 1, threshold: 0 }, 129, 63],
+  [{ kind: 'sharpen', amount: 1 }, 149, 43],
+  [{ kind: 'median', radius: 1 }, 96, 64],
+];
 async function fixture(page: Page, select = true) {
   return whenIdle(page, () =>
     page.evaluate(async (select) => {
@@ -65,57 +72,52 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       expect(Math.max(...errors)).toBeLessThanOrEqual(1);
     },
   );
-  test(
-    backend +
-      ' filters clip across tile seams, undo exactly, Fade from original endpoints and persist',
-    async ({ page }) => {
+  for (const [filter, at255, at256] of filterCases) {
+    test(`${backend} ${filter.kind} clips tile seams and restores exact undo/redo samples`, async ({
+      page,
+    }) => {
       await page.goto(query);
       await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');
       await expect(page.getByTestId('gpu-backend')).toHaveText(backend);
       const initial = await fixture(page);
       const before = await exported(page);
-      const cases: [SpatialFilter, number, number][] = [
-        [{ kind: 'gaussian', radius: 3 }, 109, 79],
-        [{ kind: 'box-blur', radius: 1 }, 107, 85],
-        [{ kind: 'unsharp-mask', radius: 1, amount: 1, threshold: 0 }, 129, 63],
-        [{ kind: 'sharpen', amount: 1 }, 149, 43],
-        [{ kind: 'median', radius: 1 }, 96, 64],
-      ];
-      for (const [filter, at255, at256] of cases) {
-        const next = await whenIdle(page, () =>
-          page.evaluate(
-            (f) => (Reflect.get(window, '__fotoeditor') as EngineApi).applyFilter(f),
-            filter,
-          ),
-        );
-        expect(next.history.undo).toBe(initial.history.undo + 1);
-        expect(next.canFade).toBe(true);
-        const image = await exported(page);
-        expect(pixel(image, 254)).toEqual(pixel(before, 254));
-        expect(pixel(image, 258)).toEqual(pixel(before, 258));
-        expect(pixel(image, 255)).toEqual([at255, at255, at255, 255]);
-        expect(pixel(image, 256)).toEqual([at256, at256, at256, 255]);
-        await whenIdle(page, () =>
-          page.evaluate(
-            (n) => (Reflect.get(window, '__fotoeditor') as EngineApi).historyJump(n),
-            initial.history.undo,
-          ),
-        );
-        expect((await exported(page)).data.equals(before.data)).toBe(true);
-        await whenIdle(page, () =>
-          page.evaluate(
-            (n) => (Reflect.get(window, '__fotoeditor') as EngineApi).historyJump(n),
-            next.history.undo,
-          ),
-        );
-        expect((await exported(page)).data.equals(image.data)).toBe(true);
-        await whenIdle(page, () =>
-          page.evaluate(
-            (n) => (Reflect.get(window, '__fotoeditor') as EngineApi).historyJump(n),
-            initial.history.undo,
-          ),
-        );
-      }
+      const next = await whenIdle(page, () =>
+        page.evaluate(
+          (f) => (Reflect.get(window, '__fotoeditor') as EngineApi).applyFilter(f),
+          filter,
+        ),
+      );
+      expect(next.history.undo).toBe(initial.history.undo + 1);
+      expect(next.canFade).toBe(true);
+      const image = await exported(page);
+      expect(pixel(image, 254)).toEqual(pixel(before, 254));
+      expect(pixel(image, 258)).toEqual(pixel(before, 258));
+      expect(pixel(image, 255)).toEqual([at255, at255, at255, 255]);
+      expect(pixel(image, 256)).toEqual([at256, at256, at256, 255]);
+      await whenIdle(page, () =>
+        page.evaluate(
+          (n) => (Reflect.get(window, '__fotoeditor') as EngineApi).historyJump(n),
+          initial.history.undo,
+        ),
+      );
+      expect((await exported(page)).data.equals(before.data)).toBe(true);
+      await whenIdle(page, () =>
+        page.evaluate(
+          (n) => (Reflect.get(window, '__fotoeditor') as EngineApi).historyJump(n),
+          next.history.undo,
+        ),
+      );
+      expect((await exported(page)).data.equals(image.data)).toBe(true);
+    });
+  }
+  test(
+    backend + ' Fade restores original endpoints, repeats blend settings and persists',
+    async ({ page }) => {
+      await page.goto(query);
+      await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');
+      await expect(page.getByTestId('gpu-backend')).toHaveText(backend);
+      await fixture(page);
+      const before = await exported(page);
       await whenIdle(page, () =>
         page.evaluate(() =>
           (Reflect.get(window, '__fotoeditor') as EngineApi).applyFilter({

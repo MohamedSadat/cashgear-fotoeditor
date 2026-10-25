@@ -10,6 +10,13 @@ const snap = async (page: Page) => {
   await expect(canvas).toHaveAttribute('data-snapshot', /"view":/);
   return JSON.parse((await canvas.getAttribute('data-snapshot'))!) as DocumentSnapshot;
 };
+const canvasIdle = async (page: Page) =>
+  expect
+    .poll(async () => {
+      const s = await snap(page);
+      return !s.operation && !s.painting && !s.selection.busy;
+    })
+    .toBe(true);
 const exported = async (page: Page) =>
   PNG.sync.read(
     Buffer.from(
@@ -59,6 +66,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       const move = async (x: number, y: number) =>
         page.mouse.move(...(await point(x, y)), { steps: 4 });
       await page.keyboard.press('l');
+      await canvasIdle(page);
       await move(8, 8);
       await page.mouse.down();
       await move(56, 8);
@@ -67,6 +75,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       await move(8, 8);
       await page.mouse.up();
       await expect.poll(async () => (await snap(page)).history.undo).toBe(1);
+      await canvasIdle(page);
       await page.keyboard.press('m');
       await page.keyboard.down('Alt');
       await move(24, 24);
@@ -75,13 +84,16 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       await page.mouse.up();
       await page.keyboard.up('Alt');
       await expect.poll(async () => (await snap(page)).history.undo).toBe(2);
+      await canvasIdle(page);
       await page.keyboard.press('Shift+l');
       for (const p of [
         [0, 0],
         [4, 0],
         [0, 4],
-      ])
+      ]) {
+        await canvasIdle(page);
         await page.mouse.click(...(await point(p[0], p[1])));
+      }
       await page.keyboard.press('Escape');
       expect((await snap(page)).history.undo).toBe(2);
       await page.keyboard.down('Shift');
@@ -89,9 +101,12 @@ for (const backend of ['WebGPU', 'WebGL2']) {
         [0, 0],
         [4, 0],
         [0, 4],
-      ])
+      ]) {
+        await canvasIdle(page);
         await page.mouse.click(...(await point(p[0], p[1])));
+      }
       await page.keyboard.up('Shift');
+      await canvasIdle(page);
       await page.keyboard.press('Enter');
       await expect.poll(async () => (await snap(page)).history.undo).toBe(3);
       await page.evaluate(async () =>
@@ -363,6 +378,8 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       const canvas = page.getByTestId('gpu-canvas');
       const box = (await canvas.boundingBox())!;
       const click = async (x: number, y: number, mutates = false) => {
+        // Autosave/recomposition owns input admission even after a stroke ends.
+        await canvasIdle(page);
         const undo = (await snap(page)).history.undo;
         const clientX = box.x + box.width / 2 + x - 256,
           clientY = box.y + box.height / 2 + y - 64;
@@ -390,6 +407,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
         } else await page.mouse.click(clientX, clientY);
         if (mutates) await expect.poll(async () => (await snap(page)).history.undo).toBe(undo + 1);
         await expect.poll(async () => (await snap(page)).painting).toBe(false);
+        await canvasIdle(page);
       };
       await click(100.5, 64.5);
       await click(256.5, 64.5, true);
