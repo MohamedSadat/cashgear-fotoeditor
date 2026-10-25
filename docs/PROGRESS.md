@@ -1,26 +1,46 @@
 # Progress
 
-## P6 - M4 implementation in progress
+## P6 - M4 delivered; phase release gated by final verification
 
 Resumed 2026-10-25 in the explicitly requested fresh session from accepted M3
 `e24b231`. Read AGENTS.md, phase records, all P6 milestone reports and the original
 roadmap P6 section on printed pages 14-15. M3 CI 40171088637 and deployment
 40171088675 are green. Work stays on main without a worktree or agents.
 
-The seven remaining color controls have Rust math, editable metadata, portable
-GPU compositing and UI controls (`32aef5e`, `92bc9a2`). Five remaining spatial
-filters and previews are in `073d008`. All 115 Rust tests and static/unit/license
-checks pass. The optimized release is 1,344,806 bytes gzipped. All 144 M4 hardware
-feature cases pass on installed Chrome/Edge and both APIs, without failures,
-skips or retries. The frozen Windows shell builds and both hardware WebView2 APIs pass the
-expanded smoke, including all seven remaining adjustments and ten filters.
-Phase-wide regression, serial hardware measurements and remote gates remain
-pending. See P6-M4-REPORT.md for numerical contracts and development corrections.
+All twelve adjustments and ten filters now have Rust processing, GPU previews,
+controls, exact commands and persistence. The seven remaining color controls
+are destructive or editable layers (`32aef5e`, `92bc9a2`); five remaining spatial
+filters are in `073d008`. All 115 Rust tests, 16 Vitest cases, native/WASM clippy,
+formatting, TypeScript, ESLint and the 450-expression license inventory pass.
+The optimized release is 3,588,418 bytes / gzip9 1,344,806 bytes.
 
-M3 frame completion fences, captured snapshots/preview acknowledgements and busy
-admission scheduling remain in place. No P6 tag is authorized yet. P5 Photoshop
-feather comparison remains pending without p5-select; physical pen validation
-retains its explicitly approved deferral. Stop before P7.
+The initial 144 M4 feature cases, full 368-case deployed hardware suite and
+272-case remote software suite passed without failures, skips or retries.
+Both hardware and software WebView2 APIs passed the expanded smoke. Initial
+CI 40177491873 and deployment 40177491972 were inspected at `a418109`.
+Supplemental probes then found the M3 frame timestamp used completion instead
+of submission time. `c53b386` corrects that slot accounting while preserving
+the completion fence, captured snapshot and preview acknowledgement, and busy
+scheduling. All unit checks and eight focused hardware admission/preview cases pass.
+
+Final-worker hardware measurements pass all 24 Gaussian radius-20 applications
+on the resident 6000×4000 photo (maximum Apply 1.55143 s) and all 2,240 warm
+control events (maximum 81.21 ms). Apply peaks at 304 MiB logical CPU; filter
+preview peaks at 105.063 MiB CPU / 26.616 MiB GPU. First-use shader work is
+separate and can exceed one second. Supplemental steady navigation measures
+59.25–60 fps; brush throughput is about 60 fps WebGPU / 48–51 fps WebGL2.
+Completed-GPU acknowledgement latency exceeds one frame; this is not a new
+pass of P2's earlier submission-latency target. Unrelated archive CPU test jobs
+were observed on the shared host; final runs are serial, not dedicated-host claims.
+See P6-M4-REPORT.md for tables, contracts, failed/superseded evidence and limits.
+
+The annotated `p6-filters` tag is the phase completion marker and records the final
+head, CI/deployment and verification evidence. It is pushed only after final-head
+CI/artifact inspection, all 368 deployed hardware cases without retries/skips,
+both hardware WebView2 backends and delivery checks pass. No P7 work has started.
+P5 Photoshop feather comparison remains pending without p5-select; physical pen
+validation retains its explicitly approved deferral. The proposed next phase is
+P7 transforms, crop, resampling and guides; stop before starting it.
 
 ## P6 — M3 implementation and local acceptance complete; phase in progress
 

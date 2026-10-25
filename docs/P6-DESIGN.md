@@ -219,6 +219,9 @@ run while it waits; disposal releases pending waits, and preview cancellation
 is independent of the ordinary frame fence.
 Snapshots and backing dimensions are captured at submission, so a command that
 arrives during the GPU wait cannot attach newer metadata to the older frame.
+The frame's timestamp also records submission rather than completion. Its RPC
+still waits for completed GPU work, but a fence reply that crosses a RAF boundary
+does not consume that later input slot. There is still only one transaction in flight.
 
 ## M4 numerical contract
 

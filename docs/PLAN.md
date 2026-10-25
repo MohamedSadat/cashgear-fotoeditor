@@ -197,7 +197,10 @@ M1 was accepted on 2026-10-24; see P6-M1-REPORT.md. M2 implementation and local
 acceptance are complete on 2026-10-24; see P6-M2-REPORT.md. Its task completion
 records the final pushed CI/deployment gate. M3 implementation and local
 acceptance are complete on 2026-10-25; see P6-M3-REPORT.md. Its task completion
-records the final pushed CI/deployment gate. M4 implementation is in progress from 2026-10-25.
+records the final pushed CI/deployment gate. M4 implementation and local acceptance
+are complete on 2026-10-25; see P6-M4-REPORT.md. The annotated p6-filters tag
+certifies final-head CI/deployment, inspected artifacts and full deployed hardware
+regression. P7 has not started.
 
 1. M1: brightness/contrast, levels, curves, exposure and hue/saturation as bounded,
    selection-clipped destructive commands; exact undo/redo, locks, paging,
@@ -213,7 +216,11 @@ records the final pushed CI/deployment gate. M4 implementation is in progress fr
 - Gaussian blur radius 20 on 6000×4000 must apply in under 2 seconds on measured
   single-threaded hardware. Preview must update within 100 ms of slider movement.
 - Golden tests must show no tile seams; adjustment layers must match destructive
-  results within ±1/channel. These criteria remain pending until their milestones.
+  results within ±1/channel. M1-M4 implement and verify these processing contracts.
+- Final-worker measurements: all 24 Gaussian calls pass (maximum 1.55143 s), and
+  all 2,240 warm control events pass (maximum 81.21 ms). First-use preparation,
+  slower additional filters and supplemental legacy performance limits are
+  reported separately in P6-M4-REPORT.md.
 - Preserve straight-alpha/hidden RGB, shared 768 MiB CPU / 128 MiB GPU budgets,
   paging, 128 MiB image limits and 4 GiB streamed project cap. No smart filters.
 - Every milestone runs applicable repository checks, installed Chrome/Edge on
