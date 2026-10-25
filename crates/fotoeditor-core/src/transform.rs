@@ -35,12 +35,13 @@ impl TransformRect {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Interpolation {
     Nearest,
     Bilinear,
     Bicubic,
+    #[default]
     Lanczos3,
 }
 

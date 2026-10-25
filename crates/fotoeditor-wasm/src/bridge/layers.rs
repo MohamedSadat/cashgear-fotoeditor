@@ -27,6 +27,15 @@ pub(super) struct LayerRuntime {
     memory: Option<Residency>,
 }
 impl LayerRuntime {
+    pub fn invalidate_geometry(&mut self) {
+        self.display = None;
+        self.render = None;
+        self.display_revision = None;
+        self.gpu_coord = None;
+        self.dirty = None;
+        self.incremental = false;
+        self.memory = None;
+    }
     pub fn selection_revision(&mut self, before: u32, after: u32) {
         if self.display_revision == Some(before) {
             self.display_revision = Some(after);
@@ -189,6 +198,7 @@ impl Engine {
         memory
     }
     pub(super) fn normalize_layer_target(&mut self) {
+        self.sync_view_geometry();
         let Some(doc) = &self.document else {
             return;
         };
@@ -258,6 +268,8 @@ impl Engine {
         let mut layer = Layer::raster("Mask stroke".into(), samples);
         layer.id = target;
         Ok(Document {
+            canvas: doc.canvas,
+            guides: Vec::new(),
             selection: doc.selection.clone(),
             width: doc.width,
             height: doc.height,
@@ -692,6 +704,8 @@ impl Engine {
             vec![bottom, top]
         };
         let doc = Document {
+            canvas: None,
+            guides: Vec::new(),
             selection: None,
             width: TILE_SIZE,
             height: TILE_SIZE,
@@ -1091,6 +1105,8 @@ impl Engine {
     pub fn legacy_project(&self) -> bool {
         self.document.as_ref().is_some_and(|d| {
             d.single_raster().is_ok()
+                && d.canvas.is_none()
+                && d.guides.is_empty()
                 && d.layers[0].name == "Layer 1"
                 && d.raster().tiles().len() as u64 * 262152 + 40 <= fotoeditor_io::MAX_FILE_BYTES
         })

@@ -2,6 +2,7 @@ struct View {
     screen: vec2<f32>, doc: vec2<f32>,
     pan: vec2<f32>, zoom: f32, rotation: f32,
     flip: f32, grid: f32, has_document: f32, padding: f32,
+    canvas: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> view: View;
 @group(1) @binding(0) var atlas: texture_2d<f32>;
@@ -11,7 +12,7 @@ fn to_doc(p:vec2<f32>)->vec2<f32> {
     let c=cos(view.rotation);let s=sin(view.rotation);
     return vec2<f32>((q.x*c+q.y*s)*view.flip,-q.x*s+q.y*c)+view.doc/2.0;
 }
-fn inside(p:vec2<f32>)->bool {return all(p>=vec2<f32>(0.0)) && all(p<view.doc);}
+fn inside(p:vec2<f32>)->bool {return all(p>=view.canvas.xy) && all(p<view.canvas.xy+view.canvas.zw);}
 @vertex fn fullscreen(@builtin(vertex_index) i:u32)->@builtin(position) vec4<f32> {
     let p=array<vec2<f32>,3>(vec2<f32>(-1.0,-1.0),vec2<f32>(3.0,-1.0),vec2<f32>(-1.0,3.0));
     return vec4<f32>(p[i],0.0,1.0);
@@ -28,6 +29,10 @@ fn inside(p:vec2<f32>)->bool {return all(p>=vec2<f32>(0.0)) && all(p<view.doc);}
     let edge=min(fract(d),vec2<f32>(1.0)-fract(d))*view.zoom;
     let a=select(0.0,0.22,min(edge.x,edge.y)<0.5);
     return vec4<f32>(vec3<f32>(0.0),a);
+}
+@fragment fn outside(@builtin(position) p:vec4<f32>)->@location(0) vec4<f32> {
+    if inside(to_doc(p.xy)) {discard;}
+    return vec4<f32>(48.0/255.0,52.0/255.0,59.0/255.0,1.0);
 }
 struct VertexOut {@builtin(position) position:vec4<f32>,@location(0) uv:vec2<f32>,@location(1) doc:vec2<f32>};
 @vertex fn tile_vertex(@builtin(vertex_index) i:u32,@location(0) rect:vec4<f32>,@location(1) uvrect:vec4<f32>)->VertexOut {

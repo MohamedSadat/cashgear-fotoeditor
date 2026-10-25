@@ -1,5 +1,21 @@
 # Decisions
 
+## 2026-10-25 - P7 product choices
+
+- Default transform/resize interpolation: Lanczos3. Nearest, bilinear and bicubic
+  remain available.
+- Warp and puppet warp are deferred until after v1. P7 still includes affine and
+  projective free transform: scale, rotate, skew, distort and perspective.
+- Crop hides outside pixels non-destructively. Retain outside raster/mask samples
+  through further edits, paging, project save/reopen and recovery, with exact undo.
+- Content-aware scale remains outside v1.
+- Implementation: a visible canvas window over the retained tile extent keeps
+  document-coordinate samples unchanged by an ordinary crop. Image export uses
+  the visible window; streamed schema 4 preserves both extents and guides, with
+  schema 2/3 read compatibility. Canvas growth and pixel transforms use bounded
+  candidate jobs. The retained extent and visible sides remain capped at 16,384;
+  operations that would exceed supported extent or memory are refused atomically.
+
 ## 2026-10-25 - P7 start and inherited boundaries
 
 - The user explicitly authorized starting P7 in this fresh session, directly on
@@ -7,8 +23,7 @@
   `5a22595` / annotated `p6-filters` tag.
 - Read the complete original P7 section on printed pages 15-16 and recorded its
   acceptance in PLAN.md. The four P7 product questions were asked together;
-  no answers or new product defaults have been assumed. Independent geometry
-  work can proceed while crop retention and optional feature scope are pending.
+  answers arrived after the independent geometry checkpoint; see the choices above.
 - Preserve the existing decision that one resample applies to an uncommitted
   transform session, not two separately committed destructive transforms.
 - Starting P7 neither waives P5's pending identifiable Photoshop feather

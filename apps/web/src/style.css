@@ -1204,6 +1204,77 @@ select {
 .histogram-panel {
   margin-top: 20px;
 }
+.geometry-panel details {
+  margin: 12px 0;
+}
+.geometry-panel fieldset {
+  border: 0;
+  padding: 10px 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.geometry-panel label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+}
+.geometry-panel label:has(input[type='checkbox']) {
+  flex-direction: row;
+  align-items: center;
+  margin: 8px 0;
+  justify-content: flex-start;
+  gap: 8px;
+}
+.geometry-panel input[type='checkbox'] {
+  width: 14px;
+  flex: none;
+  margin: 0;
+}
+.geometry-panel input[type='number'],
+.geometry-panel select {
+  width: 100%;
+  min-width: 0;
+}
+.geometry-panel button {
+  font-size: 11px;
+  padding: 7px;
+}
+.guide-row {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+.geometry-overlay {
+  z-index: 1;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: hidden;
+}
+.geometry-overlay path {
+  fill: none;
+  stroke-width: 1;
+}
+.geometry-overlay .document-guide {
+  stroke: #53c4f4;
+}
+.geometry-overlay .ruler-tick {
+  stroke: #f4eadc;
+}
+.geometry-overlay text {
+  fill: #f4eadc;
+  stroke: #20242a;
+  paint-order: stroke;
+  stroke-width: 3px;
+  font: 10px sans-serif;
+}
 .brush-panel,
 .history-panel,
 .recovery-status {

@@ -7,6 +7,7 @@ import { LayerPanel } from './LayerPanel';
 import { SelectionControls } from './SelectionControls';
 import { AdjustmentPanel } from './AdjustmentPanel';
 import { FilterPanel } from './FilterPanel';
+import { GeometryPanel } from './GeometryPanel';
 import { useSelection } from './selection-state';
 import { useBrush } from './brush-state';
 import { updateWorkspace, useWorkspace } from './state';
@@ -143,7 +144,7 @@ export function App() {
           layers[0].properties.passThrough ||
           layers[0].properties.clipped ||
           Object.values(layers[0].properties.locks).some(Boolean));
-      if (layered || doc.tiles * 262152 + 40 > 128 * 1048576) {
+      if (layered || doc.cropped || doc.guides?.length || doc.tiles * 262152 + 40 > 128 * 1048576) {
         const picker = Reflect.get(window, 'showSaveFilePicker') as
           ((options: object) => Promise<FileSystemFileHandle>) | undefined;
         if (!picker)
@@ -471,6 +472,14 @@ export function App() {
         >
           <nav className="inspector-index" aria-label="Inspector sections">
             <button
+              aria-label="Show canvas section"
+              onClick={() =>
+                document.querySelector('.geometry-panel')?.scrollIntoView({ block: 'start' })
+              }
+            >
+              Canvas
+            </button>
+            <button
               aria-label="Show filters section"
               onClick={() =>
                 document.querySelector('.filter-panel')?.scrollIntoView({ block: 'start' })
@@ -512,6 +521,11 @@ export function App() {
             </button>
           </nav>
           <BrushPanel />
+          <div className="section-divider" />
+          <GeometryPanel
+            api={engineApi}
+            disabled={status !== 'ready' || working || painting || !doc}
+          />
           <div className="section-divider" />
           <HistoryPanel api={engineApi} disabled={status !== 'ready' || working || painting} />
           <div className="section-divider" />

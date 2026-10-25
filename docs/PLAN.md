@@ -244,8 +244,8 @@ See P7-DESIGN.md for implementation and evidence contracts.
   arbitrary-matrix sampler. Changing interpolation never edits document samples.
 - Image size and anchored canvas size dialogs; rotate canvas by 90/180/arbitrary
   degrees and flip. Include masks, selections, nested layers and exact undo/redo.
-- Crop with ratio presets, straighten and rule-of-thirds overlay. Outside-pixel
-  retention behavior follows the unresolved product question below.
+- Non-destructive crop with ratio presets, straighten and rule-of-thirds overlay.
+  Retain outside pixels through paging, project save/reopen and recovery.
 - Rulers, editable guides and snapping in document coordinates, including rotated,
   flipped and zoomed views. Persist document guide/crop metadata as appropriate.
 - A 10-degree rotation followed by its inverse within one uncommitted session
@@ -272,9 +272,9 @@ See P7-DESIGN.md for implementation and evidence contracts.
 - P5's identifiable Photoshop feather comparison remains pending without
   `p5-select`. Physical Windows Ink validation retains its user-approved deferral.
 
-## P7 product questions (asked 2026-10-25; awaiting answers)
+## P7 product questions (answered 2026-10-25)
 
-1. Default interpolation: bicubic or Lanczos3?
-2. Warp and puppet warp in v1, or later?
-3. Crop deletes outside pixels, or hides them non-destructively?
-4. Content-aware scale outside v1?
+1. Lanczos3 default; the other three interpolation modes remain available.
+2. Warp and puppet warp after v1; affine/projective free transform is in P7.
+3. Hide outside pixels non-destructively, including across project/recovery saves.
+4. Content-aware scale outside v1.

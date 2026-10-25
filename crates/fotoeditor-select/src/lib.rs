@@ -9,3 +9,5 @@ pub use fill::*;
 pub use mask::*;
 pub use shapes::*;
 pub use wand::*;
+#[cfg(test)]
+mod canvas_tests;

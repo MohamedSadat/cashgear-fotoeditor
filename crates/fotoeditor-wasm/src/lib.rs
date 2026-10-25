@@ -3,6 +3,7 @@
 mod bridge {
     mod adjustments;
     mod filters;
+    mod geometry;
     mod layers;
     mod preview;
     mod selection;
@@ -52,11 +53,28 @@ mod bridge {
         ReplaceDocument(Document),
     }
     impl Engine {
+        fn sync_view_geometry(&mut self) {
+            if let Some(doc) = &self.document {
+                if self.view.document_width != doc.width as f64
+                    || self.view.document_height != doc.height as f64
+                    || self.view.canvas != doc.canvas
+                {
+                    self.view.document_width = doc.width as f64;
+                    self.view.document_height = doc.height as f64;
+                    self.view.canvas = doc.canvas;
+                    self.view.fit();
+                    self.renderer.clear_tiles();
+                    self.renderer.clear_selection();
+                    self.layered.invalidate_geometry();
+                }
+            }
+        }
         fn execute(&mut self, command: SessionCommand) {
             match command {
                 SessionCommand::ReplaceDocument(doc) => {
                     self.view.document_width = doc.width as f64;
                     self.view.document_height = doc.height as f64;
+                    self.view.canvas = doc.canvas;
                     self.view.rotation = 0.0;
                     self.view.flipped = false;
                     self.view.fit();
@@ -169,6 +187,7 @@ mod bridge {
             self.view.height = self.renderer.height() as f64 / self.dpr;
         }
         pub fn frame(&mut self) -> Result<bool, JsValue> {
+            self.sync_view_geometry();
             // Rendering may prepare display/selection scratch. Refresh the
             // filter's incremental residency bound after every UI frame.
             if self.adjusted.filter.scratch_bytes() > 0 {
@@ -500,9 +519,7 @@ mod bridge {
             let p = self.view.screen_to_document(x, y);
             self.document
                 .as_ref()
-                .filter(|d| {
-                    p.0 >= 0.0 && p.1 >= 0.0 && p.0 < d.width as f64 && p.1 < d.height as f64
-                })
+                .filter(|_| self.view.inside_canvas(p.0, p.1))
                 .map_or_else(Vec::new, |d| {
                     self.layered
                         .display
@@ -682,12 +699,13 @@ mod bridge {
         }
         pub fn cursor(&self, x: f64, y: f64) -> Vec<f64> {
             let p = self.view.screen_to_document(x, y);
-            vec![p.0, p.1]
+            let rect = self.view.canvas_rect();
+            vec![p.0 - rect.x, p.1 - rect.y]
         }
         pub fn snapshot(&self) -> String {
             let r = self.residency();
             let v = &self.view;
-            serde_json::json!({"document":self.document.as_ref().map(|d|serde_json::json!({"width":d.width,"height":d.height,"dpi":d.dpi,"tiles":d.tile_count()})),
+            serde_json::json!({"document":self.document.as_ref().map(|d| { let rect=d.canvas_rect(); serde_json::json!({"width":rect.width,"height":rect.height,"cropped":d.canvas.is_some(),"originX":rect.x,"originY":rect.y,"retainedWidth":d.width,"retainedHeight":d.height,"guides":d.guides,"dpi":d.dpi,"tiles":d.tile_count()}) }),
                 "canFade":self.filter_can_fade(),
                 "adjustmentPreview":{"cached":self.preview_ready(),"active":self.preview_valid() && self.adjusted.preview.as_ref().is_some_and(|p| (p.settings.is_some() || p.filter.is_some()) && p.next == p.job.output.width.div_ceil(256)*p.job.output.height.div_ceil(256))},
                 "layers":self.layer_json(),

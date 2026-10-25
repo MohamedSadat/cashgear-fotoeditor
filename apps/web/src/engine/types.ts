@@ -49,7 +49,18 @@ export interface DocumentSnapshot {
   contentRevision: number;
   operation?: string;
   recovery?: RecoveryStatus;
-  document: { width: number; height: number; dpi: number; tiles: number } | null;
+  document: {
+    width: number;
+    height: number;
+    dpi: number;
+    tiles: number;
+    cropped?: boolean;
+    originX?: number;
+    originY?: number;
+    retainedWidth?: number;
+    retainedHeight?: number;
+    guides?: Guide[];
+  } | null;
   view: {
     zoom: number;
     rotation: number;
@@ -105,6 +116,7 @@ export interface Interaction {
   sample?: [number, number, number, number, number, number];
 }
 export interface EngineApi {
+  geometryMetadata(action: GeometryMetadata): Promise<DocumentSnapshot>;
   applyFilter(filter: SpatialFilter): Promise<DocumentSnapshot>;
   fadeFilter(opacity: number, blend: string): Promise<DocumentSnapshot>;
   previewFilter(filter: SpatialFilter, target: number): Promise<AdjustmentPreviewTiming>;
@@ -165,6 +177,18 @@ export interface EngineApi {
   exportPng(): Promise<Uint8Array>;
   cancelJob(): boolean | Promise<boolean>;
 }
+export interface Guide {
+  axis: 'horizontal' | 'vertical';
+  position: number;
+}
+export interface CanvasRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+export type GeometryMetadata =
+  { kind: 'crop'; rect: CanvasRect | null } | { kind: 'guides'; guides: Guide[] };
 
 export type SpatialFilter =
   | { kind: 'gaussian' | 'box-blur' | 'median'; radius: number }

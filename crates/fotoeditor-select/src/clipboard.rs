@@ -56,6 +56,7 @@ impl<'a, P: Pixel> ReadRegion<'a, P> {
     }
 }
 pub struct CopyJob {
+    canvas: Option<CanvasRect>,
     pub source: Arc<TileSurface<Rgba8>>,
     selection: Selection,
     pub output: Option<ClipboardImage>,
@@ -65,6 +66,27 @@ pub struct CopyJob {
     available: u64,
 }
 impl CopyJob {
+    pub fn in_canvas(
+        source: Arc<TileSurface<Rgba8>>,
+        selection: Selection,
+        canvas: Option<CanvasRect>,
+        available: u64,
+    ) -> Result<Self, String> {
+        let Some(rect) = canvas else {
+            return Self::new(source, selection, available);
+        };
+        rect.validate(source.width, source.height)?;
+        let selection = selection.or_else(|| {
+            Some(Arc::new(TileSurface::with_default(
+                source.width,
+                source.height,
+                Gray8(255),
+            )))
+        });
+        let mut job = Self::new(source, selection, available)?;
+        job.canvas = Some(rect);
+        Ok(job)
+    }
     pub fn new(
         source: Arc<TileSurface<Rgba8>>,
         selection: Selection,
@@ -75,6 +97,7 @@ impl CopyJob {
             let count = source.width.div_ceil(TILE_SIZE) * source.height.div_ceil(TILE_SIZE);
             let bounds = [0, 0, source.width, source.height];
             return Ok(Self {
+                canvas: None,
                 source: source.clone(),
                 selection,
                 output: Some(ClipboardImage {
@@ -103,6 +126,7 @@ impl CopyJob {
             [0, 0, source.width, source.height]
         };
         let mut job = Self {
+            canvas: None,
             source,
             selection,
             output: None,
@@ -202,6 +226,12 @@ impl CopyJob {
             let t = s.tiles().get(&c).map(|t| t.pin()).transpose()?;
             for y in 0..TILE_SIZE.min(s.height - c.1 * TILE_SIZE) {
                 for x in 0..TILE_SIZE.min(s.width - c.0 * TILE_SIZE) {
+                    if self
+                        .canvas
+                        .is_some_and(|r| !r.contains(c.0 * TILE_SIZE + x, c.1 * TILE_SIZE + y))
+                    {
+                        continue;
+                    }
                     if t.as_ref()
                         .map_or(s.default.0, |t| t.pixels[(y * TILE_SIZE + x) as usize].0)
                         > 0
@@ -270,12 +300,13 @@ impl PasteJob {
         if available < 2 * 1024 * 1024 {
             return Err("Not enough memory for paste".into());
         }
+        let rect = document.canvas_rect();
         let offset = if in_place {
             image.origin
         } else {
             [
-                (document.width as i32 - image.samples.width as i32) / 2,
-                (document.height as i32 - image.samples.height as i32) / 2,
+                rect.x as i32 + (rect.width as i32 - image.samples.width as i32) / 2,
+                rect.y as i32 + (rect.height as i32 - image.samples.height as i32) / 2,
             ]
         };
         Ok(Self {

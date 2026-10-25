@@ -370,7 +370,7 @@ pub struct LayerCommand {
     label: &'static str,
     empty: bool,
 }
-fn equivalent(a: &[Layer], b: &[Layer]) -> bool {
+pub(crate) fn equivalent(a: &[Layer], b: &[Layer]) -> bool {
     a.len() == b.len()
         && a.iter().zip(b).all(|(a, b)| {
             a.id == b.id

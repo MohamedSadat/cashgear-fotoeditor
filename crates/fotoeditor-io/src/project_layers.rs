@@ -43,6 +43,10 @@ struct Manifest {
     dpi: f64,
     blend_space: String,
     layers: Vec<Node>,
+    #[serde(default)]
+    canvas: Option<fotoeditor_core::CanvasRect>,
+    #[serde(default)]
+    guides: Vec<fotoeditor_core::Guide>,
 }
 fn legacy_schema() -> u32 {
     2
@@ -266,7 +270,7 @@ pub struct LayerProjectWriter {
 }
 impl LayerProjectWriter {
     pub fn new(document: &Document, residency: Residency) -> Result<Self, String> {
-        validate_size(document.width, document.height, document.dpi)?;
+        document.validate_geometry()?;
         validate_layers(&document.layers, document.width, document.height)?;
         // Bounded manifest plus framed output/input/bridge reservation.
         residency.check_cpu(LAYER_PROJECT_SCRATCH)?;
@@ -283,12 +287,14 @@ impl LayerProjectWriter {
             node: 0,
         };
         let manifest = Manifest {
-            schema: 3,
+            schema: 4,
             width: document.width,
             height: document.height,
             dpi: document.dpi,
             blend_space: "srgb".into(),
             layers: builder.nodes(&document.layers),
+            canvas: document.canvas,
+            guides: document.guides.clone(),
         };
         let mut output = BoundedManifest(Vec::with_capacity(PROJECT_CHUNK_BYTES));
         serde_json::to_writer(&mut output, &manifest).map_err(|e| e.to_string())?;
@@ -409,9 +415,20 @@ impl LayerProjectReader {
                     let manifest: Manifest = serde_json::from_slice(&record.payload)
                         .map_err(|e| format!("Invalid layer manifest: {e}"))?;
                     validate_size(manifest.width, manifest.height, manifest.dpi)?;
-                    if !(2..=3).contains(&manifest.schema) {
+                    if !(2..=4).contains(&manifest.schema) {
                         return Err("Unsupported layer manifest schema".into());
                     }
+                    if manifest.schema < 4
+                        && (manifest.canvas.is_some() || !manifest.guides.is_empty())
+                    {
+                        return Err("Canvas windows and guides require manifest schema 4".into());
+                    }
+                    // Validate bounded metadata before creating the tile directory.
+                    let mut geometry =
+                        Document::blank(manifest.width, manifest.height, manifest.dpi)?;
+                    geometry.canvas = manifest.canvas;
+                    geometry.guides = manifest.guides.clone();
+                    geometry.validate_geometry()?;
                     fn compatible(nodes: &[Node], schema: u32) -> Result<(), String> {
                         for node in nodes {
                             if schema == 2 && node.mask.as_ref().is_some_and(|m| m.default != 255) {
@@ -554,6 +571,8 @@ impl LayerProjectReader {
             node: 0,
         };
         let document = Document {
+            canvas: manifest.canvas,
+            guides: manifest.guides,
             selection: None,
             width: manifest.width,
             height: manifest.height,
@@ -571,6 +590,67 @@ impl LayerProjectReader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn crop_guides_and_all_hidden_raster_mask_generations_survive_streamed_reopen() {
+        use fotoeditor_core::{CanvasRect, Guide, GuideAxis};
+        let mut d = Document::blank(513, 259, 299.123456789).unwrap();
+        d.raster_mut().write(0, 0, Rgba8([87, 33, 19, 0]));
+        d.raster_mut().write(512, 258, Rgba8([201, 3, 7, 1]));
+        let mut mask = TileSurface::with_default(513, 259, Gray8(255));
+        mask.write(512, 258, Gray8(128));
+        d.layers[0].mask = Some(LayerMask {
+            enabled: true,
+            samples: Arc::new(mask),
+        });
+        d.canvas = Some(CanvasRect {
+            x: 255,
+            y: 1,
+            width: 257,
+            height: 257,
+        });
+        d.guides = vec![
+            Guide {
+                axis: GuideAxis::Vertical,
+                position: 256.123456789,
+            },
+            Guide {
+                axis: GuideAxis::Horizontal,
+                position: 258.5,
+            },
+        ];
+        let bytes = encode(&d);
+        let reopened = read(&bytes).unwrap();
+        assert_eq!(reopened.canvas, d.canvas);
+        assert_eq!(reopened.guides, d.guides);
+        assert_eq!(reopened.bytes(), 0);
+        hydrate(&reopened, &bytes);
+        assert_eq!(reopened.raster().sample(0, 0), Rgba8([87, 33, 19, 0]));
+        assert_eq!(reopened.raster().sample(512, 258), Rgba8([201, 3, 7, 1]));
+        assert_eq!(
+            reopened.layers[0]
+                .mask
+                .as_ref()
+                .unwrap()
+                .samples
+                .sample(512, 258),
+            Gray8(128)
+        );
+        assert_eq!(encode(&reopened), bytes);
+        let mut invalid = d.clone();
+        invalid.guides = vec![Guide {
+            axis: GuideAxis::Horizontal,
+            position: 300.0,
+        }];
+        assert!(LayerProjectWriter::new(&invalid, Residency::default()).is_err());
+        invalid.guides = vec![];
+        invalid.canvas = Some(CanvasRect {
+            x: u32::MAX,
+            y: 0,
+            width: 1,
+            height: 1,
+        });
+        assert!(LayerProjectWriter::new(&invalid, Residency::default()).is_err());
+    }
     #[test]
     fn remaining_adjustment_settings_roundtrip_with_cold_masks_and_hidden_rgb() {
         use fotoeditor_core::Adjustment;
@@ -691,7 +771,7 @@ mod tests {
         assert!(read(&frame(&valid)).is_ok());
         for invalid in [
             valid.replace("[[0,1],[1,0]]", "[[0,1],[0,0]]"),
-            valid.replace("\"schema\":3", "\"schema\":4"),
+            valid.replace("\"schema\":3", "\"schema\":5"),
             legacy.replace("\"enabled\":true", "\"enabled\":true,\"default\":0"),
         ] {
             assert!(read(&frame(&invalid)).is_err());

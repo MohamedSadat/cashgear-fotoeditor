@@ -1,13 +1,49 @@
 # Progress
 
-## P7 - Started; product questions pending
+## P7 - In progress; product questions answered
 
 Started 2026-10-25 at the user's explicit fresh-session request on clean main at
 `5a22595`, the verified `p6-filters` head. Read the required phase records and the
 complete original P7 roadmap on printed pages 15-16. PLAN.md now records the full
 acceptance scope; P7-DESIGN.md records processing/integration/verification contracts.
-The four unresolved questions (default interpolation, warp scope, crop retention,
-content-aware scale) were sent together. The first independent increment adds
+The user answered all four questions: Lanczos3 default, non-destructive crop,
+warp/puppet warp after v1 and content-aware scale outside v1. DECISIONS.md records
+these choices.
+
+The canvas-window increment adds metadata-only non-destructive crop, Reveal All,
+exact whole-document geometry commands, editable persistent guides, ruler/guide
+overlays, visible-window PNG export and schema-4 streamed project/recovery metadata
+with schema-2/3 reading. Brush/eraser, fill/clear, copying, paste centering, wand
+membership/AA and Select All respect the visible canvas. View fitting, coordinate
+conversion, selection display and viewport/preview clipping retain backing coordinates.
+
+All 128 Rust tests pass, including hidden RGB/mask retention, odd crop exports,
+crop-aware painting/fill/copy/wand, metadata refusal, no-op redo and exact history.
+Native/WASM clippy, formatting, TypeScript, ESLint, 16 Vitest cases, all 450 license
+expressions and the production build pass. WASM is 3,632,066 bytes / gzip9 1,358,619.
+Eight Chrome/Edge crop/recovery cases and 100 applicable GPU/viewport/selection/
+preview/layer-recovery regression cases pass without skips or retries. The expanded
+hardware WebView2 smoke passes crop/guide streamed reopen and exact Reveal All on
+both APIs. Final overlay pixel checks pass on all four installed browser/API
+pairs, and the Windows build/smoke was refreshed against the corrected web output.
+This remains partial P7 coverage.
+
+Visual review corrected checkbox wrapping and explicit overlay stacking above the
+GPU canvas. Crop inputs reset relative to the new visible origin. An added preview
+fixture originally passed an absent active-layer ID; it now falls back to the first
+raster, as the engine does. Its failed report/trace remain under
+`bench/results/p7-canvas-preview-test-fixture-failure*`. A zero-width vertical SVG
+path cannot use Playwright's rectangle visibility assertion; the overlay check
+instead inspects finite geometry and the painted guide pixels, including the
+specified guide color's anti-aliased blend over the fixture's red background.
+The superseded unblended-color expectation is retained in
+`bench/results/p7-canvas-overlay-antialias-reference-failure.json`. Samplers, transform
+sessions/GPU preview, move/nudge/auto-select, size/rotation/flip dialogs, crop gesture/
+ratios/straightening/thirds, snapping, full P7 performance and final gates remain.
+
+### Earlier geometry checkpoint
+
+The first independent increment adds
 validated affine/projective Rust geometry and the four interpolation names,
 without selecting a default or changing document samples. Four geometry tests
 include 500 randomized inverse round-trips; see P7-DESIGN.md for the exact scope.
@@ -24,6 +60,10 @@ is `bench/results/p7-foundation-{rust-tests.log,browser-tests.json,desktop-smoke
 wasm-size.json}`. No P7 pixel-resampling, live-transform preview, crop integration
 or hardware performance is claimed yet. This checkpoint is committed on main;
 remote checks are not P7 phase acceptance.
+The geometry checkpoint `004055d` passes CI 40209644112 and deployment 40209644178. Inspected artifacts contain 272 software browser cases with exactly
+one passing attempt each, zero skips/retries/failures/global errors, and both
+software WebView2 backends. CI gzip9 WASM is 1,344,837 bytes. The artifact is
+retained under `bench/results/p7-foundation-ci`.
 
 P7 implementation and acceptance remain in progress; no `p7-transform` tag.
 P5's Photoshop feather reference is still pending without `p5-select`; the

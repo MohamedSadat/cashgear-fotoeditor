@@ -933,6 +933,26 @@ const api: EngineApi = {
       }
     }
   },
+  async geometryMetadata(action) {
+    const e = requireIdle();
+    busy = true;
+    operation = 'Updating canvas…';
+    const token = beginJob();
+    try {
+      await pages.persist(e);
+      cancelled(token);
+      e.geometry_metadata(JSON.stringify(action));
+      cancelAllowed = false;
+      await recompose(token);
+      dirty = true;
+      return snapshot();
+    } finally {
+      if (token === job) {
+        busy = false;
+        operation = undefined;
+      }
+    }
+  },
   async applyMask(target) {
     const e = requireIdle();
     busy = true;

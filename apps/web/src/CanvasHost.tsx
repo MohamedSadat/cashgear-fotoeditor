@@ -4,6 +4,7 @@ import { FramePump } from './engine/frame-pump';
 import { pointerSamples } from './engine/pointer-input';
 import type { BackendPreference, EngineApi, Interaction } from './engine/types';
 import { updateWorkspace, useWorkspace } from './state';
+import { useGeometry } from './geometry-state';
 import { evaluateCurve, setBrush, useBrush } from './brush-state';
 import type { BrushSettings } from './brush-state';
 import {
@@ -44,6 +45,11 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     svg.appendChild(path);
     container.appendChild(svg);
+    const geometrySvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    geometrySvg.classList.add('geometry-overlay');
+    geometrySvg.setAttribute('aria-label', 'Rulers and guides');
+    container.appendChild(geometrySvg);
+    let geometryKey = '';
     let disposed = false;
     let animation = 0;
     let pump: FramePump | undefined;
@@ -79,15 +85,15 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       const c = Math.cos(s.view.rotation),
         sn = Math.sin(s.view.rotation);
       return [
-        (qx * c + qy * sn) * (s.view.flipped ? -1 : 1) + d.width / 2,
-        -qx * sn + qy * c + d.height / 2,
+        (qx * c + qy * sn) * (s.view.flipped ? -1 : 1) + (d.retainedWidth ?? d.width) / 2,
+        -qx * sn + qy * c + (d.retainedHeight ?? d.height) / 2,
       ];
     };
     const screenPoint = (p: [number, number]): [number, number] => {
       const s = useWorkspace.getState().snapshot!;
       const d = s.document!;
-      const x = (p[0] - d.width / 2) * (s.view.flipped ? -1 : 1),
-        y = p[1] - d.height / 2;
+      const x = (p[0] - (d.retainedWidth ?? d.width) / 2) * (s.view.flipped ? -1 : 1),
+        y = p[1] - (d.retainedHeight ?? d.height) / 2;
       const c = Math.cos(s.view.rotation),
         sn = Math.sin(s.view.rotation);
       return [
@@ -95,6 +101,66 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
         s.view.screenHeight / 2 + s.view.panY + (x * sn + y * c) * s.view.zoom,
       ];
     };
+    const drawGeometry = () => {
+      const s = useWorkspace.getState().snapshot;
+      const prefs = useGeometry.getState();
+      const d = s?.document;
+      const key = JSON.stringify([d, s?.view, prefs]);
+      if (key === geometryKey) return;
+      geometryKey = key;
+      geometrySvg.replaceChildren();
+      if (!d || !s) return;
+      geometrySvg.setAttribute('viewBox', `0 0 ${s.view.screenWidth} ${s.view.screenHeight}`);
+      const x0 = d.originX ?? 0,
+        y0 = d.originY ?? 0;
+      const line = (a: [number, number], b: [number, number], kind: string) => {
+        const node = document.createElementNS(geometrySvg.namespaceURI, 'path');
+        node.setAttribute('d', 'M' + screenPoint(a).join(' ') + ' L' + screenPoint(b).join(' '));
+        node.setAttribute('class', kind);
+        geometrySvg.appendChild(node);
+      };
+      if (prefs.showGuides)
+        for (const g of d.guides ?? []) {
+          if (g.axis === 'vertical' && g.position >= x0 && g.position <= x0 + d.width)
+            line([g.position, y0], [g.position, y0 + d.height], 'document-guide');
+          if (g.axis === 'horizontal' && g.position >= y0 && g.position <= y0 + d.height)
+            line([x0, g.position], [x0 + d.width, g.position], 'document-guide');
+        }
+      if (prefs.showRulers) {
+        const desired = 70 / s.view.zoom;
+        const power = 10 ** Math.floor(Math.log10(desired));
+        const step = [1, 2, 5, 10].map((n) => n * power).find((n) => n >= desired)!;
+        const points = [
+          [0, 0],
+          [s.view.screenWidth, 0],
+          [0, s.view.screenHeight],
+          [s.view.screenWidth, s.view.screenHeight],
+        ].map(([x, y]) => documentPoint(x, y));
+        for (const axis of [0, 1] as const) {
+          const origin = axis === 0 ? x0 : y0,
+            length = axis === 0 ? d.width : d.height;
+          const low = Math.max(origin, Math.min(...points.map((p) => p[axis])));
+          const high = Math.min(origin + length, Math.max(...points.map((p) => p[axis])));
+          for (
+            let value = Math.ceil((low - origin) / step) * step;
+            value <= high - origin;
+            value += step
+          ) {
+            const a: [number, number] = axis === 0 ? [origin + value, y0] : [x0, origin + value];
+            const b: [number, number] =
+              axis === 0 ? [a[0], a[1] + 6 / s.view.zoom] : [a[0] + 6 / s.view.zoom, a[1]];
+            line(a, b, 'ruler-tick');
+            const p = screenPoint(a);
+            const label = document.createElementNS(geometrySvg.namespaceURI, 'text');
+            label.setAttribute('x', String(p[0] + 8));
+            label.setAttribute('y', String(p[1] + 13));
+            label.textContent = Number(value.toPrecision(6)).toString();
+            geometrySvg.appendChild(label);
+          }
+        }
+      }
+    };
+    const unsubscribeGeometry = useGeometry.subscribe(drawGeometry);
     const drawGesture = (points: [number, number][]) => {
       path.setAttribute(
         'd',
@@ -357,7 +423,15 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
           const mode = selectionMode(event.shiftKey, event.altKey);
           if (brush.tool === 'wand' || brush.tool === 'bucket') {
             const doc = useWorkspace.getState().snapshot!.document!;
-            if (p[0] < 0 || p[1] < 0 || p[0] >= doc.width || p[1] >= doc.height) return;
+            const originX = doc.originX ?? 0,
+              originY = doc.originY ?? 0;
+            if (
+              p[0] < originX ||
+              p[1] < originY ||
+              p[0] >= originX + doc.width ||
+              p[1] >= originY + doc.height
+            )
+              return;
             const options = {
               seed: [Math.floor(p[0]), Math.floor(p[1])] as [number, number],
               tolerance: settings.tolerance,
@@ -672,6 +746,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
                 useBrush.setState({ sampledSerial: picked.serial });
               }
               refreshOutline();
+              drawGeometry();
             }
             updateWorkspace((state) =>
               state.size.width === frame.width && state.size.height === frame.height
@@ -698,6 +773,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       disposed = true;
       clearTimeout(timeout);
       cancelAnimationFrame(animation);
+      unsubscribeGeometry();
       pump?.stop();
       endSpray();
       unsubscribeBrush();
@@ -713,6 +789,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       canvas.remove();
       outline.remove();
       svg.remove();
+      geometrySvg.remove();
     };
   }, [generation, diagnostic, onFaultReady, onApiReady]);
   return <div className="canvas-host" ref={host} />;

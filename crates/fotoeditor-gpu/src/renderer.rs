@@ -576,6 +576,9 @@ impl Renderer {
                     if let Some(preview) = &self.preview {
                         preview.draw(&mut pass);
                     }
+                    if view.canvas.is_some() {
+                        self.viewport.draw_outside(&mut pass);
+                    }
                     self.viewport.draw_grid(&mut pass);
                 } else {
                     self.viewport.draw(&mut pass, view);

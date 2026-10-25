@@ -3,6 +3,7 @@ mod adjustment;
 #[cfg(test)]
 mod adjustment_layers;
 mod blend;
+mod canvas;
 mod color_adjustments;
 mod commands;
 mod composite;
@@ -18,6 +19,7 @@ mod view;
 mod viewport_preview;
 pub use adjustment::*;
 pub use blend::*;
+pub use canvas::*;
 pub use commands::*;
 pub use composite::*;
 pub use display::*;
@@ -47,9 +49,12 @@ pub fn validate_size(width: u32, height: u32, dpi: f64) -> Result<(), String> {
 /// Bottom-to-top layer tree. Session mutations go through commands.
 #[derive(Clone)]
 pub struct Document {
+    /// Retained tile extent. The visible canvas may be a smaller window.
     pub width: u32,
     pub height: u32,
     pub dpi: f64,
+    pub canvas: Option<CanvasRect>,
+    pub guides: Vec<Guide>,
     pub layers: Vec<Layer>,
     /// Session selection: None is unrestricted; an active zero mask blocks edits.
     pub selection: Option<std::sync::Arc<TileSurface<Gray8>>>,
@@ -61,6 +66,8 @@ impl Document {
             width,
             height,
             dpi,
+            canvas: None,
+            guides: Vec::new(),
             layers: vec![Layer::raster(
                 "Layer 1".into(),
                 TileSurface::new(width, height),

@@ -51,7 +51,7 @@ pub fn selection_display(
             (f64::from(y) + 0.5) * view.height / f64::from(height),
         );
         for x in 0..width {
-            if p.0 >= 0.0 && p.1 >= 0.0 && p.0 < view.document_width && p.1 < view.document_height {
+            if view.inside_canvas(p.0, p.1) {
                 let xx = p.0.floor() as u32;
                 let yy = p.1.floor() as u32;
                 let offset = ((yy % TILE_SIZE) * TILE_SIZE + xx % TILE_SIZE) as usize;

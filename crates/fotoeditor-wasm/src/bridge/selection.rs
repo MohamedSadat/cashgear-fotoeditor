@@ -214,6 +214,8 @@ impl Engine {
             }
         }
         Ok(Document {
+            canvas: doc.canvas,
+            guides: Vec::new(),
             width: doc.width,
             height: doc.height,
             dpi: doc.dpi,
@@ -450,6 +452,27 @@ impl Engine {
         let available = self.selection_available();
         let job = match a["kind"].as_str().ok_or("Invalid selection action")? {
             "all" => {
+                if let Some(rect) = doc.canvas {
+                    self.selected.job = Some(Job::Shape(
+                        ShapeSelectionJob::new(
+                            doc.width,
+                            doc.height,
+                            None,
+                            SelectionShape::Rectangle {
+                                x0: rect.x as f64,
+                                y0: rect.y as f64,
+                                x1: (rect.x + rect.width) as f64,
+                                y1: (rect.y + rect.height) as f64,
+                            },
+                            SelectionMode::New,
+                            false,
+                            available,
+                        )
+                        .map_err(js)?,
+                    ));
+                    self.refresh_pages();
+                    return Ok(());
+                }
                 return self.selection_command(
                     Some(Arc::new(TileSurface::with_default(
                         doc.width,
@@ -499,7 +522,7 @@ impl Engine {
                     options.mode = SelectionMode::New;
                 }
                 Job::Wand(
-                    WandJob::in_domain(
+                    WandJob::in_canvas(
                         self.selected
                             .source
                             .clone()
@@ -508,6 +531,7 @@ impl Engine {
                         options,
                         if bucket { doc.selection.clone() } else { None },
                         available,
+                        doc.canvas,
                     )
                     .map_err(js)?,
                 )
@@ -520,12 +544,13 @@ impl Engine {
             "copy" | "cut" => {
                 self.selected.cut = a["kind"] == "cut";
                 Job::Copy(
-                    CopyJob::new(
+                    CopyJob::in_canvas(
                         self.selected
                             .source
                             .clone()
                             .ok_or("Prepare the copy source first")?,
                         doc.selection.clone(),
+                        doc.canvas,
                         available,
                     )
                     .map_err(js)?,
@@ -688,6 +713,8 @@ impl Engine {
         );
         layer.content = LayerContent::Raster(c.samples.clone());
         let doc = Document {
+            canvas: None,
+            guides: Vec::new(),
             width: c.samples.width,
             height: c.samples.height,
             dpi: 72.0,

@@ -136,6 +136,7 @@ mod tests {
         }
         let view = View {
             width: 128.0,
+            canvas: None,
             height: 128.0,
             document_width: 33.0,
             document_height: 17.0,
@@ -231,6 +232,8 @@ impl ViewportPreviewJob {
         let mut output = source.clone();
         output.width = width;
         output.height = height;
+        output.canvas = None;
+        output.guides.clear();
         fn reset(nodes: &mut [Layer], targets: &mut Vec<Target>, w: u32, h: u32) {
             for node in nodes {
                 if let Some(mask) = &mut node.mask {

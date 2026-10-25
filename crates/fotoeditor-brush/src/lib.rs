@@ -280,6 +280,8 @@ impl StrokeCommand {
         settings.alpha_lock = node.properties.locks.alpha;
         node.raster_samples()?;
         let base = Document {
+            canvas: base.canvas,
+            guides: Vec::new(),
             selection: base.selection.clone(),
             width: base.width,
             height: base.height,
@@ -438,12 +440,19 @@ impl StrokeCommand {
             p.x = p.x.floor() + 0.5;
             p.y = p.y.floor() + 0.5;
         }
-        let x0 = (p.x - radius).floor().clamp(0.0, self.preview.width as f64) as u32;
-        let x1 = (p.x + radius).ceil().clamp(0.0, self.preview.width as f64) as u32;
+        let bounds = self.preview.canvas_rect();
+        let x0 = (p.x - radius)
+            .floor()
+            .clamp(bounds.x as f64, (bounds.x + bounds.width) as f64) as u32;
+        let x1 = (p.x + radius)
+            .ceil()
+            .clamp(bounds.x as f64, (bounds.x + bounds.width) as f64) as u32;
         let y0 = (p.y - radius)
             .floor()
-            .clamp(0.0, self.preview.height as f64) as u32;
-        let y1 = (p.y + radius).ceil().clamp(0.0, self.preview.height as f64) as u32;
+            .clamp(bounds.y as f64, (bounds.y + bounds.height) as f64) as u32;
+        let y1 = (p.y + radius)
+            .ceil()
+            .clamp(bounds.y as f64, (bounds.y + bounds.height) as f64) as u32;
         if x0 >= x1 || y0 >= y1 {
             return;
         }
@@ -1034,6 +1043,40 @@ mod tests {
         assert_eq!(stroke.preview.raster().sample(5, 14).0[3], 255);
         assert_eq!(stroke.preview.raster().sample(14, 5).0[3], 0);
         assert_eq!(stroke.preview.raster().sample(5, 0).0[3], 255);
+    }
+    #[test]
+    fn cropped_brush_preserves_retained_outside_pixels_and_metadata() {
+        let mut doc = Document::blank(64, 64, 72.0).unwrap();
+        doc.raster_mut().write(0, 0, Rgba8([87, 33, 19, 0]));
+        doc.canvas = Some(fotoeditor_core::CanvasRect {
+            x: 17,
+            y: 19,
+            width: 11,
+            height: 13,
+        });
+        let mut stroke = StrokeCommand::new(
+            &doc,
+            BrushSettings {
+                size: 100.0,
+                ..BrushSettings::default()
+            },
+            CPU_BUDGET,
+        )
+        .unwrap();
+        stroke.push(point(24.0, 24.0)).unwrap();
+        finish(&mut stroke);
+        for y in 0..64 {
+            for x in 0..64 {
+                if !doc.canvas_rect().contains(x, y) {
+                    assert_eq!(
+                        stroke.preview.raster().sample(x, y),
+                        doc.raster().sample(x, y)
+                    );
+                }
+            }
+        }
+        assert!(stroke.preview.raster().sample(24, 24).0[3] > 0);
+        assert_eq!(stroke.preview.canvas, doc.canvas);
     }
     #[test]
     fn stabilizers_and_chunk_sizes_are_deterministic() {

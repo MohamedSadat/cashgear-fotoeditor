@@ -3,8 +3,22 @@
 Started 2026-10-25 on clean synchronized main at `5a22595`, after reading
 AGENTS.md, PLAN.md, PROGRESS.md, DECISIONS.md, P6-M4-REPORT.md and the complete
 original roadmap P7 section on printed pages 15-16. The user authorized P7.
-No worktree or agents. All four product questions were sent together; dependent
-defaults, optional warp scope and crop retention await those answers.
+No worktree or agents. All four product questions are answered: Lanczos3 default,
+non-destructive crop, warp/puppet warp after v1, content-aware scale outside v1.
+
+## Canvas retention
+
+The retained tile extent stays in `Document.width/height`; an optional integer
+`CanvasRect` identifies the visible window. Ordinary crop changes metadata only,
+preserving every raster/mask generation and hidden RGB. Reveal All resets the
+window. Image export visits only visible rows/columns. Streamed schema 4 stores
+the window and document-coordinate guides, while reading schema 2/3 unchanged.
+Brush dabs clip to the visible window. Layer processing retains its full extent;
+resizing/rotation/movement use candidate jobs and expand/rebase retained extents
+as needed, within the existing side and residency limits. Pixel positions inside
+processing remain retained-document coordinates; controls and rulers label them
+relative to the visible canvas origin. No nested crop snapshots or unaccounted
+hidden-pixel archive is introduced.
 
 ## First independent increment
 

@@ -266,7 +266,8 @@ impl LayerRenderJob {
     }
     pub fn new(source: Document) -> Result<Self, String> {
         validate_layers(&source.layers, source.width, source.height)?;
-        let output = Document::blank(source.width, source.height, source.dpi)?;
+        let mut output = Document::blank(source.width, source.height, source.dpi)?;
+        output.canvas = source.canvas;
         let coordinates = raster_coordinates(&source.layers);
         Ok(Self {
             source,

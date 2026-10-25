@@ -170,6 +170,13 @@ impl FillJob {
         let mut changed = false;
         for y in 0..TILE_SIZE.min(self.before.height - c.1 * TILE_SIZE) {
             for x in 0..TILE_SIZE.min(self.before.width - c.0 * TILE_SIZE) {
+                if !self
+                    .before
+                    .canvas_rect()
+                    .contains(c.0 * TILE_SIZE + x, c.1 * TILE_SIZE + y)
+                {
+                    continue;
+                }
                 let i = (y * TILE_SIZE + x) as usize;
                 let a = selected
                     .as_ref()

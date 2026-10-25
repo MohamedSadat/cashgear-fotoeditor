@@ -1,6 +1,6 @@
 use crate::SelectionMode;
 use fotoeditor_core::{
-    Gray8, Rgba8, Selection, TileCoord, TileRef, TileSurface, TILE_PIXELS, TILE_SIZE,
+    CanvasRect, Gray8, Rgba8, Selection, TileCoord, TileRef, TileSurface, TILE_PIXELS, TILE_SIZE,
 };
 use serde::Deserialize;
 use std::sync::Arc;
@@ -52,6 +52,7 @@ fn set(bits: &mut [u64], i: usize) {
 /// Membership is processed tilewise, then a bounded four-connected scanline flood,
 /// then a tilewise Gray8 conversion. No source-wide RGBA allocation is made.
 pub struct WandJob {
+    canvas: Option<CanvasRect>,
     pub output: TileSurface<Gray8>,
     pub source: Arc<TileSurface<Rgba8>>,
     before: Selection,
@@ -94,6 +95,24 @@ impl WandJob {
         domain: Selection,
         available: u64,
     ) -> Result<Self, String> {
+        Self::in_canvas(source, before, options, domain, available, None)
+    }
+    pub fn in_canvas(
+        source: Arc<TileSurface<Rgba8>>,
+        before: Selection,
+        options: WandOptions,
+        domain: Selection,
+        available: u64,
+        canvas: Option<CanvasRect>,
+    ) -> Result<Self, String> {
+        if let Some(rect) = canvas {
+            rect.validate(source.width, source.height)?;
+            if (options.contiguous || options.color.is_none())
+                && !rect.contains(options.seed[0], options.seed[1])
+            {
+                return Err("Choose a pixel inside the visible canvas".into());
+            }
+        }
         let WandOptions {
             seed,
             tolerance,
@@ -118,7 +137,7 @@ impl WandJob {
         {
             return Err("Fill domain dimensions differ".into());
         }
-        if tolerance == 255 && domain.is_none() {
+        if tolerance == 255 && domain.is_none() && canvas.is_none() {
             let output = match mode {
                 SelectionMode::New | SelectionMode::Add => {
                     TileSurface::with_default(source.width, source.height, Gray8(255))
@@ -131,6 +150,7 @@ impl WandJob {
             };
             let count = u64::from(source.width) * u64::from(source.height);
             return Ok(Self {
+                canvas,
                 output,
                 source,
                 before,
@@ -186,6 +206,7 @@ impl WandJob {
         }
         let default = mode.combine(before.as_ref().map_or(0, |s| s.default.0), 0);
         let job = Self {
+            canvas,
             output: TileSurface::with_default(source.width, source.height, Gray8(default)),
             source,
             before,
@@ -352,6 +373,17 @@ impl WandJob {
                 }
             }
         }
+        if let Some(rect) = self.canvas {
+            for y in 0..TILE_SIZE.min(self.output.height - c.1 * TILE_SIZE) {
+                for x in 0..TILE_SIZE.min(self.output.width - c.0 * TILE_SIZE) {
+                    if !rect.contains(c.0 * TILE_SIZE + x, c.1 * TILE_SIZE + y) {
+                        let i = ((c.1 * TILE_SIZE + y) * self.output.width + c.0 * TILE_SIZE + x)
+                            as usize;
+                        self.matched[i / 64] &= !(1u64 << (i % 64));
+                    }
+                }
+            }
+        }
         self.next += 1;
         if self.next == self.tiles() {
             self.next = 0;
@@ -454,6 +486,15 @@ impl WandJob {
                     let i = (y * TILE_SIZE + x + b) as usize;
                     let count = (n - b).min(8) as usize;
                     pixels[i..i + count].copy_from_slice(&word.to_le_bytes()[..count]);
+                }
+            }
+        }
+        if let Some(rect) = self.canvas {
+            for y in 0..TILE_SIZE.min(h - c.1 * TILE_SIZE) {
+                for x in 0..TILE_SIZE.min(w - c.0 * TILE_SIZE) {
+                    if !rect.contains(c.0 * TILE_SIZE + x, c.1 * TILE_SIZE + y) {
+                        pixels[(y * TILE_SIZE + x) as usize] = 0;
+                    }
                 }
             }
         }

@@ -23,6 +23,7 @@ struct Page {
 pub struct ViewportRenderer {
     budget: u64,
     background: RenderPipeline,
+    outside: RenderPipeline,
     grid: RenderPipeline,
     tiles: RenderPipeline,
     uniform: Buffer,
@@ -80,7 +81,7 @@ impl ViewportRenderer {
         });
         let uniform = device.create_buffer(&BufferDescriptor {
             label: Some("View transform"),
-            size: 48,
+            size: 64,
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -134,6 +135,7 @@ impl ViewportRenderer {
             })
         };
         let background = pipeline("fullscreen", "background", &background_layout, &[], None);
+        let outside = pipeline("fullscreen", "outside", &background_layout, &[], None);
         let grid = pipeline(
             "fullscreen",
             "grid",
@@ -155,6 +157,7 @@ impl ViewportRenderer {
         Self {
             budget: GPU_BUDGET,
             background,
+            outside,
             grid,
             tiles,
             uniform,
@@ -312,6 +315,7 @@ impl ViewportRenderer {
         None
     }
     pub fn prepare_background(&mut self, queue: &Queue, view: &View, dpr: f64, active: bool) {
+        let canvas = view.canvas_rect();
         queue.write_buffer(
             &self.uniform,
             0,
@@ -328,6 +332,10 @@ impl ViewportRenderer {
                 if view.zoom >= 8.0 { 1.0 } else { 0.0 },
                 if active { 1.0 } else { 0.0 },
                 0.0,
+                canvas.x as f32,
+                canvas.y as f32,
+                canvas.width as f32,
+                canvas.height as f32,
             ]),
         );
         self.refining = 0;
@@ -339,6 +347,11 @@ impl ViewportRenderer {
     }
     pub fn draw_grid(&self, pass: &mut RenderPass<'_>) {
         pass.set_pipeline(&self.grid);
+        pass.set_bind_group(0, &self.binding, &[]);
+        pass.draw(0..3, 0..1);
+    }
+    pub fn draw_outside(&self, pass: &mut RenderPass<'_>) {
+        pass.set_pipeline(&self.outside);
         pass.set_bind_group(0, &self.binding, &[]);
         pass.draw(0..3, 0..1);
     }

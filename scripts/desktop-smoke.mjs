@@ -683,6 +683,61 @@ try {
       expect(result.denseStream.exactComposite).toBe(true);
       expect(result.denseStream.size).toBeGreaterThan(2400 * 1048576);
     }
+    await page.goto(
+      origin +
+        (backend === 'WebGL2'
+          ? '/?diagnostic=1&document=1&gpu=webgl2'
+          : '/?diagnostic=1&document=1'),
+    );
+    await expect(page.getByTestId('engine-status')).toHaveText('Engine ready', { timeout: 60000 });
+    await dismissRecoveryPrompt();
+    result.canvas = await page.evaluate(async () => {
+      const api = window.__fotoeditor;
+      const digest = async () =>
+        Array.from(
+          new Uint8Array(await crypto.subtle.digest('SHA-256', await api.exportPng())),
+        ).join(',');
+      await api.newDocument(32, 24, 72);
+      await api.selectionAction({ kind: 'fill', color: [50, 100, 150, 128] });
+      const before = await digest();
+      const cropped = await api.geometryMetadata({
+        kind: 'crop',
+        rect: { x: 3, y: 5, width: 17, height: 13 },
+      });
+      await api.geometryMetadata({
+        kind: 'guides',
+        guides: [{ axis: 'horizontal', position: 7.25 }],
+      });
+      const dir = await navigator.storage.getDirectory();
+      const handle = await dir.getFileHandle('desktop-crop.cgfoto', { create: true });
+      await api.saveProjectFile(handle);
+      await api.newDocument(1, 1, 72);
+      const reopened = await api.openProjectFile(await handle.getFile());
+      const revealed = await api.geometryMetadata({ kind: 'crop', rect: null });
+      return {
+        cropped: cropped.document,
+        reopened: reopened.document,
+        history: reopened.history.undo,
+        revealed: revealed.document,
+        exactReveal: before === (await digest()),
+      };
+    });
+    expect(result.canvas.cropped).toMatchObject({
+      width: 17,
+      height: 13,
+      retainedWidth: 32,
+      retainedHeight: 24,
+    });
+    expect(result.canvas.reopened).toMatchObject({
+      width: 17,
+      height: 13,
+      originX: 3,
+      originY: 5,
+      guides: [{ axis: 'horizontal', position: 7.25 }],
+    });
+    expect(result.canvas.history).toBe(0);
+    expect(result.canvas.revealed).toMatchObject({ width: 32, height: 24, cropped: false });
+    expect(result.canvas.exactReveal).toBe(true);
     result.software = process.env.GPU_TEST_SOFTWARE === '1';
     await mkdir(join(root, 'bench/results'), { recursive: true });
     await page.screenshot({ path: join(root, 'bench/results/desktop-p4-' + backend + '.png') });

@@ -19,6 +19,9 @@ pub struct ProjectWriter {
 }
 impl ProjectWriter {
     pub fn new(document: &Document, residency: Residency) -> Result<Self, String> {
+        if document.canvas.is_some() || !document.guides.is_empty() {
+            return Err("Canvas windows and guides require the streamed project format".into());
+        }
         document
             .single_raster()
             .map_err(|_| "Layered projects require the v2 stream document adapter")?;

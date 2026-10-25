@@ -399,6 +399,8 @@ mod tests {
     }
     fn result(layers: Vec<Layer>) -> Rgba8 {
         let document = Document {
+            canvas: None,
+            guides: Vec::new(),
             selection: None,
             width: 1,
             height: 1,

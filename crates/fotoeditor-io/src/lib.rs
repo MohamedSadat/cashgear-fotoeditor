@@ -144,12 +144,13 @@ pub struct ExportJob {
 }
 impl ExportJob {
     pub fn needed(&self, visitor: &mut dyn FnMut(fotoeditor_core::TileRef<'_>)) {
-        if self.next_y >= self.document.height {
+        let rect = self.document.canvas_rect();
+        if self.next_y >= rect.height {
             return;
         }
-        let y1 = (self.next_y + 32).min(self.document.height);
-        for ty in self.next_y / TILE_SIZE..y1.div_ceil(TILE_SIZE) {
-            for tx in 0..self.document.width.div_ceil(TILE_SIZE) {
+        let y1 = rect.y + (self.next_y + 32).min(rect.height);
+        for ty in (rect.y + self.next_y) / TILE_SIZE..y1.div_ceil(TILE_SIZE) {
+            for tx in rect.x / TILE_SIZE..(rect.x + rect.width).div_ceil(TILE_SIZE) {
                 if let Some(t) = self.document.raster().tiles().get(&(tx, ty)) {
                     visitor(fotoeditor_core::TileRef::Rgba(t));
                 }
@@ -157,11 +158,13 @@ impl ExportJob {
         }
     }
     pub fn new(document: &Document, residency: Residency) -> Result<Self, String> {
+        document.validate_geometry()?;
         document.export_raster()?;
+        let rect = document.canvas_rect();
         // Conservative output capacity + JS bridge copy; shared tile Arcs add no pixel copies.
-        residency.check_cpu(2 * MAX_FILE_BYTES + document.width as u64 * 8 + 4 * 1024 * 1024)?;
+        residency.check_cpu(2 * MAX_FILE_BYTES + rect.width as u64 * 8 + 4 * 1024 * 1024)?;
         let out = Output(Rc::new(RefCell::new(Vec::new())));
-        let mut encoder = png::Encoder::new(out.clone(), document.width, document.height);
+        let mut encoder = png::Encoder::new(out.clone(), rect.width, rect.height);
         encoder.set_color(png::ColorType::Rgba);
         encoder.set_depth(png::BitDepth::Eight);
         encoder.set_compression(png::Compression::Fast);
@@ -181,21 +184,25 @@ impl ExportJob {
             stream: Some(stream),
             out,
             next_y: 0,
-            row: vec![0; document.width as usize * 4],
+            row: vec![0; rect.width as usize * 4],
         })
     }
     pub fn temporary_bytes(&self) -> u64 {
         self.out.0.borrow().capacity() as u64 + self.row.capacity() as u64 + 4 * 1024 * 1024
     }
     pub fn step(&mut self) -> Result<bool, String> {
-        for y in self.next_y..(self.next_y + 32).min(self.document.height) {
+        let rect = self.document.canvas_rect();
+        for local_y in self.next_y..(self.next_y + 32).min(rect.height) {
+            let y = rect.y + local_y;
             self.row.fill(0);
-            for tx in 0..self.document.width.div_ceil(TILE_SIZE) {
+            for tx in rect.x / TILE_SIZE..(rect.x + rect.width).div_ceil(TILE_SIZE) {
                 if let Some(tile) = self.document.raster().tiles().get(&(tx, y / TILE_SIZE)) {
                     let tile = tile.pin()?;
-                    let n = TILE_SIZE.min(self.document.width - tx * TILE_SIZE) as usize;
-                    let start = ((y % TILE_SIZE) * TILE_SIZE) as usize;
-                    for (dst, p) in self.row[tx as usize * TILE_SIZE as usize * 4..][..n * 4]
+                    let x0 = (tx * TILE_SIZE).max(rect.x);
+                    let x1 = ((tx + 1) * TILE_SIZE).min(rect.x + rect.width);
+                    let n = (x1 - x0) as usize;
+                    let start = ((y % TILE_SIZE) * TILE_SIZE + x0 % TILE_SIZE) as usize;
+                    for (dst, p) in self.row[(x0 - rect.x) as usize * 4..][..n * 4]
                         .as_chunks_mut::<4>()
                         .0
                         .iter_mut()
@@ -211,11 +218,11 @@ impl ExportJob {
                 .write_all(&self.row)
                 .map_err(|e| e.to_string())?;
         }
-        self.next_y = (self.next_y + 32).min(self.document.height);
-        Ok(self.next_y == self.document.height)
+        self.next_y = (self.next_y + 32).min(rect.height);
+        Ok(self.next_y == rect.height)
     }
     pub fn finish(mut self) -> Result<Vec<u8>, String> {
-        if self.next_y != self.document.height {
+        if self.next_y != self.document.canvas_rect().height {
             return Err("Export is incomplete".into());
         }
         self.stream
@@ -230,6 +237,42 @@ impl ExportJob {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cropped_png_exports_only_visible_samples_across_odd_tile_edges() {
+        let mut d = Document::blank(513, 259, 300.0).unwrap();
+        for y in 0..259 {
+            for x in 0..513 {
+                d.raster_mut()
+                    .write(x, y, Rgba8([x as u8, y as u8, 79, ((x + y) % 256) as u8]));
+            }
+        }
+        d.canvas = Some(fotoeditor_core::CanvasRect {
+            x: 255,
+            y: 1,
+            width: 257,
+            height: 257,
+        });
+        let before = d.raster().sample(0, 0);
+        let mut export = ExportJob::new(&d, Residency::default()).unwrap();
+        while !export.step().unwrap() {}
+        let mut decoded =
+            ImportJob::decode(&export.finish().unwrap(), Residency::default()).unwrap();
+        while !decoded.step() {}
+        assert_eq!(
+            (decoded.document.width, decoded.document.height),
+            (257, 257)
+        );
+        for y in 0..257 {
+            for x in 0..257 {
+                assert_eq!(
+                    decoded.document.raster().sample(x, y),
+                    d.raster().sample(x + 255, y + 1)
+                );
+            }
+        }
+        assert_eq!(d.raster().sample(0, 0), before);
+        assert!(crate::ProjectWriter::new(&d, Residency::default()).is_err());
+    }
     #[test]
     fn png_preserves_every_rgba8_sample_at_tile_edges_and_dpi() {
         let mut d = Document::blank(513, 259, 300.0).unwrap();
