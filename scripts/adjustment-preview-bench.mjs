@@ -199,7 +199,7 @@ try {
           });
         }
         await page.screenshot({
-          path: `bench/results/${phase}-${channel}-${backend.toLowerCase()}-preview.png`,
+          path: `bench/results/${phase}-${channel}-${backend.toLowerCase()}-adjustment-preview.png`,
         });
         const api = await page.evaluate(async () => {
           const api = Reflect.get(window, '__fotoeditor');

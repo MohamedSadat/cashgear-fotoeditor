@@ -108,8 +108,20 @@ try {
                 async ({ filter, trial }) => {
                   const api = Reflect.get(window, '__fotoeditor');
                   const canvas = document.querySelector('[data-testid="gpu-canvas"]');
+                  const admissionError = (error) =>
+                    String(error?.message ?? error) ===
+                    'Finish or cancel the current operation first';
                   const baselineStarted = performance.now();
-                  await api.historyJump(0);
+                  for (;;) {
+                    try {
+                      await api.historyJump(0);
+                      break;
+                    } catch (error) {
+                      if (!admissionError(error) || performance.now() - baselineStarted >= 60000)
+                        throw error;
+                      await new Promise((resolve) => setTimeout(resolve, 50));
+                    }
+                  }
                   let ready = false;
                   for (let i = 0; i < 300; i++) {
                     const shown = JSON.parse(canvas.dataset.snapshot ?? 'null');
@@ -134,10 +146,32 @@ try {
                     const s = JSON.parse(canvas.dataset.snapshot ?? 'null');
                     if (s) samples.push(s.memory);
                   }, 2);
-                  const start = performance.now();
                   try {
-                    const state = await api.applyFilter(filter);
+                    // requireIdle rejects before runFilter starts a job. Only
+                    // this exact pre-edit refusal can be retried; time the
+                    // admitted call and disclose its separate admission wait.
+                    const admissionStarted = performance.now();
+                    let start;
+                    let state;
+                    let admissionRefusals = 0;
+                    while (!state) {
+                      if (
+                        JSON.parse(canvas.dataset.snapshot).contentRevision !==
+                        initial.contentRevision
+                      )
+                        throw new Error('Document changed before filter admission');
+                      start = performance.now();
+                      try {
+                        state = await api.applyFilter(filter);
+                      } catch (error) {
+                        if (!admissionError(error) || performance.now() - admissionStarted >= 60000)
+                          throw error;
+                        admissionRefusals++;
+                        await new Promise((resolve) => setTimeout(resolve, 50));
+                      }
+                    }
                     const returnMs = performance.now() - start;
+                    const admissionWaitMs = start - admissionStarted;
                     samples.push(state.memory);
                     let visible = false;
                     for (let i = 0; i < 240; i++) {
@@ -163,9 +197,30 @@ try {
                         s.document + s.history + s.temporary,
                       );
                     }
-                    const histogram = await api.histogram(
-                      state.layers.active ?? state.layers.nodes[0].id,
-                    );
+                    // Autosave can take admission after presentation. Histogram
+                    // is outside Apply's timer and may retry only read-only,
+                    // transient interruptions on this same document revision.
+                    let histogram;
+                    const histogramDeadline = performance.now() + 60000;
+                    while (!histogram) {
+                      if (
+                        JSON.parse(canvas.dataset.snapshot).contentRevision !==
+                        state.contentRevision
+                      )
+                        throw new Error('Document changed before histogram validation');
+                      try {
+                        histogram = await api.histogram(
+                          state.layers.active ?? state.layers.nodes[0].id,
+                        );
+                      } catch (error) {
+                        if (
+                          performance.now() >= histogramDeadline ||
+                          !/source changed|already updating|current operation/i.test(String(error))
+                        )
+                          throw error;
+                        await new Promise((resolve) => setTimeout(resolve, 50));
+                      }
+                    }
                     if (histogram.pixels !== 24000000 || histogram.weight !== 6120000000)
                       throw new Error('Histogram did not visit every photo sample');
                     if (
@@ -176,6 +231,8 @@ try {
                     return {
                       trial,
                       baselineReadyMs,
+                      admissionWaitMs,
+                      admissionRefusals,
                       returnMs,
                       visibleMs,
                       ...state.filterTiming,
@@ -256,7 +313,7 @@ try {
         },
         trialCount,
         method:
-          'One first application and trialCount minus one warm trials per scenario, from the original unselected raster. After Undo, the original must be presented and refinement idle before starting the timer; baseline readiness is recorded separately. Single worker thread. API return includes the command, visible time also waits for frame acknowledgement; histogram is separate. Logical buffer residency excludes allocator/driver overhead. All source samples are already resident; this is not a disk-cold paging measurement.',
+          'One first application and trialCount minus one warm trials per scenario, from the original unselected raster. After Undo, the original must be presented and refinement idle before starting the timer; baseline readiness is recorded separately. Exact pre-edit busy admission refusals may retry for up to 60 seconds on the unchanged revision; admission wait/refusal count are separate from the successful Apply timer. A started or failed job is never retried. Single worker thread. API return includes the command, visible time also waits for frame acknowledgement; read-only histogram validation retries transient interruptions on the same revision outside Apply timing. Logical buffer residency excludes allocator/driver overhead. All source samples are already resident; this is not a disk-cold paging measurement.',
         results,
       },
       null,

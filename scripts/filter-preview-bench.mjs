@@ -102,7 +102,7 @@ try {
           { kind: 'median', field: 'radius', label: 'Filter radius (px) slider', step: 1 },
           { kind: 'motion-blur', field: 'angle', label: 'Filter angle (degrees) slider', step: 7 },
           { kind: 'high-pass', field: 'radius', label: 'Filter radius (px) slider', step: 1 },
-          { kind: 'add-noise', field: 'amount', label: 'Noise amount slider', step: 0.025 },
+          { kind: 'add-noise', field: 'amount', label: 'Noise amount slider', step: 0.02 },
           { kind: 'emboss', field: 'amount', label: 'Emboss depth slider', step: 0.1 },
           { kind: 'pixelate', field: 'size', label: 'Pixelate cell size (px) slider', step: 2 },
         ]) {
