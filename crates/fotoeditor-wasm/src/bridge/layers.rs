@@ -711,6 +711,20 @@ impl Engine {
     pub fn golden_compare(&mut self, bytes: &[u8]) -> Result<u32, JsValue> {
         let actual = decode_composite(bytes).map_err(js)?;
         let expected = self.layered.golden.take().ok_or("No golden reference")?;
+        if let Some((i, (a, b))) = actual
+            .iter()
+            .zip(&expected)
+            .enumerate()
+            .find(|(_, (a, b))| a.0.iter().zip(b.0).any(|(a, b)| a.abs_diff(b) > 1))
+        {
+            return Err(js(format!(
+                "GPU golden mismatch at {},{}: actual {:?}, expected {:?}",
+                i % 256,
+                i / 256,
+                a,
+                b
+            )));
+        }
         Ok(actual
             .iter()
             .zip(expected)

@@ -120,6 +120,9 @@ impl PreviewRuntime {
             Filter::Gaussian { radius }
             | Filter::BoxBlur { radius }
             | Filter::Median { radius }
+            | Filter::MotionBlur { radius, .. }
+            | Filter::HighPass { radius }
+            | Filter::Emboss { radius, .. }
             | Filter::UnsharpMask { radius, .. } => {
                 *radius = (f64::from(*radius) * scale).round().clamp(0.0, 64.0) as u32
             }
@@ -131,6 +134,11 @@ impl PreviewRuntime {
             } => (2u32, amount, f32::from(threshold) / 255.0),
             Filter::Sharpen { amount } => (2, amount, 0.0),
             Filter::Median { .. } => (3, 0.0, 0.0),
+            Filter::MotionBlur { .. } => (4, 0.0, 0.0),
+            Filter::HighPass { .. } => (5, 0.0, 0.0),
+            Filter::AddNoise { amount, .. } => (6, amount, 0.0),
+            Filter::Emboss { amount, .. } => (7, amount, 0.0),
+            Filter::Pixelate { size } => (8, size as f32, 0.0),
             _ => (0, 0.0, 0.0),
         };
         let mut params = Vec::with_capacity(2128);
@@ -145,7 +153,25 @@ impl PreviewRuntime {
         params.extend(threshold.to_le_bytes());
         params
             .extend(u32::from(self.job.source.layer(target)?.properties.locks.alpha).to_le_bytes());
-        params.extend([0; 12]);
+        let flags = match filter {
+            Filter::AddNoise {
+                seed,
+                monochrome,
+                distribution,
+                ..
+            } => [
+                seed,
+                u32::from(monochrome),
+                u32::from(matches!(
+                    distribution,
+                    fotoeditor_filters::NoiseDistribution::Gaussian
+                )),
+            ],
+            _ => [0; 3],
+        };
+        for value in flags {
+            params.extend(value.to_le_bytes());
+        }
         let point = |x: f64, y: f64| {
             self.job.view.screen_to_document(
                 (f64::from(c.0 * 256) + 0.5 + x) * self.job.view.width
@@ -169,9 +195,33 @@ impl PreviewRuntime {
         ] {
             params.extend((v as f32).to_le_bytes());
         }
+        let direction = match filter {
+            Filter::MotionBlur { angle, .. } | Filter::Emboss { angle, .. } => {
+                // Rotate/flip the document direction into the sampled viewport.
+                let a = f64::from(angle).to_radians();
+                let x = dx.0 - origin.0;
+                let y = dx.1 - origin.1;
+                let u = dy.0 - origin.0;
+                let v = dy.1 - origin.1;
+                let det = x * v - y * u;
+                (
+                    (a.cos() * v - a.sin() * u) / det / scale,
+                    (a.sin() * x - a.cos() * y) / det / scale,
+                )
+            }
+            _ => (0.0, 0.0),
+        };
         for i in 0..129 {
-            params.extend(weights.get(i).copied().unwrap_or(0.0).to_le_bytes());
-            params.extend([0; 12]);
+            let k = i as i32 - filter.radius() as i32;
+            let tap = [
+                weights.get(i).copied().unwrap_or(0.0),
+                (f64::from(k) * direction.0).round() as f32,
+                (f64::from(k) * direction.1).round() as f32,
+                0.0,
+            ];
+            for value in tap {
+                params.extend(value.to_le_bytes());
+            }
         }
         Ok(fotoeditor_gpu::FilterTileInput {
             source,

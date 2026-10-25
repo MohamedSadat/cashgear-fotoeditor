@@ -6,6 +6,13 @@ use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 type PinnedTiles = HashMap<TileCoord, Arc<Tile<Rgba8>>>;
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum NoiseDistribution {
+    Uniform,
+    Gaussian,
+}
+
 pub const FILTER_SCRATCH: u64 = 8 * 1024 * 1024;
 pub const FILTER_ALLOCATION_CHUNK: u64 = 16 * 1024 * 1024;
 /// A freed, budgeted allocator chunk avoids one WASM memory.grow per output
@@ -44,6 +51,27 @@ pub enum Filter {
     Median {
         radius: u32,
     },
+    MotionBlur {
+        radius: u32,
+        angle: f32,
+    },
+    HighPass {
+        radius: u32,
+    },
+    AddNoise {
+        amount: f32,
+        seed: u32,
+        monochrome: bool,
+        distribution: NoiseDistribution,
+    },
+    Emboss {
+        radius: u32,
+        angle: f32,
+        amount: f32,
+    },
+    Pixelate {
+        size: u32,
+    },
 }
 impl Filter {
     pub fn radius(&self) -> u32 {
@@ -52,6 +80,11 @@ impl Filter {
             | Self::BoxBlur { radius }
             | Self::UnsharpMask { radius, .. }
             | Self::Median { radius } => radius,
+            Self::MotionBlur { radius, .. }
+            | Self::HighPass { radius }
+            | Self::Emboss { radius, .. } => radius,
+            Self::AddNoise { .. } => 0,
+            Self::Pixelate { size } => size.saturating_sub(1),
             Self::Sharpen { .. } => 1,
         }
     }
@@ -69,6 +102,27 @@ impl Filter {
                 return Err("Sharpen amount must be finite and 0–5".into());
             }
         }
+        match *self {
+            Self::MotionBlur { angle, .. } | Self::Emboss { angle, .. }
+                if !angle.is_finite() || !(-180.0..=180.0).contains(&angle) =>
+            {
+                return Err("Angle must be finite and -180–180 degrees".into())
+            }
+            Self::Pixelate { size } if !(1..=64).contains(&size) => {
+                return Err("Pixelate size must be 1–64".into())
+            }
+            _ => {}
+        }
+        if let Self::AddNoise { amount, .. } | Self::Emboss { amount, .. } = *self {
+            let limit = if matches!(self, Self::AddNoise { .. }) {
+                1.0
+            } else {
+                5.0
+            };
+            if !amount.is_finite() || !(0.0..=limit).contains(&amount) {
+                return Err("Invalid filter amount".into());
+            }
+        }
         Ok(())
     }
     pub fn label(&self) -> &'static str {
@@ -78,6 +132,11 @@ impl Filter {
             Self::UnsharpMask { .. } => "Unsharp mask",
             Self::Sharpen { .. } => "Sharpen",
             Self::Median { .. } => "Median",
+            Self::MotionBlur { .. } => "Motion blur",
+            Self::HighPass { .. } => "High pass",
+            Self::AddNoise { .. } => "Add noise",
+            Self::Emboss { .. } => "Emboss",
+            Self::Pixelate { .. } => "Pixelate",
         }
     }
     pub fn weights(&self) -> Vec<f32> {
@@ -392,6 +451,8 @@ impl FilterJob {
             &self.filter,
             &self.weights,
             opaque,
+            (c.0 * TILE_SIZE, c.1 * TILE_SIZE),
+            (self.before.width, self.before.height),
         );
         let output = &self.workspace.output;
         let mut pixels = pinned
@@ -636,6 +697,7 @@ fn resize_scratch<T: Clone>(values: &mut Vec<T>, length: usize, value: T) {
     values.resize(length, value);
 }
 #[inline(never)]
+#[allow(clippy::too_many_arguments)]
 fn convolve_into(
     workspace: &mut FilterWorkspace,
     stride: usize,
@@ -644,6 +706,8 @@ fn convolve_into(
     filter: &Filter,
     weights: &[f32],
     opaque: bool,
+    origin: (u32, u32),
+    canvas: (u32, u32),
 ) {
     let FilterWorkspace {
         input,
@@ -655,6 +719,9 @@ fn convolve_into(
     } = workspace;
     let r = filter.radius() as usize;
     resize_scratch(out, width * height, [0.0; 4]);
+    if crate::texture::apply_extra(input, out, stride, width, height, origin, canvas, filter) {
+        return;
+    }
     if matches!(filter, Filter::Median { .. }) {
         let count = (2 * r + 1).pow(2);
         resize_scratch(values, count, 0.0);
@@ -701,6 +768,29 @@ fn convolve_into(
         }
     }
 
+    if matches!(filter, Filter::HighPass { .. }) {
+        for y in 0..height {
+            for x in 0..width {
+                let before = input[(y + r) * stride + x + r];
+                let blurred = out[y * width + x];
+                let mut p = before;
+                if r > 0 && before[3] > 0.0 {
+                    for c in 0..3 {
+                        let b = if blurred[3] > 0.0 {
+                            blurred[c] * 255.0 / blurred[3]
+                        } else {
+                            0.0
+                        };
+                        p[c] = (128.0 + before[c] * 255.0 / before[3] - b).clamp(0.0, 255.0)
+                            * before[3]
+                            / 255.0;
+                    }
+                }
+                out[y * width + x] = p;
+            }
+        }
+        return;
+    }
     let (amount, threshold) = match *filter {
         Filter::UnsharpMask {
             amount, threshold, ..
@@ -792,6 +882,8 @@ fn convolve(
         filter,
         weights,
         opaque,
+        (0, 0),
+        (width as u32, height as u32),
     );
     workspace.output
 }
@@ -1461,7 +1553,17 @@ mod tests {
         let weights = f.weights();
         for opaque in [true, false, true, false] {
             scratch.input[0][3] = if opaque { 255.0 } else { 128.0 };
-            convolve_into(&mut scratch, 384, 256, 256, &f, &weights, opaque);
+            convolve_into(
+                &mut scratch,
+                384,
+                256,
+                256,
+                &f,
+                &weights,
+                opaque,
+                (0, 0),
+                (256, 256),
+            );
             let capacity = (scratch.input.capacity() + scratch.output.capacity()) * 16
                 + (scratch.packed.capacity()
                     + scratch.result.capacity()
