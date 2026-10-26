@@ -442,3 +442,111 @@ fn selected_transform_lifts_fractional_coverage_once_and_keeps_linked_mask_fixed
     );
     assert!(c.is_empty());
 }
+
+#[test]
+fn crop_straighten_is_one_resample_and_one_exact_document_command() {
+    fn child(d: &Document) -> &Layer {
+        let LayerContent::Group(children) = &d.layers[0].content else {
+            panic!()
+        };
+        &children[0]
+    }
+    let original = fixture();
+    let rect = CanvasRect {
+        x: 1,
+        y: 1,
+        width: 5,
+        height: 3,
+    };
+    let mut cropped = original.clone();
+    let metadata = command(
+        &original,
+        GeometryAction::CropStraighten {
+            rect,
+            degrees: 0.0,
+            interpolation: Interpolation::Lanczos3,
+        },
+    );
+    metadata.apply(&mut cropped);
+    assert_eq!(cropped.canvas_rect(), rect);
+    assert_eq!(
+        child(&cropped).raster_samples().unwrap().tiles()[&(0, 0)].id(),
+        child(&original).raster_samples().unwrap().tiles()[&(0, 0)].id()
+    );
+    assert!(Arc::ptr_eq(
+        &child(&cropped).mask.as_ref().unwrap().samples,
+        &child(&original).mask.as_ref().unwrap().samples
+    ));
+    metadata.revert(&mut cropped);
+    assert_eq!(cropped.canvas_rect(), original.canvas_rect());
+    let mut reference = original.clone();
+    command(
+        &original,
+        GeometryAction::CanvasRotate {
+            degrees: 13.0,
+            interpolation: Interpolation::Lanczos3,
+        },
+    )
+    .apply(&mut reference);
+    let action = GeometryAction::CropStraighten {
+        rect,
+        degrees: 13.0,
+        interpolation: Interpolation::Lanczos3,
+    };
+    let c = command(&original, action.clone());
+    let mut history = History::default();
+    history.execute(&mut cropped, Box::new(c), 0).unwrap();
+    assert_eq!(
+        (cropped.width, cropped.height),
+        (reference.width, reference.height)
+    );
+    assert_eq!(history.depths(), (1, 0));
+    assert_eq!(
+        (cropped.canvas_rect().width, cropped.canvas_rect().height),
+        (5, 3)
+    );
+    for y in 0..reference.height {
+        for x in 0..reference.width {
+            assert_eq!(
+                child(&cropped).raster_samples().unwrap().sample(x, y),
+                child(&reference).raster_samples().unwrap().sample(x, y)
+            );
+            assert_eq!(
+                child(&cropped).mask.as_ref().unwrap().samples.sample(x, y),
+                child(&reference)
+                    .mask
+                    .as_ref()
+                    .unwrap()
+                    .samples
+                    .sample(x, y)
+            );
+            assert_eq!(
+                cropped.selection.as_ref().unwrap().sample(x, y),
+                reference.selection.as_ref().unwrap().sample(x, y)
+            );
+        }
+    }
+    assert!(history.undo(&mut cropped));
+    assert_eq!(
+        child(&cropped).raster_samples().unwrap().tiles()[&(0, 0)].id(),
+        child(&original).raster_samples().unwrap().tiles()[&(0, 0)].id()
+    );
+    assert!(GeometryJob::new(Arc::new(original.clone()), action.clone(), 1).is_err());
+    let mut pending = GeometryJob::new(Arc::new(original.clone()), action, CPU_BUDGET).unwrap();
+    pending.step().unwrap();
+    drop(pending);
+    assert_eq!(history.depths(), (0, 1));
+    for degrees in [f64::NAN, 46.0, -46.0] {
+        assert!(GeometryJob::new(
+            Arc::new(original.clone()),
+            GeometryAction::CropStraighten {
+                rect,
+                degrees,
+                interpolation: Interpolation::Lanczos3
+            },
+            CPU_BUDGET
+        )
+        .is_err());
+    }
+    assert!(history.redo(&mut cropped));
+}

@@ -26,6 +26,12 @@ pub enum GeometryAction {
     CanvasFlip {
         horizontal: bool,
     },
+    CropStraighten {
+        rect: CanvasRect,
+        degrees: f64,
+        #[serde(default)]
+        interpolation: Interpolation,
+    },
     LayerTransform {
         target: LayerId,
         matrix: TransformMatrix,
@@ -321,6 +327,51 @@ impl GeometryJob {
                     Interpolation::Nearest,
                     false,
                     "Canvas size",
+                )
+            }
+            GeometryAction::CropStraighten {
+                rect,
+                degrees,
+                interpolation,
+            } => {
+                rect.validate(source.width, source.height)?;
+                if !degrees.is_finite() || degrees.abs() > 45.0 {
+                    return Err("Straightening angle must be between -45 and 45 degrees".into());
+                }
+                // The draft rectangle is an axis-aligned destination window in
+                // current document coordinates. Rotate once about its center,
+                // retaining the whole source extent outside that window.
+                let m = TransformMatrix::rotation(
+                    degrees,
+                    [
+                        rect.x as f64 + rect.width as f64 / 2.0,
+                        rect.y as f64 + rect.height as f64 / 2.0,
+                    ],
+                );
+                let [l, t, r, b] = enclosing(m.bounds(full(&source).geometry())?);
+                let left = l.min(rect.x as f64);
+                let top = t.min(rect.y as f64);
+                output.width = (r.max((rect.x + rect.width) as f64) - left) as u32;
+                output.height = (b.max((rect.y + rect.height) as f64) - top) as u32;
+                set_canvas(
+                    &mut output,
+                    CanvasRect {
+                        x: (rect.x as f64 - left) as u32,
+                        y: (rect.y as f64 - top) as u32,
+                        ..rect
+                    },
+                );
+                for g in &mut output.guides {
+                    g.position -= match g.axis {
+                        GuideAxis::Vertical => left,
+                        GuideAxis::Horizontal => top,
+                    };
+                }
+                (
+                    m.then(TransformMatrix::translation(-left, -top)),
+                    interpolation,
+                    false,
+                    "Crop and straighten",
                 )
             }
             GeometryAction::CanvasRotate {

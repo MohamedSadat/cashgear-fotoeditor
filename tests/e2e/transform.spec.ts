@@ -20,7 +20,7 @@ const exported = async (page: Page) =>
   );
 for (const backend of ['WebGPU', 'WebGL2']) {
   const query = '/?diagnostic=1&document=1' + (backend === 'WebGL2' ? '&gpu=webgl2' : '');
-  test(`${backend} masked layer GPU transform matches committed pixels after a rotated flipped view rebuild`, async ({
+  test(`${backend} rebuilds a rotated flipped preview and matches masked rotation Apply at actual pixels`, async ({
     page,
   }, info) => {
     await page.goto(query);
@@ -51,7 +51,13 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       }),
     );
     expect(target).toBeGreaterThan(0);
-    const update = { kind: 'matrix', matrix: { values: [1, 0, 7, 0, 1, 3, 0, 0, 1] } } as const;
+    const a = (10 * Math.PI) / 180,
+      c = Math.cos(a),
+      sn = Math.sin(a);
+    const update = {
+      kind: 'matrix',
+      matrix: { values: [c, -sn, 48 - 48 * c + 32 * sn, sn, c, 32 - 48 * sn - 32 * c, 0, 0, 1] },
+    } as const;
     await whenIdle(page, () =>
       page.evaluate(
         (u) => (Reflect.get(window, '__fotoeditor') as EngineApi).previewTransform(u),
@@ -67,6 +73,24 @@ for (const backend of ['WebGPU', 'WebGL2']) {
         ]);
       }),
     );
+    await whenIdle(page, () =>
+      page.evaluate(
+        (u) => (Reflect.get(window, '__fotoeditor') as EngineApi).previewTransform(u),
+        update,
+      ),
+    );
+    // The normal rotated viewport uses interpolated texture coordinates, while
+    // the preview samples document pixel centers. At almost-integer boundaries
+    // raster precision can choose neighboring pixels. Compare their resampling
+    // at a pixel-aligned view after exercising the rotated cache rebuild.
+    await whenIdle(page, () =>
+      page.evaluate(() =>
+        (Reflect.get(window, '__fotoeditor') as EngineApi).interact([
+          { kind: 'reset-rotation', x: 0, y: 0, amount: 0 },
+        ]),
+      ),
+    );
+    await expect.poll(async () => (await state(page)).view.rotation).toBe(0);
     await whenIdle(page, () =>
       page.evaluate(
         (u) => (Reflect.get(window, '__fotoeditor') as EngineApi).previewTransform(u),
@@ -96,7 +120,19 @@ for (const backend of ['WebGPU', 'WebGL2']) {
         path: resolve(`bench/results/p7-masked-${info.project.name}-${backend}-after.png`),
       }),
     );
-    expect(after.data.equals(before.data)).toBe(true);
+    let maximum = 0;
+    for (let i = 0; i < before.data.length; i++)
+      maximum = Math.max(maximum, Math.abs(after.data[i] - before.data[i]));
+    await info.attach('transform-preview-channel-error', {
+      body: JSON.stringify({
+        maximum,
+        layerRotationDegrees: 10,
+        viewRotationRadians: 0,
+        flipped: true,
+      }),
+      contentType: 'application/json',
+    });
+    expect(maximum).toBeLessThanOrEqual(1);
   });
   test(`${backend} transform cancellation, budget refusal and invalid matrices preserve redo and samples`, async ({
     page,

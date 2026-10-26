@@ -215,6 +215,7 @@ export type GeometryAction =
   | { kind: 'canvas-size'; width: number; height: number; anchor: [number, number] }
   | { kind: 'canvas-rotate'; degrees: number; interpolation: Interpolation }
   | { kind: 'canvas-flip'; horizontal: boolean }
+  | { kind: 'crop-straighten'; rect: CanvasRect; degrees: number; interpolation: Interpolation }
   | {
       kind: 'layer-transform';
       target: number;

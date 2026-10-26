@@ -38,6 +38,40 @@ async function ready(page: Page, backend: string) {
   return baseline;
 }
 for (const backend of ['WebGPU', 'WebGL2']) {
+  test(`${backend} clears abandoned transform controls after worker loss and restart`, async ({
+    page,
+  }) => {
+    await ready(page, backend);
+    await page.evaluate(() =>
+      (Reflect.get(window, '__fotoeditor') as EngineApi).diagnosticPreviewFault(
+        'pause-before-render',
+      ),
+    );
+    await page.getByTestId('gpu-canvas').focus();
+    await page.keyboard.press('Control+t');
+    await expect(page.getByTestId('operation-status')).toContainText('Transform preview ready');
+    await page.getByRole('button', { name: 'Simulate Rust panic', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Retry engine', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Retry engine', exact: true }).click();
+    await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');
+    const filled = await whenIdle(page, () =>
+      page.evaluate(async () => {
+        const api = Reflect.get(window, '__fotoeditor') as EngineApi;
+        await api.newDocument(64, 48, 72);
+        return api.selectionAction({ kind: 'fill', color: [200, 40, 80, 128] });
+      }),
+    );
+    await expect
+      .poll(async () => (await state(page))?.contentRevision)
+      .toBe(filled.contentRevision);
+    await expect(
+      page.locator('.rail').getByRole('button', { name: 'Free transform', exact: true }),
+    ).toBeEnabled();
+    await page.getByTestId('gpu-canvas').focus();
+    await page.keyboard.press('Control+t');
+    await expect(page.getByTestId('transform-status')).toHaveText('Transform preview ready');
+    await page.keyboard.press('Escape');
+  });
   test(`${backend} commits transform controls with Enter and nudges by one or ten pixels`, async ({
     page,
   }) => {

@@ -1,6 +1,6 @@
 use fotoeditor_core::{
-    display_region, display_tile, DirtyRegions, Document, Rgba8, TileCoord, TileRect, TileSurface,
-    View, GPU_BUDGET, TILE_SIZE,
+    display_region, display_tile_window, DirtyRegions, Document, Rgba8, TileCoord, TileRect,
+    TileSurface, View, GPU_BUDGET, TILE_SIZE,
 };
 use std::collections::{HashMap, HashSet};
 use wgpu::*;
@@ -491,7 +491,7 @@ impl ViewportRenderer {
             if let Some(old) = page.slots[slot] {
                 self.locations.remove(&(old, lod));
             }
-            let pixels = display_tile(doc.raster(), **coord, lod);
+            let pixels = display_tile_window(doc.raster(), **coord, lod, doc.canvas);
             queue.write_texture(
                 TexelCopyTextureInfo {
                     texture: &page.texture,

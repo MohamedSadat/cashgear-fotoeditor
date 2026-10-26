@@ -1,4 +1,4 @@
-use crate::{Rgba8, TileCoord, TileRect, TileSurface, TILE_SIZE};
+use crate::{CanvasRect, Rgba8, TileCoord, TileRect, TileSurface, TILE_SIZE};
 // A mip gutter can touch only the eight neighboring source tiles. Pin them once
 // for the kernel instead of taking an Arc and residency lock for every sample.
 struct Neighborhood<'a> {
@@ -120,6 +120,64 @@ fn premultiplied(p: Rgba8) -> [u8; 4] {
         ((b as u32 * a32 + 127) / 255) as u8,
         a,
     ]
+}
+/// Crop-aware temporary display samples. Hidden pixels never contribute to a
+/// visible window's edge mip or interpolation gutter; authoritative tiles stay
+/// unchanged. An intersecting tile's clamp can touch only its existing neighbors.
+#[inline(never)]
+pub fn display_tile_window(
+    surface: &TileSurface<Rgba8>,
+    coord: TileCoord,
+    lod: u32,
+    window: Option<CanvasRect>,
+) -> Vec<u8> {
+    let Some(c) = window else {
+        return display_tile(surface, coord, lod);
+    };
+    let scale = 1u32 << lod;
+    let side = TILE_SIZE / scale;
+    let padded = side + 2;
+    let sx = coord.0 * TILE_SIZE;
+    let sy = coord.1 * TILE_SIZE;
+    if sx >= c.x + c.width || sy >= c.y + c.height || sx + TILE_SIZE <= c.x || sy + TILE_SIZE <= c.y
+    {
+        return vec![0; (padded * padded * 4) as usize];
+    }
+    if sx as i64 - scale as i64 >= c.x as i64
+        && sy as i64 - scale as i64 >= c.y as i64
+        && sx + TILE_SIZE + scale <= c.x + c.width
+        && sy + TILE_SIZE + scale <= c.y + c.height
+    {
+        return display_tile(surface, coord, lod);
+    }
+    let neighborhood = Neighborhood::new(surface, coord);
+    let mut out = vec![0; (padded * padded * 4) as usize];
+    for y in 0..padded {
+        for x in 0..padded {
+            let mut sum = [0u32; 4];
+            for by in 0..scale {
+                for bx in 0..scale {
+                    let px = (sx as i64 + (x as i64 - 1) * scale as i64 + bx as i64)
+                        .clamp(c.x as i64, (c.x + c.width - 1) as i64);
+                    let py = (sy as i64 + (y as i64 - 1) * scale as i64 + by as i64)
+                        .clamp(c.y as i64, (c.y + c.height - 1) as i64);
+                    let p = neighborhood.sample(px, py);
+                    let a = p.0[3] as u32;
+                    for (s, v) in sum[..3].iter_mut().zip(p.0) {
+                        *s += v as u32 * a;
+                    }
+                    sum[3] += a;
+                }
+            }
+            let n = scale * scale;
+            let i = ((y * padded + x) * 4) as usize;
+            for k in 0..3 {
+                out[i + k] = ((sum[k] + n * 127) / (n * 255)) as u8;
+            }
+            out[i + 3] = ((sum[3] + n / 2) / n) as u8;
+        }
+    }
+    out
 }
 #[inline(never)]
 fn display_base_tile(surface: &TileSurface<Rgba8>, coord: TileCoord) -> Vec<u8> {
@@ -250,5 +308,41 @@ mod tests {
         for lod in [0, 1, 4, 8] {
             assert!(display_tile(&s, (1, 0), lod).iter().all(|c| *c == 255));
         }
+    }
+    #[test]
+    fn cropped_mips_and_gutters_exclude_hidden_neighbors_at_every_lod() {
+        let mut s = TileSurface::new(770, 515);
+        for y in 0..515 {
+            for x in 0..770 {
+                s.write(x, y, Rgba8([255, 0, 0, 255]));
+            }
+        }
+        let window = CanvasRect {
+            x: 253,
+            y: 251,
+            width: 9,
+            height: 11,
+        };
+        for y in window.y..window.y + window.height {
+            for x in window.x..window.x + window.width {
+                s.write(x, y, Rgba8([0, 255, 0, 255]));
+            }
+        }
+        let original = s.tiles()[&(0, 0)].id();
+        for lod in [0, 1, 3, 8] {
+            for c in [(0, 0), (1, 0), (0, 1), (1, 1)] {
+                let bytes = display_tile_window(&s, c, lod, Some(window));
+                assert!(bytes
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .all(|p| *p == [0, 255, 0, 255]));
+            }
+        }
+        assert_eq!(s.sample(252, 251), Rgba8([255, 0, 0, 255]));
+        assert_eq!(s.tiles()[&(0, 0)].id(), original);
+        assert!(display_tile_window(&s, (2, 1), 4, Some(window))
+            .iter()
+            .all(|v| *v == 0));
     }
 }

@@ -20,7 +20,8 @@ fn inside(p:vec2<f32>)->bool {return all(p>=view.canvas.xy) && all(p<view.canvas
 @fragment fn background(@builtin(position) p:vec4<f32>)->@location(0) vec4<f32> {
     let d=to_doc(p.xy);
     if view.has_document<0.5 || !inside(d) {return vec4<f32>(48.0/255.0,52.0/255.0,59.0/255.0,1.0);}
-    let checker=(u32(floor(d.x/12.0))+u32(floor(d.y/12.0)))%2u;
+    let local=d-view.canvas.xy;
+    let checker=(u32(floor(local.x/12.0))+u32(floor(local.y/12.0)))%2u;
     let color=select(0.78,0.9,checker==0u);return vec4<f32>(vec3<f32>(color),1.0);
 }
 @fragment fn grid(@builtin(position) p:vec4<f32>)->@location(0) vec4<f32> {

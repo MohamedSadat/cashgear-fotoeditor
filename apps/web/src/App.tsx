@@ -9,7 +9,9 @@ import { AdjustmentPanel } from './AdjustmentPanel';
 import { FilterPanel } from './FilterPanel';
 import { GeometryPanel } from './GeometryPanel';
 import { TransformPanel } from './TransformPanel';
-import { startTransform, cancelTransform, useTransform } from './transform-state';
+import { CropPanel } from './CropPanel';
+import { useCrop, startCrop, resetCrop } from './crop-state';
+import { startTransform, cancelTransform, useTransform, resetTransform } from './transform-state';
 import { useSelection } from './selection-state';
 import { useBrush } from './brush-state';
 import { updateWorkspace, useWorkspace } from './state';
@@ -47,6 +49,8 @@ export function App() {
     fault.current = handler;
   }, []);
   const onApiReady = useCallback((engine: EngineApi | undefined) => {
+    resetTransform();
+    resetCrop();
     api.current = engine;
     setEngineApi(() => engine);
     if (new URLSearchParams(location.search).get('diagnostic') === '1')
@@ -64,7 +68,8 @@ export function App() {
   const selectionNotice = useSelection((state) => state.notice);
   const painting = !!snapshot?.painting;
   const transformBusy = useTransform((s) => s.busy || s.pending);
-  const working = !!busy || !!snapshot?.operation || selectionBusy || transformBusy;
+  const cropBusy = useCrop((s) => s.busy);
+  const working = !!busy || !!snapshot?.operation || selectionBusy || transformBusy || cropBusy;
   const recovery = snapshot?.recovery;
   const recoverable = recovery?.candidates[0];
   useEffect(() => {
@@ -330,6 +335,15 @@ export function App() {
           >
             T
           </button>
+          <button
+            aria-label="Crop"
+            title="Crop · C"
+            aria-pressed={tool === 'crop'}
+            disabled={!doc || working || painting}
+            onClick={startCrop}
+          >
+            C
+          </button>
           {(
             [
               'brush',
@@ -552,6 +566,19 @@ export function App() {
             disabled={status !== 'ready' || working || painting || !doc}
           />
           <div className="section-divider" />
+          <CropPanel
+            api={engineApi}
+            disabled={
+              status !== 'ready' ||
+              !!busy ||
+              !!snapshot?.operation ||
+              selectionBusy ||
+              transformBusy ||
+              painting ||
+              !doc
+            }
+          />
+          <div className="section-divider" />
           <HistoryPanel api={engineApi} disabled={status !== 'ready' || working || painting} />
           <div className="section-divider" />
           <LayerPanel
@@ -682,16 +709,17 @@ export function App() {
               snapshot?.operation ||
               snapshot?.editError ||
               (transformBusy ? 'Updating transform…' : '') ||
+              (cropBusy ? 'Applying crop…' : '') ||
               selectionNotice ||
               notice ||
               (painting ? 'Painting…' : 'B brush · E eraser · Alt sample · Ctrl+Z undo')}
           </span>
-          {(busy || selectionBusy || transformBusy) && (
+          {(busy || selectionBusy || transformBusy || cropBusy) && (
             <button
               onClick={() => {
                 const token = operation.current;
                 void Promise.resolve(
-                  selectionBusy || transformBusy
+                  selectionBusy || transformBusy || cropBusy
                     ? api.current?.cancelJob()
                     : !workerJobStarted.current || api.current?.cancelJob(),
                 )

@@ -1292,6 +1292,38 @@ select {
   stroke: #ffd0a8;
   stroke-width: 1.5;
 }
+.crop-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 4;
+  pointer-events: none;
+  overflow: hidden;
+}
+.crop-overlay path {
+  fill: none;
+  stroke: #fff6e9;
+  stroke-width: 1;
+}
+.crop-overlay .crop-shade {
+  fill: #0008;
+  fill-rule: evenodd;
+  stroke: none;
+}
+.crop-overlay .crop-thirds {
+  opacity: 0.65;
+}
+.crop-overlay .crop-straighten {
+  stroke: #53c4f4;
+  stroke-width: 2;
+  stroke-dasharray: 5 3;
+}
+.crop-overlay circle {
+  fill: #20242a;
+  stroke: #fff6e9;
+  stroke-width: 1.5;
+}
 .geometry-overlay path {
   fill: none;
   stroke-width: 1;

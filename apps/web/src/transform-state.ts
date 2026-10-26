@@ -28,6 +28,15 @@ let queued: TransformUpdate | undefined;
 let running: Promise<void> | undefined;
 let nudges: Point = [0, 0];
 let nudgeRunning: Promise<void> | undefined;
+export function resetTransform() {
+  owner = undefined;
+  ++epoch;
+  queued = undefined;
+  running = undefined;
+  nudges = [0, 0];
+  nudgeRunning = undefined;
+  useTransform.setState({ pending: false, busy: false, quad: undefined, notice: '' });
+}
 function ensure(api: EngineApi) {
   if (owner !== api) {
     owner = api;

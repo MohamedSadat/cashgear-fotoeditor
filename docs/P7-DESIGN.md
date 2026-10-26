@@ -106,6 +106,17 @@ large documents and strong reductions. Apply uses the full-resolution Rust job,
 its uncapped reduction support and one final resample. No full-resolution preview
 or fixed P7 latency promise is implied.
 
+At actual pixels, the masked 10-degree rotation preview is checked against the
+committed canvas within one channel value, after rebuilding through a rotated and
+flipped camera. A rotated normal viewport uses interpolated atlas coordinates;
+the preview samples document pixel centers. Near integer coordinate boundaries
+their raster precision can choose neighboring pixels (three pixels exceeded one
+channel value, with maximum error three, in the recorded small fixture after
+fixing the checkerboard origin).
+The strict sampling comparison therefore uses a pixel-aligned camera. The
+transparency checkerboard anchors to the visible origin, so retained-extent
+rebasing cannot shift its phase across Apply.
+
 Source uploads and background preparation hydrate/yield in bounded steps. View
 changes rebuild the viewport cache against the same source/matrix. GPU completion
 fences, captured frame snapshots and preview acknowledgements remain in use.
@@ -119,6 +130,37 @@ Shift preserves scale proportions and snaps rotation to 15 degrees. Enter applie
 Escape cancels. Screen-distance snapping uses document guides and canvas edges,
 through the rotated/flipped/zoomed view. Controls expose the four interpolation
 modes, translation, scale, rotation and skew. New sessions default to Lanczos3.
+
+## Crop authoring and straighten
+
+The Crop tool (`C`) keeps an editable draft, with eight resize handles, Alt-drag
+movement, a rule-of-thirds overlay and Free/Original/1:1/4:3/3:2/16:9/9:16 ratios.
+Shift constrains a free rectangle to a square. Guide/canvas snapping uses the same
+six CSS-pixel tolerance through document coordinates, including rotated/flipped
+views. Enter applies, Escape cancels, and content revision changes discard stale
+drafts. Controls label positions relative to the visible canvas origin.
+
+The straighten-line gesture records its angle relative to the closest document
+axis; the numeric correction is limited to ±45 degrees. The draft shows the line
+and angle; image rotation happens on Apply. `CropStraighten` rotates the entire
+retained layer tree once about the draft rectangle's center, rebases its enclosing
+extent, then uses that axis-aligned destination rectangle as the visible window.
+It includes masks, selection and guides in one candidate and one command. Reveal
+All recovers outside content in its transformed coordinates; undo restores the
+exact original samples and metadata. A zero angle shares original tile generations
+and performs the same non-destructive crop as the metadata-only command.
+
+Display mip interiors and gutters clamp to the visible crop window before
+filtering. Retained outside pixels therefore cannot bleed into minified edges.
+The ordinary full-window fast path stays unchanged. Existing geometry/view sync
+invalidates cached display mips when crop metadata changes. Bounded neighbor
+hydration remains sufficient, and authoritative document samples are untouched.
+
+Worker replacement explicitly resets geometry control ownership and pending
+state. Late results from an abandoned worker cannot publish crop state into its
+replacement. The diagnostic after-step budget fault refuses an allocation after
+a real processing step, even if a tiny job releases its scratch before a next
+allocation; this makes the atomic candidate-failure check deterministic.
 
 ## Processing and integration contracts
 

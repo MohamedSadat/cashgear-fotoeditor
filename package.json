@@ -24,6 +24,7 @@
     "bench:history": "pnpm test:fixtures && node scripts/history-bench.mjs",
     "bench:selection": "node scripts/selection-bench.mjs",
     "bench:filters": "node scripts/filter-bench.mjs",
+    "bench:geometry": "node scripts/geometry-bench.mjs",
     "bench:filter-preview": "node scripts/filter-preview-bench.mjs",
     "bench:adjustments": "node scripts/adjustment-bench.mjs",
     "bench:adjustment-preview": "node scripts/adjustment-preview-bench.mjs",

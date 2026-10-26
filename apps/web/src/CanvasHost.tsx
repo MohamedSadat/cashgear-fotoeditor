@@ -6,6 +6,7 @@ import type { BackendPreference, EngineApi, Interaction } from './engine/types';
 import { updateWorkspace, useWorkspace } from './state';
 import { useGeometry } from './geometry-state';
 import { bindTransformInteractions } from './transform-interaction';
+import { bindCropInteractions } from './crop-interaction';
 import { cancelTransform } from './transform-state';
 import { evaluateCurve, setBrush, useBrush } from './brush-state';
 import type { BrushSettings } from './brush-state';
@@ -107,6 +108,13 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       ];
     };
     const transform = bindTransformInteractions(
+      canvas,
+      container,
+      () => client.api,
+      documentPoint,
+      screenPoint,
+    );
+    const crop = bindCropInteractions(
       canvas,
       container,
       () => client.api,
@@ -281,7 +289,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
           event.target.isContentEditable)
       )
         return;
-      if (transform.key(event)) return;
+      if (crop.key(event) || transform.key(event)) return;
       if (event.code === 'Space') {
         if (event.target instanceof HTMLButtonElement && !canvas.matches(':hover')) return;
         space = event.type === 'keydown';
@@ -385,6 +393,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       refreshOutline();
     }
     function resetKeys() {
+      crop.cancelDrag();
       transform.cancelDrag();
       clearSelectionGesture();
       space = false;
@@ -402,7 +411,13 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       'wheel',
       (event) => {
         event.preventDefault();
-        if (strokePointer !== undefined || selectionDrag || polygon.length || transform.dragging())
+        if (
+          strokePointer !== undefined ||
+          selectionDrag ||
+          polygon.length ||
+          transform.dragging() ||
+          crop.dragging()
+        )
           return;
         const rect = canvas.getBoundingClientRect();
         const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rect.height : 1;
@@ -435,7 +450,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
         !useSelection.getState().busy
       ) {
         event.preventDefault();
-        if (transform.down(event)) return;
+        if (crop.down(event) || transform.down(event)) return;
         const brush = useBrush.getState();
         const rect = canvas.getBoundingClientRect();
         const x = event.clientX - rect.left,
@@ -593,7 +608,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
     canvas.addEventListener('pointermove', (event) => {
       const rect = canvas.getBoundingClientRect();
       lastScreen = [event.clientX - rect.left, event.clientY - rect.top];
-      if (transform.move(event)) {
+      if (crop.move(event) || transform.move(event)) {
         input('cursor', ...lastScreen);
         return;
       }
@@ -609,7 +624,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       input('cursor', event.clientX - rect.left, event.clientY - rect.top);
     });
     canvas.addEventListener('pointerup', (event) => {
-      if (transform.up(event)) return;
+      if (crop.up(event) || transform.up(event)) return;
       drag = undefined;
       if (selectionDrag?.pointer === event.pointerId) {
         if (!gestureCurrent()) return;
@@ -658,12 +673,14 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       }
     });
     canvas.addEventListener('pointercancel', () => {
+      crop.cancelDrag();
       transform.cancelDrag();
       clearSelectionGesture();
       drag = undefined;
       cancelStroke();
     });
     canvas.addEventListener('lostpointercapture', () => {
+      if (crop.dragging()) crop.cancelDrag();
       if (transform.dragging()) transform.cancelDrag();
       if (selectionDrag) clearSelectionGesture();
       drag = undefined;
@@ -821,6 +838,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       svg.remove();
       geometrySvg.remove();
       transform.dispose();
+      crop.dispose();
     };
   }, [generation, diagnostic, onFaultReady, onApiReady]);
   return <div className="canvas-host" ref={host} />;

@@ -10,7 +10,43 @@ The user answered all four questions: Lanczos3 default, non-destructive crop,
 warp/puppet warp after v1 and content-aware scale outside v1. DECISIONS.md records
 these choices.
 
-### Immutable transform and Move checkpoint (2026-10-26)
+### Crop authoring checkpoint (2026-10-26)
+
+Adds the Crop tool, draggable/resizeable drafts, ratio presets, thirds, guide
+snapping, Alt-drag movement and a drawn/numeric straighten angle. One bounded
+whole-tree candidate rotates once and crops in one command; zero-angle crops
+retain all original generations. Retained outside samples survive streamed
+save/reopen; exact undo restores the pre-straighten document. Display mips/gutters
+exclude hidden crop neighbors, and the checkerboard stays at the visible origin.
+Worker replacement clears abandoned transform/crop control ownership.
+
+All 152 Rust tests, native/WASM clippy, formatting, TypeScript, ESLint, 16 Vitest
+cases and 451 licenses pass. Release WASM is 3,820,107 bytes / gzip9 1,423,475.
+Sixteen crop cases, four actual worker-loss/restart cases and four masked rotation
+preview/Apply comparisons pass across the installed Chrome/Edge hardware API
+pairs. The latter compare within one channel value at a pixel-aligned camera
+after rotated/flipped cache rebuild; P7-DESIGN.md records the separate rotated
+atlas raster-precision limit. WebView2 passes both APIs with straighten, single
+command, exact undo, streamed reopen and Reveal All checks.
+
+An initial crop test helper read the snapshot before the first frame; it now
+waits for an initialized snapshot. A worker-restart assertion now scopes the
+duplicate Free transform controls to the tool rail. The first complete browser
+run was superseded after revealing an unreliable after-step diagnostic: filling
+the budget could succeed if a tiny job released scratch before its next allocation.
+The diagnostic now refuses its allocation immediately after a real processing
+step; real production budgets and exact atomicity assertions are unchanged.
+Repeated software filter/refusal checks pass on both APIs. Raw/superseded evidence
+is retained under `bench/results/p7-crop-*`, `p7-lifecycle-*`,
+`p7-filter-diagnostic-*` and `p7-transform-rotation-*`.
+
+Full browser verification, 6000x4000 hardware measurements and exact-head remote
+gates remain. The expanded software suite's job envelope is 60 minutes; the
+preceding remote run had already spent over 30 minutes in build and full software
+checks. This changes no individual test assertion or missing-backend requirement.
+No `p7-transform` tag yet.
+
+### Earlier immutable transform and Move checkpoint
 
 Adds immutable free-transform sessions with eight handles and a rotation handle,
 scale/rotate/skew/distort/perspective controls, Shift proportions, Enter/Escape,

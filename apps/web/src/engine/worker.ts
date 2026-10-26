@@ -422,7 +422,10 @@ async function runFilter(begin: (engine: Engine) => void) {
       if (fault === 'budget-after-step') {
         const memory = snapshot().memory;
         external(
-          priorExternal + 768 * 1048576 - memory.document - memory.history - memory.temporary,
+          // Refuse this diagnostic allocation immediately after a real step.
+          // A tiny job may finish in that step and release its scratch before
+          // the next allocation, so merely filling the budget is insufficient.
+          priorExternal + 768 * 1048576 - memory.document - memory.history - memory.temporary + 1,
         );
       }
       if (performance.now() - slice >= 4) {
@@ -486,7 +489,7 @@ async function runGeometry(begin: (engine: Engine) => void) {
       kernelMs += performance.now() - t;
       if (fault === 'budget-after-step') {
         const m = snapshot().memory;
-        external(priorExternal + 768 * 1048576 - m.document - m.history - m.temporary);
+        external(priorExternal + 768 * 1048576 - m.document - m.history - m.temporary + 1);
       }
       if (performance.now() - slice >= 4) {
         const temporary = snapshot().memory.temporary;

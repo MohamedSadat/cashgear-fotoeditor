@@ -835,6 +835,46 @@ try {
       'exactUndo',
     ])
       expect(result.transform[key], key).toBe(true);
+    result.cropStraighten = await page.evaluate(async () => {
+      const api = window.__fotoeditor;
+      const digest = async () =>
+        Array.from(
+          new Uint8Array(await crypto.subtle.digest('SHA-256', await api.exportPng())),
+        ).join(',');
+      const initial = await api.selectionAction({ kind: 'none' }),
+        before = await digest();
+      const cropped = await api.geometryAction({
+        kind: 'crop-straighten',
+        rect: { x: 8, y: 6, width: 14, height: 10 },
+        degrees: -7.5,
+        interpolation: 'lanczos3',
+      });
+      const croppedHash = await digest();
+      await api.historyJump(initial.history.undo);
+      const undoExact = before === (await digest());
+      await api.historyJump(initial.history.undo + 1);
+      const dir = await navigator.storage.getDirectory(),
+        handle = await dir.getFileHandle('desktop-straighten.cgfoto', { create: true });
+      await api.saveProjectFile(handle);
+      await api.newDocument(1, 1, 72);
+      const reopened = await api.openProjectFile(await handle.getFile());
+      const reopenExact = croppedHash === (await digest());
+      const revealed = await api.geometryMetadata({ kind: 'crop', rect: null });
+      return {
+        cropped: cropped.document,
+        oneCommand: cropped.history.undo === initial.history.undo + 1,
+        undoExact,
+        reopened: reopened.document,
+        reopenExact,
+        revealed: revealed.document,
+      };
+    });
+    expect(result.cropStraighten.cropped).toMatchObject({ width: 14, height: 10, cropped: true });
+    expect(result.cropStraighten.reopened).toMatchObject({ width: 14, height: 10, cropped: true });
+    for (const key of ['oneCommand', 'undoExact', 'reopenExact'])
+      expect(result.cropStraighten[key], key).toBe(true);
+    expect(result.cropStraighten.revealed.width).toBeGreaterThan(32);
+    expect(result.cropStraighten.revealed.height).toBeGreaterThan(24);
     result.software = process.env.GPU_TEST_SOFTWARE === '1';
     await mkdir(join(root, 'bench/results'), { recursive: true });
     await page.screenshot({ path: join(root, 'bench/results/desktop-p4-' + backend + '.png') });

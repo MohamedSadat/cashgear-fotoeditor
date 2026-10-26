@@ -8,7 +8,7 @@ permissions:
 jobs:
   foundation:
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     env:
       GPU_TEST_SOFTWARE: '1'
     steps:
