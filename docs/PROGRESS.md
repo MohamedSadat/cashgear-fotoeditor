@@ -10,7 +10,33 @@ The user answered all four questions: Lanczos3 default, non-destructive crop,
 warp/puppet warp after v1 and content-aware scale outside v1. DECISIONS.md records
 these choices.
 
-### Crop authoring checkpoint (2026-10-26)
+### Final validation in progress (2026-10-26)
+
+The complete 440-case installed Chrome/Edge hardware suite passes on one attempt
+per case, with zero errors/skips/retries, in 21.7 minutes. The focused final crop
+suite passes 20 cases, adding four exact-edge snapping regressions. A crop edge
+already on a boundary now wins over nearby guides during perpendicular movement.
+An older software selection assertion now waits for its frame's exact count;
+three repeats pass. This covers 444 distinct hardware cases.
+
+Initial 24 MP measurements revealed exact integer movement taking 65-76 seconds:
+cofactor inversion perturbed exact unit coefficients and missed the tile-copy
+path. Forward-matrix recognition now preserves that path and its exact inverse.
+All 153 Rust tests and native/WASM clippy pass, including a new bounded tile-batch
+and hidden-RGB regression. The corrected build passes all 116 applicable hardware
+geometry/viewport cases and the rebuilt WebView2 smoke on both APIs. Formatting,
+TypeScript, ESLint, 16 Vitest cases and 451 license checks pass. WASM is 3,820,283
+bytes / gzip9 1,423,577. The corrected first Chrome/WebGPU move samples are about
+3.1-3.3 seconds including storage/commit, with approximately 1.2-second kernels.
+The full hardware benchmark remains in progress; no P7 timing target is invented.
+
+The `cb46084` CI was cancelled at the 40-minute job envelope. Its partial artifact
+also contained old masked-preview equality failures and a stale selection-frame
+read that passed on retry; it is not accepted. Those checks are corrected and the
+60-minute full software run is mandatory. Final report, full measurements,
+exact-head remote CI/deployment and artifact inspection remain before tagging.
+
+### Earlier crop authoring checkpoint
 
 Adds the Crop tool, draggable/resizeable drafts, ratio presets, thirds, guide
 snapping, Alt-drag movement and a drawn/numeric straighten angle. One bounded

@@ -86,24 +86,28 @@ export function bindCropInteractions(
         'crop-straighten',
       );
   };
-  const snap = (p: Point): Point => {
+  const snapOffsets = (p: Point): [number | null, number | null] => {
     const s = useWorkspace.getState().snapshot,
       d = s?.document;
-    if (!s || !d || !useGeometry.getState().snapping) return p;
+    if (!s || !d || !useGeometry.getState().snapping) return [null, null];
     const xs = [d.originX ?? 0, (d.originX ?? 0) + d.width],
       ys = [d.originY ?? 0, (d.originY ?? 0) + d.height];
     if (useGeometry.getState().showGuides)
       for (const g of d.guides ?? []) (g.axis === 'vertical' ? xs : ys).push(g.position);
     return [xs, ys].map((a, i) => {
       let best = 6 / s.view.zoom,
-        v = p[i];
+        offset: number | null = null;
       for (const n of a)
         if (Math.abs(n - p[i]) < best) {
           best = Math.abs(n - p[i]);
-          v = n;
+          offset = n - p[i];
         }
-      return v;
-    }) as Point;
+      return offset;
+    }) as [number | null, number | null];
+  };
+  const snap = (p: Point): Point => {
+    const d = snapOffsets(p);
+    return [p[0] + (d[0] ?? 0), p[1] + (d[1] ?? 0)];
   };
   const update = (e: PointerEvent) => {
     const g = drag,
@@ -135,8 +139,8 @@ export function bindCropInteractions(
       ];
       const correction = (axis: number) =>
         points
-          .map((p) => snap(p)[axis] - p[axis])
-          .filter((v) => Math.abs(v) > 1e-8)
+          .map((p) => snapOffsets(p)[axis])
+          .filter((v): v is number => v !== null)
           .sort((a, b) => Math.abs(a) - Math.abs(b))[0] ?? 0;
       dx += correction(0);
       dy += correction(1);

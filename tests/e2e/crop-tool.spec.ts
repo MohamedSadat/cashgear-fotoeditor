@@ -61,6 +61,42 @@ async function draw(page: Page, from: [number, number], to: [number, number]) {
   await page.mouse.up();
 }
 for (const backend of ['WebGPU', 'WebGL2']) {
+  test(`${backend} an aligned crop edge wins over a nearby guide during vertical Alt movement`, async ({
+    page,
+  }) => {
+    await ready(page, backend);
+    await whenIdle(page, () =>
+      page.evaluate(async () => {
+        const api = Reflect.get(window, '__fotoeditor') as EngineApi;
+        await api.newDocument(1024, 1024, 72);
+        await api.selectionAction({ kind: 'fill', color: [200, 40, 80, 255] });
+        await api.geometryMetadata({
+          kind: 'guides',
+          guides: [{ axis: 'vertical', position: 520 }],
+        });
+        await api.interact([{ kind: 'actual', x: 0, y: 0, amount: 0 }]);
+      }),
+    );
+    const box = (await page.getByTestId('gpu-canvas').boundingBox())!;
+    await whenIdle(page, () =>
+      page.evaluate(
+        ({ x, y }) =>
+          (Reflect.get(window, '__fotoeditor') as EngineApi).interact([
+            { kind: 'zoom', x, y, amount: 0.25 },
+          ]),
+        { x: box.width / 2, y: box.height / 2 },
+      ),
+    );
+    await expect.poll(async () => (await state(page)).view.zoom).toBe(0.25);
+    await page.getByRole('button', { name: 'Crop', exact: true }).click();
+    for (const [k, v] of Object.entries({ x: 0, y: 100, width: 512, height: 300 }))
+      await page.getByLabel('Crop draft ' + k, { exact: true }).fill(String(v));
+    await page.keyboard.down('Alt');
+    await draw(page, [200, 200], [200, 204]);
+    await page.keyboard.up('Alt');
+    await expect(page.getByLabel('Crop draft x', { exact: true })).toHaveValue('0');
+    await expect(page.getByLabel('Crop draft y', { exact: true })).toHaveValue('104');
+  });
   test(`${backend} crops by ratio with thirds, cancels drafts and reveals exact retained samples`, async ({
     page,
   }, info) => {

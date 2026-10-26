@@ -405,7 +405,7 @@ impl<P: ResamplePixel> SurfaceResampleJob<P> {
         if !identity && available < RESAMPLE_SCRATCH {
             return Err("Not enough shared CPU budget for resampling".into());
         }
-        let inverse = matrix.inverse()?;
+        let mut inverse = matrix.inverse()?;
         let m = matrix.values.map(|v| v / matrix.values[8]);
         let mut axis = normalize_edges
             && m[1] == 0.0
@@ -416,17 +416,34 @@ impl<P: ResamplePixel> SurfaceResampleJob<P> {
             && m[5] == 0.0
             && (m[0] - width as f64 / source.width as f64).abs() < 1e-12
             && (m[4] - height as f64 / source.height as f64).abs() < 1e-12;
-        let inv = inverse.values.map(|v| v / inverse.values[8]);
-        let permutation = inv[6] == 0.0
-            && inv[7] == 0.0
-            && [inv[0], inv[1], inv[3], inv[4]]
+        // Recognize exact permutations from the forward matrix. General
+        // cofactor inversion can turn an exact 1 into 0.9999999999999998,
+        // accidentally selecting per-pixel sampling for an integer movement.
+        let permutation = m[6] == 0.0
+            && m[7] == 0.0
+            && [m[0], m[1], m[3], m[4]]
                 .iter()
                 .all(|v| [-1.0, 0.0, 1.0].contains(v))
-            && inv[0].abs() + inv[1].abs() == 1.0
-            && inv[3].abs() + inv[4].abs() == 1.0
-            && inv[0] * inv[3] + inv[1] * inv[4] == 0.0
-            && inv[2] == inv[2].round()
-            && inv[5] == inv[5].round();
+            && m[0].abs() + m[1].abs() == 1.0
+            && m[3].abs() + m[4].abs() == 1.0
+            && m[0] * m[3] + m[1] * m[4] == 0.0
+            && m[2] == m[2].round()
+            && m[5] == m[5].round();
+        if permutation {
+            inverse = TransformMatrix {
+                values: [
+                    m[0],
+                    m[3],
+                    -m[0] * m[2] - m[3] * m[5],
+                    m[1],
+                    m[4],
+                    -m[1] * m[2] - m[4] * m[5],
+                    0.0,
+                    0.0,
+                    1.0,
+                ],
+            };
+        }
         let mut block_size = (128_u32, 128_u32);
         if axis {
             let sx = source.width as f64 / width as f64;

@@ -80,6 +80,23 @@ try {
         );
         await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');
         await expect(page.getByTestId('gpu-backend')).toHaveText(backend);
+        await page.evaluate(() => {
+          window.__geometryIdle = async (action) => {
+            const deadline = performance.now() + 60000;
+            for (;;) {
+              try {
+                return await action();
+              } catch (error) {
+                if (
+                  !/Finish or cancel the current operation first/.test(String(error)) ||
+                  performance.now() >= deadline
+                )
+                  throw error;
+                await new Promise((r) => setTimeout(r, 50));
+              }
+            }
+          };
+        });
         const gpu = await page.evaluate(async () => {
             const a = await navigator.gpu?.requestAdapter();
             return a
@@ -125,7 +142,7 @@ try {
               async ({ scenario, trial }) => {
                 const api = window.__fotoeditor,
                   canvas = document.querySelector('[data-testid="gpu-canvas"]');
-                await api.historyJump(0);
+                await window.__geometryIdle(() => api.historyJump(0));
                 let source = JSON.parse(canvas.dataset.snapshot ?? 'null');
                 for (let i = 0; i < 240 && source?.document?.width !== 6000; i++) {
                   await new Promise((r) => requestAnimationFrame(r));
@@ -134,12 +151,14 @@ try {
                 if (source.document.width !== 6000 || source.document.height !== 4000)
                   throw Error('24 MP source required');
                 if (scenario === 'selected-move-exact')
-                  await api.selectionAction({
-                    kind: 'shape',
-                    shape: { kind: 'rectangle', x0: 1500, y0: 1000, x1: 4500, y1: 3000 },
-                    mode: 'new',
-                    antialias: false,
-                  });
+                  await window.__geometryIdle(() =>
+                    api.selectionAction({
+                      kind: 'shape',
+                      shape: { kind: 'rectangle', x0: 1500, y0: 1000, x1: 4500, y1: 3000 },
+                      mode: 'new',
+                      antialias: false,
+                    }),
+                  );
                 const target = source.layers.active ?? source.layers.nodes[0].id;
                 const a = (10 * Math.PI) / 180,
                   c = Math.cos(a),
@@ -183,7 +202,7 @@ try {
                   }, 2),
                   start = performance.now();
                 try {
-                  const applied = await api.geometryAction(action),
+                  const applied = await window.__geometryIdle(() => api.geometryAction(action)),
                     returnMs = performance.now() - start;
                   samples.push(applied.memory);
                   let visible = false;
@@ -235,8 +254,8 @@ try {
         }
         await page.evaluate(async () => {
           const api = window.__fotoeditor;
-          await api.historyJump(0);
-          await api.selectionAction({ kind: 'none' });
+          await window.__geometryIdle(() => api.historyJump(0));
+          await window.__geometryIdle(() => api.selectionAction({ kind: 'none' }));
         });
         await expect
           .poll(() =>
@@ -250,14 +269,18 @@ try {
             c = document.querySelector('[data-testid="gpu-canvas"]'),
             s = JSON.parse(c.dataset.snapshot);
           const start = performance.now();
-          await api.beginTransform(s.layers.active ?? s.layers.nodes[0].id, false);
+          await window.__geometryIdle(() =>
+            api.beginTransform(s.layers.active ?? s.layers.nodes[0].id, false),
+          );
           const beginMs = performance.now() - start;
           return {
             beginMs,
-            first: await api.previewTransform({
-              kind: 'matrix',
-              matrix: { values: [1, 0, 0, 0, 1, 0, 0, 0, 1] },
-            }),
+            first: await window.__geometryIdle(() =>
+              api.previewTransform({
+                kind: 'matrix',
+                matrix: { values: [1, 0, 0, 0, 1, 0, 0, 0, 1] },
+              }),
+            ),
           };
         });
         result.preparation = prepared;
@@ -265,7 +288,9 @@ try {
         for (const interpolation of ['nearest', 'bilinear', 'bicubic', 'lanczos3']) {
           await page.evaluate(
             (i) =>
-              window.__fotoeditor.previewTransform({ kind: 'interpolation', interpolation: i }),
+              window.__geometryIdle(() =>
+                window.__fotoeditor.previewTransform({ kind: 'interpolation', interpolation: i }),
+              ),
             interpolation,
           );
           const trials = await page.evaluate(async () => {
@@ -276,22 +301,24 @@ try {
                 c = Math.cos(a),
                 s = Math.sin(a),
                 start = performance.now();
-              const timing = await api.previewTransform({
-                kind: 'matrix',
-                matrix: {
-                  values: [
-                    c,
-                    -s,
-                    3000 - 3000 * c + 2000 * s,
-                    s,
-                    c,
-                    2000 - 3000 * s - 2000 * c,
-                    0,
-                    0,
-                    1,
-                  ],
-                },
-              });
+              const timing = await window.__geometryIdle(() =>
+                api.previewTransform({
+                  kind: 'matrix',
+                  matrix: {
+                    values: [
+                      c,
+                      -s,
+                      3000 - 3000 * c + 2000 * s,
+                      s,
+                      c,
+                      2000 - 3000 * s - 2000 * c,
+                      0,
+                      0,
+                      1,
+                    ],
+                  },
+                }),
+              );
               const memory = JSON.parse(
                 document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot,
               ).memory;
@@ -320,7 +347,9 @@ try {
             }),
           );
         }
-        await page.evaluate(() => window.__fotoeditor.cancelTransform());
+        await page.evaluate(() =>
+          window.__geometryIdle(() => window.__fotoeditor.cancelTransform()),
+        );
         await context.close();
       }
     } finally {

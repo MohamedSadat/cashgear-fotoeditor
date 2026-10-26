@@ -91,6 +91,48 @@ fn identity_is_cow_and_permutations_preserve_straight_samples() {
     }
 }
 #[test]
+fn translated_exact_samples_finish_in_tile_batches_despite_inverse_roundoff() {
+    let source = fixture(513, 259);
+    for scale in [1.0, 7.0, 0.125] {
+        let matrix = TransformMatrix {
+            values: TransformMatrix::translation(20.0, 12.0)
+                .values
+                .map(|v| v * scale),
+        };
+        let mut job = SurfaceResampleJob::new(
+            source.clone(),
+            540,
+            300,
+            matrix,
+            Interpolation::Lanczos3,
+            false,
+            CPU_BUDGET,
+        )
+        .unwrap();
+        let mut steps = 0;
+        loop {
+            let mut dependencies = 0;
+            job.needed(&mut |_| dependencies += 1);
+            assert!(dependencies <= 4);
+            steps += 1;
+            assert!(
+                steps <= 6,
+                "an integer translation must copy one tile per step"
+            );
+            if job.step().unwrap() {
+                break;
+            }
+        }
+        let out = job.finish().unwrap();
+        for y in 0..259 {
+            for x in 0..513 {
+                assert_eq!(source.sample(x, y), out.sample(x + 20, y + 12));
+            }
+        }
+        assert_eq!(out.sample(19, 12), Rgba8::default());
+    }
+}
+#[test]
 fn axis_blocks_match_full_kernel_across_odd_tile_and_block_boundaries() {
     let source = fixture(779, 531);
     for mode in [

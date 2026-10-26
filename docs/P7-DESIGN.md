@@ -81,6 +81,11 @@ fractional alpha/hidden color, all four kernels, odd tile/block boundaries,
 perspective nearest sampling, fractional bilinear reference, cold extreme
 reduction, exact permutations, nested masks/selections and command restoration.
 
+Exact permutations are detected from the forward matrix and inverted with exact
+orthogonal coefficients. General cofactor inversion can perturb a unit coefficient
+and miss the tile-copy path. A regression checks one output tile per step, at most
+four dependencies and exact hidden-RGB translation under homogeneous scaling.
+
 ## Immutable transform sessions and Move
 
 `TransformSession` retains one immutable document, a raster target, interpolation

@@ -244,7 +244,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       image = await exported(page);
       expect(pixel(image, 1, 0)).toEqual([255, 0, 0, 255]);
       expect(pixel(image, 5, 0)).toEqual([0, 255, 0, 255]);
-      expect((await snap(page)).selection.lastWandPixels).toBe(1);
+      await expect.poll(async () => (await snap(page)).selection.lastWandPixels).toBe(1);
     },
   );
   test(
