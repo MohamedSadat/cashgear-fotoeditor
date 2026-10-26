@@ -1,5 +1,21 @@
 # Decisions
 
+## 2026-10-27 - P8 start and inherited boundaries
+
+- The user explicitly authorized P8 in this fresh session on main without
+  worktrees or agents. Start at the clean, completed `86043ed` / `p7-transform`.
+- Read the unchanged original roadmap's complete P8 section, printed pages 16-17,
+  as text and rendered pages; PLAN.md and P8-DESIGN.md record its requirements.
+- Retain the shipped `.cgfoto` extension and backward reading. Existing budgets,
+  paging, exact straight alpha/hidden RGB, crop/guides and command rules persist.
+- PSD export scope, additional imports, ICC embedding default, container direction
+  and available Photoshop/fixture evidence were asked early and remain unanswered.
+  Independent reader tests and framing/provenance inspection may proceed; do not
+  treat silence as approval of dependent choices or compatibility claims.
+- P5's identifiable Photoshop feather comparison remains pending, without
+  `p5-select`. The explicit physical Windows Ink deferral and P6/P7 performance
+  limits persist. Starting P8 does not waive any of these items.
+
 ## 2026-10-25 - P7 product choices
 
 - Default transform/resize interpolation: Lanczos3. Nearest, bilinear and bicubic

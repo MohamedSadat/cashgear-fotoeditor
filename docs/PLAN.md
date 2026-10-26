@@ -278,3 +278,68 @@ See P7-DESIGN.md for implementation and evidence contracts.
 2. Warp and puppet warp after v1; affine/projective free transform is in P7.
 3. Hide outside pixels non-destructively, including across project/recovery saves.
 4. Content-aware scale outside v1.
+
+## P8 acceptance (in progress)
+
+Source: the complete P8 section on printed pages 16-17 of the original roadmap,
+read as text and rendered pages on 2026-10-27. The source PDF remains unchanged.
+P7 is complete at `86043ed`, certified by the remotely verified `p7-transform`
+annotation. P8 starts directly on main, without worktrees or agents.
+
+- Full document save/reopen with an identical canonical document hash, preserving
+  exact straight samples, hidden RGB, layer tree/properties, masks, adjustments,
+  retained outside-crop generations, DPI and guides. Fresh history on reopen and
+  session-only selections remain existing decisions.
+- The original format proposal is ZIP with versioned `manifest.json`, LZ4 tile
+  blobs, `thumbnail.png` and `composite.png`. Whether to implement that container
+  or extend the existing bounded streamed format is an explicit pending product
+  question. Keep `.cgfoto` and legacy reading. Do not assume this proposal is
+  already satisfied by the current uncompressed stream.
+- Explicit schema compatibility/migrations and adversarial/fuzz reader coverage:
+  invalid lengths, directories, checksums, versions, references, decompression
+  limits and malformed metadata must never publish a partial candidate.
+- Chromium File System Access open/save, download fallback where available, and
+  recent files with visible permission/missing-file behavior. Preserve bounded
+  streaming for large projects; no whole-file 4 GiB allocation.
+- Export dialog: PNG, JPEG quality, WebP quality/lossless, encoded size preview,
+  full document/active layer/selection sources. Export only the visible canvas
+  window. Lossy formats and JPEG's alpha matte must have explicit behavior.
+- Convert embedded ICC profiles to sRGB on import using a validated Rust color
+  management path. The original candidate is qcms. Export embedding defaults
+  remain a pending product choice; no silent unsupported-profile reinterpretation.
+- PSD raster import: correct layer order, opacity, supported blends, visibility
+  and editable masks. Select/extend/replace the proposed `psd` crate based on its
+  actual mask, bounds, channel and malformed-file behavior. Unsupported features
+  must be reported explicitly. Raster-layer PSD export is conditional on the
+  user's pending scope answer. No 16-bit downconversion hidden behind RGBA8 APIs.
+- Validate Photoshop-created files using an identifiable corpus with provenance,
+  expected metadata, layer/channel/mask samples and actual reference outputs.
+  Synthetic/self-roundtrip fixtures alone cannot establish Photoshop compatibility.
+- Measure a real 20-layer 6000x4000 project save against the original under-three-
+  seconds target. Specify distinct dense samples, file size/hash, storage, browser,
+  API, cold/warm conditions, timing boundaries, percentiles and logical residency.
+  Sparse/shared duplicates do not substitute for this workload. Record misses.
+- Preserve 16,384-pixel retained/visible sides, paging, shared 768 MiB CPU and
+  128 MiB GPU budgets, 128 MiB image limits and the 4 GiB streamed project cap.
+  Count codec, conversion, compression, thumbnail/composite, file/bridge and
+  candidate buffers. Candidate work yields/cancels and commits atomically.
+- Formatting, native/WASM clippy, Cargo tests, TypeScript, ESLint, Vitest,
+  production size/licenses, installed Chrome/Edge on WebGPU/WebGL2, Windows/
+  WebView2, measured hardware results and exact-final-head remote CI/deployment
+  are required. Inspect artifacts for failed/skipped/retried cases. Publish
+  `p8-files` only after all applicable acceptance passes; report and stop before P9.
+- Carry forward P5's pending identifiable Photoshop feather comparison without
+  `p5-select`, the approved physical Ink deferral and the reported P6/P7 limits.
+
+## P8 unresolved questions (asked 2026-10-27)
+
+1. PSD import only, or import plus raster-layer export?
+2. Additional imports: BMP/GIF first frame/8-bit TIFF, and whether to assess HEIC?
+3. Embed sRGB ICC by default on exports?
+4. ZIP/LZ4 project container versus extension of the current streamed format?
+5. Available Photoshop installation or identifiable PSD corpus/reference outputs?
+
+The existing `.cgfoto` extension is retained rather than asking again about an
+already shipped product name. Pending answers do not prevent independent reader
+hardening, format inspection and evidence planning. They do gate dependent scope
+and dependency selections. See P8-DESIGN.md for the current investigation.

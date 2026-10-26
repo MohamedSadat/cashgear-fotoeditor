@@ -1,5 +1,38 @@
 # Progress
 
+## P8 - Started; scope answers and interoperability evidence pending
+
+Started 2026-10-27 at the user's explicit fresh-session request, directly on clean
+main at `86043ed` / remotely verified `p7-transform`, without worktrees or agents.
+Read AGENTS.md, PLAN.md, PROGRESS.md, DECISIONS.md and the complete original P8
+roadmap on printed pages 16-17, as text and rendered pages. The source PDF remains
+unchanged. PLAN.md records the acceptance; P8-DESIGN.md records the investigation
+and fixture/performance gates. Product and fixture questions were asked early;
+their dependent choices remain pending, with no new dependencies selected.
+
+Independent work adds an adversarial legacy/streamed project corpus and a borrowed,
+allocation-free PSD framing/resource inspector, plus a native candidate-fixture
+inspection example. This is no PSD pixel decoder or Photoshop compatibility claim.
+All 158 Rust tests, native/WASM clippy, Rust/JS formatting, TypeScript, ESLint,
+16 Vitest cases, the 451-license inventory and production build pass. WASM is
+unchanged at 3,820,283 bytes / gzip9 1,423,577. All 84 applicable installed
+Chrome/Edge GPU/viewport/project/recovery/crop regressions pass on both hardware
+APIs, one attempt each, with zero failures/skips/retries/global errors. The Windows
+shell builds and expanded WebView2 smoke passes both NVIDIA hardware APIs. This
+is an unintegrated I/O foundation's regression subset, not full P8 acceptance.
+Raw evidence is `bench/results/p8-foundation-*`.
+
+Seven pinned public PSD candidates have source/hash records. Six pass framing;
+the 16-bit fixture is rejected. Creator/version metadata is recorded without
+claiming validated Photoshop outputs. The real distinct dense 20-layer 6000x4000
+fixture is generated and parsed as 7,680 cold tiles / 2,013,676,863 file bytes;
+this is fixture validation, not the outstanding under-three-second browser save
+measurement. See P8-DESIGN.md for source revision, hashes and exact limitations.
+
+Integrated formats/ICC/export/file controls, validated Photoshop interoperability,
+20-layer 24 MP save measurements and phase-wide local/remote gates remain. No
+`p8-files` tag. P5/Ink deferrals and recorded P6/P7 limits retain their status.
+
 ## P7 - Delivered; release evidence is recorded by p7-transform
 
 Started 2026-10-25 at the user's explicit fresh-session request on clean main at

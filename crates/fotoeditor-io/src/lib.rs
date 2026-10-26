@@ -1,7 +1,10 @@
 //! Bounded CPU codecs; construction/export jobs yield between tile rows/scanlines.
 mod project;
+#[cfg(test)]
+mod project_adversarial;
 mod project_layers;
 mod project_stream;
+mod psd_preflight;
 #[cfg(test)]
 mod resample_reference;
 use fotoeditor_core::{Document, Residency, Rgba8, MAX_SIDE, TILE_PIXELS, TILE_SIZE};
@@ -9,6 +12,7 @@ use image::{ImageDecoder, ImageReader};
 pub use project::*;
 pub use project_layers::*;
 pub use project_stream::*;
+pub use psd_preflight::*;
 use std::{
     cell::RefCell,
     io::{Cursor, Write},
