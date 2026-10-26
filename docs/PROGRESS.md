@@ -1,6 +1,6 @@
 # Progress
 
-## P7 - In progress; product questions answered
+## P7 - Delivered; release evidence is recorded by p7-transform
 
 Started 2026-10-25 at the user's explicit fresh-session request on clean main at
 `5a22595`, the verified `p6-filters` head. Read the required phase records and the
@@ -10,7 +10,40 @@ The user answered all four questions: Lanczos3 default, non-destructive crop,
 warp/puppet warp after v1 and content-aware scale outside v1. DECISIONS.md records
 these choices.
 
-### Final validation in progress (2026-10-26)
+### Final local acceptance (2026-10-27)
+
+P7 implementation and local acceptance are complete; see P7-REPORT.md for shipped
+work, numerical references, hardware tables, limitations and deferred work. The
+annotated `p7-transform` marker is published only after the final commit's remote
+CI/deployment and zero-failure/skip/retry artifact inspection. Its annotation
+records that immutable completion evidence. P8 has not started.
+
+All 64 Apply trials and 320 warm preview updates completed on the resident 24 MP
+photo, sequentially on installed Chrome/Edge with actual NVIDIA WebGPU/WebGL2.
+Warm downscale p50 is 2.75-2.86 seconds; exact move 3.18-3.26 seconds; selected
+6 MP movement 6.19-6.58 seconds. Arbitrary 10-degree Lanczos3 rotation is slow:
+warm p50 160.3-177.5 seconds. Warm preview medians are 16.2-23.0 ms; first preparation
+and first updates are reported separately. Maximum measured Apply logical CPU
+residency is 318 MiB; warm preview GPU residency is 35.5 MiB. These are observed
+timings, not invented P7 latency thresholds or physical process-memory claims.
+
+The engine build passes 153 Rust tests, native/WASM clippy, formatting, TypeScript,
+ESLint, 16 Vitest cases and 451 license checks. Local WASM is 3,820,283 bytes /
+gzip9 1,423,577. The 440-case full hardware run, 20-case crop follow-up and
+116-case corrected-engine regression all pass on one attempt per case, with no
+errors/skips/retries, covering 444 distinct hardware cases. Windows/WebView2 passes
+both hardware APIs. The final global cancellation UI change passes 32 browser
+cases on one attempt each and receives refreshed desktop verification before the
+report commit.
+
+The inspected `e188820` processing CI artifact has 329 passing software browser
+cases on one attempt each, no errors/skips/retries, both software WebView2 APIs,
+and WASM gzip9 1,423,641 bytes. CI run 40374982974 and deployment 40374982935 pass.
+The final UI/report commit still requires its own remote verification before the
+release tag. Existing P5 Photoshop-reference and physical Ink boundaries persist;
+warp/puppet warp remain after v1 and content-aware scale outside v1.
+
+### Earlier final-validation checkpoint (2026-10-26)
 
 The complete 440-case installed Chrome/Edge hardware suite passes on one attempt
 per case, with zero errors/skips/retries, in 21.7 minutes. The focused final crop

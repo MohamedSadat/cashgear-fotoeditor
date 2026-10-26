@@ -207,12 +207,10 @@ for (const backend of ['WebGPU', 'WebGL2']) {
     expect(errors[0]).toMatch(/Canvas sides/);
     for (const e of errors.slice(1)) expect(e).toMatch(/budget|768 MiB/);
     await expect(page.getByTestId('operation-status')).toHaveText(/Geometry ready/);
-    const cancelled = await page.evaluate(async () => ({
-      cancelled: await (Reflect.get(window, '__fotoeditor') as EngineApi).cancelJob(),
-      error: await Reflect.get(window, 'pendingGeometry'),
-    }));
-    expect(cancelled.cancelled).toBe(true);
-    expect(cancelled.error).toMatch(/cancelled/);
+    await page.getByRole('button', { name: 'Cancel operation', exact: true }).click();
+    expect(await page.evaluate(async () => Reflect.get(window, 'pendingGeometry'))).toMatch(
+      /cancelled/,
+    );
     expect((await exported(page)).data).toEqual(before.data);
     expect((await state(page)).history).toMatchObject({ undo: 1, redo: 1 });
   });

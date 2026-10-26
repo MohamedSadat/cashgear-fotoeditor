@@ -69,7 +69,8 @@ export function App() {
   const painting = !!snapshot?.painting;
   const transformBusy = useTransform((s) => s.busy || s.pending);
   const cropBusy = useCrop((s) => s.busy);
-  const working = !!busy || !!snapshot?.operation || selectionBusy || transformBusy || cropBusy;
+  const workerOperation = !!snapshot?.operation;
+  const working = !!busy || workerOperation || selectionBusy || transformBusy || cropBusy;
   const recovery = snapshot?.recovery;
   const recoverable = recovery?.candidates[0];
   useEffect(() => {
@@ -714,12 +715,12 @@ export function App() {
               notice ||
               (painting ? 'Painting…' : 'B brush · E eraser · Alt sample · Ctrl+Z undo')}
           </span>
-          {(busy || selectionBusy || transformBusy || cropBusy) && (
+          {(busy || workerOperation || selectionBusy || transformBusy || cropBusy) && (
             <button
               onClick={() => {
                 const token = operation.current;
                 void Promise.resolve(
-                  selectionBusy || transformBusy || cropBusy
+                  workerOperation || selectionBusy || transformBusy || cropBusy
                     ? api.current?.cancelJob()
                     : !workerJobStarted.current || api.current?.cancelJob(),
                 )
