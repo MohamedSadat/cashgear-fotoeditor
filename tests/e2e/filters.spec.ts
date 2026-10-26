@@ -284,8 +284,11 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       expect((await exported(page)).data.equals(before.data)).toBe(true);
       expect((await state(page)).history.undo).toBe(baseline.history.undo);
       const preview = await page.getByTestId('gpu-canvas').screenshot();
+      const previewRevision = (await state(page)).contentRevision;
       await page.getByRole('button', { name: 'Apply filter', exact: true }).click();
       await expect(page.getByTestId('filter-notice')).toContainText('Filter applied');
+      await expect.poll(async () => (await state(page)).contentRevision).toBe(previewRevision + 1);
+      await expect.poll(async () => (await state(page)).adjustmentPreview?.active).toBe(false);
       await expect.poll(async () => (await state(page)).refining).toBe(0);
       await page.evaluate(
         () =>

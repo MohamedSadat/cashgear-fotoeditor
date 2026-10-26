@@ -519,7 +519,8 @@ impl Engine {
         Ok(done)
     }
     pub fn preview_cancel(&mut self) {
-        if self.adjusted.preview.take().is_some() {
+        let geometry = self.geometric.session.take().is_some();
+        if self.adjusted.preview.take().is_some() || geometry {
             self.layered.invalidate_memory();
             self.refresh_pages();
         }

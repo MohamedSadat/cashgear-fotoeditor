@@ -25,6 +25,15 @@ export interface FrameResult extends PhysicalSize {
   snapshot?: DocumentSnapshot;
 }
 export interface DocumentSnapshot {
+  transform?: {
+    target: number;
+    selected: boolean;
+    bounds: { x: number; y: number; width: number; height: number };
+    quad: [number, number][];
+    matrix: { values: number[] };
+    interpolation: Interpolation;
+    sourceRevision: number;
+  } | null;
   canFade: boolean;
   filterTiming?: { kernelMs: number; totalMs: number; cpuPeakBytes: number };
   geometryTiming?: { kernelMs: number; totalMs: number; cpuPeakBytes: number };
@@ -119,6 +128,11 @@ export interface Interaction {
 export interface EngineApi {
   geometryMetadata(action: GeometryMetadata): Promise<DocumentSnapshot>;
   geometryAction(action: GeometryAction): Promise<DocumentSnapshot>;
+  beginTransform(target: number, selected: boolean): Promise<DocumentSnapshot>;
+  hitTest(x: number, y: number): Promise<number | null>;
+  previewTransform(update: TransformUpdate): Promise<AdjustmentPreviewTiming>;
+  applyTransform(): Promise<DocumentSnapshot>;
+  cancelTransform(): Promise<DocumentSnapshot>;
   applyFilter(filter: SpatialFilter): Promise<DocumentSnapshot>;
   fadeFilter(opacity: number, blend: string): Promise<DocumentSnapshot>;
   previewFilter(filter: SpatialFilter, target: number): Promise<AdjustmentPreviewTiming>;
@@ -192,11 +206,22 @@ export interface CanvasRect {
 export type GeometryMetadata =
   { kind: 'crop'; rect: CanvasRect | null } | { kind: 'guides'; guides: Guide[] };
 export type Interpolation = 'nearest' | 'bilinear' | 'bicubic' | 'lanczos3';
+export type TransformUpdate =
+  | { kind: 'matrix' | 'compose'; matrix: { values: number[] } }
+  | { kind: 'quad'; points: [number, number][] }
+  | { kind: 'interpolation'; interpolation: Interpolation };
 export type GeometryAction =
   | { kind: 'image-size'; width: number; height: number; dpi: number; interpolation: Interpolation }
   | { kind: 'canvas-size'; width: number; height: number; anchor: [number, number] }
   | { kind: 'canvas-rotate'; degrees: number; interpolation: Interpolation }
-  | { kind: 'canvas-flip'; horizontal: boolean };
+  | { kind: 'canvas-flip'; horizontal: boolean }
+  | {
+      kind: 'layer-transform';
+      target: number;
+      matrix: { values: number[] };
+      interpolation: Interpolation;
+      selection: boolean;
+    };
 
 export type SpatialFilter =
   | { kind: 'gaussian' | 'box-blur' | 'median'; radius: number }

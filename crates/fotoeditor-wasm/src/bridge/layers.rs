@@ -289,6 +289,15 @@ impl Engine {
         }
     }
     pub(super) fn refresh_pages(&mut self) {
+        if self
+            .geometric
+            .session
+            .as_ref()
+            .is_some_and(|p| p.revision != self.revision)
+        {
+            self.geometric.session = None;
+            self.renderer.clear_preview();
+        }
         if !self.filter_can_fade() {
             self.adjusted.filter.last = None;
         }
@@ -788,6 +797,31 @@ impl Engine {
             }
         };
         match scope {
+            "transform-bounds" => {
+                if let Some(p) = &self.geometric.session {
+                    p.needed_bounds(&mut add);
+                }
+            }
+            "hit-test" => {
+                if let Some((_, j)) = &self.geometric.hit {
+                    j.needed(&mut add);
+                }
+            }
+            "transform-source" => {
+                if let Some(p) = &self.geometric.session {
+                    p.needed_source(&mut add);
+                }
+            }
+            "transform-background" => {
+                if let Some(p) = &self.geometric.session {
+                    p.needed_background(&mut add).map_err(js)?;
+                }
+            }
+            "transform-render" => {
+                if let Some(p) = &self.geometric.session {
+                    p.needed_render(&mut add).map_err(js)?;
+                }
+            }
             "geometry" => self.geometric.needed(&mut add),
             "filter" => self.adjusted.filter.needed(&mut add),
             "preview" => {

@@ -97,7 +97,7 @@ fn weights(
     mode: Interpolation,
     edge: f64,
     scale: f64,
-    side: u32,
+    range: (u32, u32),
     normalize_edges: bool,
 ) -> AxisWeights {
     let scale = scale.max(1.0);
@@ -105,8 +105,8 @@ fn weights(
     let support = interpolation_support(mode) * scale;
     let lo = (center - support).ceil();
     let hi = (center + support).floor();
-    let start = lo.max(0.0).min(side as f64) as u32;
-    let end = (hi + 1.0).max(0.0).min(side as f64) as u32;
+    let start = lo.clamp(range.0 as f64, range.1 as f64) as u32;
+    let end = (hi + 1.0).clamp(range.0 as f64, range.1 as f64) as u32;
     let mut values: Vec<_> = (start..end)
         .map(|i| {
             (
@@ -192,10 +192,19 @@ impl<P: ResamplePixel> SamplePlan<P> {
         point: [f64; 2],
         normalize: bool,
         outside: P,
+        domain: Option<TransformRect>,
     ) -> Result<Self, String> {
         // Destination pixels outside the projected source can lie on the inverse
         // horizon. They contribute the field default, rather than aborting a job.
         let edge = inverse.map(point).unwrap_or([f64::INFINITY; 2]);
+        let d = domain.unwrap_or(TransformRect {
+            x: 0.0,
+            y: 0.0,
+            width: source.width as f64,
+            height: source.height as f64,
+        });
+        let xr = (d.x as u32, (d.x + d.width) as u32);
+        let yr = (d.y as u32, (d.y + d.height) as u32);
         let m = inverse.values;
         let w = m[6] * point[0] + m[7] * point[1] + m[8];
         let sx = ((m[0] - edge[0] * m[6]) / w)
@@ -221,19 +230,19 @@ impl<P: ResamplePixel> SamplePlan<P> {
                 },
             )
         } else if exact {
-            let axis = |v: f64, side: u32| {
+            let axis = |v: f64, range: (u32, u32)| {
                 let n = v.floor();
-                let valid = n >= 0.0 && n < side as f64;
+                let valid = n >= range.0 as f64 && n < range.1 as f64;
                 AxisWeights {
                     values: if valid { vec![(n as u32, 1.0)] } else { vec![] },
                     sum: if valid { 1.0 } else { 0.0 },
                 }
             };
-            (axis(edge[0], source.width), axis(edge[1], source.height))
+            (axis(edge[0], xr), axis(edge[1], yr))
         } else {
             (
-                weights(mode, edge[0], sx, source.width, normalize),
-                weights(mode, edge[1], sy, source.height, normalize),
+                weights(mode, edge[0], sx, xr, normalize),
+                weights(mode, edge[1], sy, yr, normalize),
             )
         };
         let mut coords = Vec::new();
@@ -249,10 +258,10 @@ impl<P: ResamplePixel> SamplePlan<P> {
                 }
             }
         }
-        let nearest_at = (edge[0] >= 0.0
-            && edge[1] >= 0.0
-            && edge[0] < source.width as f64
-            && edge[1] < source.height as f64)
+        let nearest_at = (edge[0] >= d.x
+            && edge[1] >= d.y
+            && edge[0] < d.x + d.width
+            && edge[1] < d.y + d.height)
             .then(|| (edge[0].floor() as u32, edge[1].floor() as u32));
         if let Some((x, y)) = nearest_at {
             let coord = (x / TILE_SIZE, y / TILE_SIZE);
@@ -307,6 +316,7 @@ pub struct SurfaceResampleJob<P: ResamplePixel> {
     permutation_region: Option<CanvasRect>,
     resizer: Resizer,
     outside: P,
+    domain: Option<TransformRect>,
 }
 impl<P: ResamplePixel> SurfaceResampleJob<P> {
     pub fn new(
@@ -341,6 +351,30 @@ impl<P: ResamplePixel> SurfaceResampleJob<P> {
         available: u64,
         outside: P,
     ) -> Result<Self, String> {
+        Self::with_domain(
+            source,
+            width,
+            height,
+            matrix,
+            mode,
+            normalize_edges,
+            available,
+            outside,
+            None,
+        )
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn with_domain(
+        source: Arc<TileSurface<P>>,
+        width: u32,
+        height: u32,
+        matrix: TransformMatrix,
+        mode: Interpolation,
+        normalize_edges: bool,
+        available: u64,
+        outside: P,
+        domain: Option<TransformRect>,
+    ) -> Result<Self, String> {
         validate_size(width, height, 72.0)?;
         validate_size(source.width, source.height, 72.0)?;
         let bounds = TransformRect {
@@ -349,7 +383,18 @@ impl<P: ResamplePixel> SurfaceResampleJob<P> {
             width: source.width as f64,
             height: source.height as f64,
         };
-        matrix.validate_for(bounds)?;
+        if let Some(d) = domain {
+            d.validate()?;
+            if d.x < 0.0
+                || d.y < 0.0
+                || d.x + d.width > source.width as f64
+                || d.y + d.height > source.height as f64
+            {
+                return Err("Resample source bounds exceed the retained surface".into());
+            }
+        }
+        matrix.validate_for(domain.unwrap_or(bounds))?;
+        let domain = domain.filter(|_| outside == source.default);
         let identity = width == source.width
             && height == source.height
             && bounds.corners().iter().all(|p| {
@@ -439,6 +484,7 @@ impl<P: ResamplePixel> SurfaceResampleJob<P> {
             permutation_region: None,
             resizer: Resizer::new(),
             outside,
+            domain,
         };
         if identity {
             job.next = job.tile_count();
@@ -485,6 +531,9 @@ impl<P: ResamplePixel> SurfaceResampleJob<P> {
     }
     pub fn needed(&self, visitor: &mut dyn FnMut(TileRef<'_>)) {
         if let Some(region) = self.permutation_region.or(self.fast.map(|b| b.source)) {
+            if region.width == 0 || region.height == 0 {
+                return;
+            }
             for y in region.y / TILE_SIZE..(region.y + region.height).div_ceil(TILE_SIZE) {
                 for x in region.x / TILE_SIZE..(region.x + region.width).div_ceil(TILE_SIZE) {
                     if let Some(t) = self.source.tiles().get(&(x, y)) {
@@ -511,10 +560,16 @@ impl<P: ResamplePixel> SurfaceResampleJob<P> {
                 width: tw as f64,
                 height: th as f64,
             })?;
-            let left = bounds.x.clamp(0.0, self.source.width as f64) as u32;
-            let top = bounds.y.clamp(0.0, self.source.height as f64) as u32;
-            let right = (bounds.x + bounds.width).clamp(0.0, self.source.width as f64) as u32;
-            let bottom = (bounds.y + bounds.height).clamp(0.0, self.source.height as f64) as u32;
+            let d = self.domain.unwrap_or(TransformRect {
+                x: 0.0,
+                y: 0.0,
+                width: self.source.width as f64,
+                height: self.source.height as f64,
+            });
+            let left = bounds.x.clamp(d.x, d.x + d.width) as u32;
+            let top = bounds.y.clamp(d.y, d.y + d.height) as u32;
+            let right = (bounds.x + bounds.width).clamp(d.x, d.x + d.width) as u32;
+            let bottom = (bounds.y + bounds.height).clamp(d.y, d.y + d.height) as u32;
             self.permutation_region = Some(CanvasRect {
                 x: left,
                 y: top,
@@ -575,6 +630,7 @@ impl<P: ResamplePixel> SurfaceResampleJob<P> {
             point,
             self.normalize,
             self.outside,
+            self.domain,
         )?);
         Ok(())
     }
@@ -659,6 +715,12 @@ impl<P: ResamplePixel> SurfaceResampleJob<P> {
             return Ok(true);
         }
         if let Some(region) = self.permutation_region {
+            if region.width == 0 || region.height == 0 {
+                self.next += 1;
+                self.permutation_region = None;
+                self.prepare()?;
+                return Ok(self.done());
+            }
             let source = PinnedRegion::new(&self.source, region, self.outside)?;
             let c = self.coord();
             let (tw, th) = self.tile_size();

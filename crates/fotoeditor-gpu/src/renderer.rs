@@ -23,6 +23,7 @@ pub struct Renderer {
     selection: crate::selection::SelectionRenderer,
     preview: Option<crate::preview::PreviewFrame>,
     filter: Option<crate::filter::FilterTile>,
+    transform_preview: Option<crate::transform_preview::TransformPreview>,
     preview_visible: bool,
     preview_cancelled: Arc<std::sync::atomic::AtomicBool>,
     disposed: Arc<std::sync::atomic::AtomicBool>,
@@ -212,6 +213,7 @@ impl Renderer {
             preview: None,
             filter: None,
             preview_visible: false,
+            transform_preview: None,
             preview_cancelled: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             disposed: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         };
@@ -277,6 +279,7 @@ impl Renderer {
             + self.selection.gpu_bytes()
             + self.preview.as_ref().map_or(0, |p| p.bytes())
             + self.filter.as_ref().map_or(0, |p| p.bytes())
+            + self.transform_preview.as_ref().map_or(0, |p| p.bytes())
     }
     pub fn selection_cpu_bytes(&self) -> u64 {
         self.selection.cpu_bytes()
@@ -298,6 +301,7 @@ impl Renderer {
                     + 8 * 1024 * 1024
                     + 32
                     + self.preview.as_ref().map_or(0, |p| p.bytes())
+                    + self.transform_preview.as_ref().map_or(0, |p| p.bytes())
                     + self.filter.as_ref().map_or(0, |p| p.bytes()),
             ),
         );
@@ -319,6 +323,7 @@ impl Renderer {
                 - crate::compositor::COMPOSITE_RESERVE
                 - self.selection.gpu_bytes()
                 - self.filter.as_ref().map_or(0, |p| p.bytes())
+                - self.transform_preview.as_ref().map_or(0, |p| p.bytes())
                 - self.preview.as_ref().map_or(0, |p| p.bytes()),
         );
         self.compositor
@@ -330,6 +335,7 @@ impl Renderer {
             .store(true, std::sync::atomic::Ordering::Relaxed);
         self.preview = None;
         self.filter = None;
+        self.transform_preview = None;
         self.preview_visible = false;
         self.viewport.budget(
             fotoeditor_core::GPU_BUDGET
@@ -342,6 +348,65 @@ impl Renderer {
     }
     pub fn preview_hide(&mut self) {
         self.preview_visible = false;
+    }
+    pub fn transform_preview_begin(
+        &mut self,
+        width: u32,
+        height: u32,
+        source_width: u32,
+        source_height: u32,
+    ) -> Result<(), String> {
+        let extra = u64::from(source_width) * u64::from(source_height) * 8 + 256 * 256 * 16 + 144;
+        let frame =
+            u64::from(width.div_ceil(256) * 256) * u64::from(height.div_ceil(256) * 256) * 4 + 16;
+        let reserved = crate::compositor::COMPOSITE_RESERVE + 8 * 1024 * 1024 + frame + extra;
+        if reserved + 48 > fotoeditor_core::GPU_BUDGET {
+            return Err("Transform preview exceeds the shared GPU budget".into());
+        }
+        self.preview_begin(width, height)?;
+        self.viewport.budget(fotoeditor_core::GPU_BUDGET - reserved);
+        self.transform_preview = Some(crate::transform_preview::TransformPreview::new(
+            &self.device,
+            source_width,
+            source_height,
+        )?);
+        Ok(())
+    }
+    pub fn transform_source_upload(
+        &self,
+        coord: fotoeditor_core::TileCoord,
+        source: &[u8],
+        auxiliary: &[u8],
+    ) -> Result<(), String> {
+        self.transform_preview
+            .as_ref()
+            .ok_or("No transform preview source")?
+            .upload(&self.queue, coord, source, auxiliary)
+    }
+    pub fn transform_preview_tile(
+        &mut self,
+        coord: fotoeditor_core::TileCoord,
+        plan: &fotoeditor_core::CompositePlan,
+        target: u32,
+        params: &[u8],
+    ) -> Result<(), String> {
+        let frame = self.preview.as_ref().ok_or("No transform preview frame")?;
+        let transformed = self
+            .transform_preview
+            .as_ref()
+            .ok_or("No transform source")?
+            .render(&self.device, &self.queue, params)?;
+        let texture = self
+            .compositor
+            .get_or_insert_with(|| crate::compositor::Compositor::new(&self.device))
+            .compose_texture_with_source(
+                &self.device,
+                &self.queue,
+                plan,
+                Some((target, &transformed)),
+            )?;
+        frame.accept(&self.device, &self.queue, coord, &texture);
+        Ok(())
     }
     pub fn preview_begin(&mut self, width: u32, height: u32) -> Result<(), String> {
         self.clear_preview();
@@ -384,6 +449,7 @@ impl Renderer {
             fotoeditor_core::GPU_BUDGET
                 - crate::compositor::COMPOSITE_RESERVE
                 - 16 * 1024 * 1024
+                - self.transform_preview.as_ref().map_or(0, |p| p.bytes())
                 - bytes,
         );
         Ok(())

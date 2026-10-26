@@ -80,7 +80,45 @@ raw output is `bench/results/p7-lanczos-reference.log`. Separate tests cover
 fractional alpha/hidden color, all four kernels, odd tile/block boundaries,
 perspective nearest sampling, fractional bilinear reference, cold extreme
 reduction, exact permutations, nested masks/selections and command restoration.
-Free-transform sessions and their GPU preview remain the next P7 increment.
+
+## Immutable transform sessions and Move
+
+`TransformSession` retains one immutable document, a raster target, interpolation
+and a final absolute homography. Handle changes compose geometry; they do not
+resample document tiles. A pageable bounds scan includes meaningful straight RGBA
+samples (including hidden RGB), linked-mask differences or selected coverage
+inside the visible canvas. This avoids accumulating empty tile padding during
+movement and validates perspective horizons over the occupied source domain.
+
+Whole-layer transforms carry the linked mask. Selected-content transforms lift
+and clear byte-quantized coverage once, transform that lift once and source-over
+it once onto the cleared base; their existing layer mask stays fixed. Identity
+preserves generations and redo. Full-tree rebasing retains outside content and
+preserves the screen anchor when visible dimensions do not change. All sources,
+lift/clear buffers, candidates and scratch participate in shared paging/accounting.
+
+The live GPU preview stores immutable raster/selection/mask textures at up to
+1536 pixels on the longest retained side. It renders through the existing layer
+compositor, preserving groups, clipping, blend and opacity. Four sampling kernels
+operate in premultiplied temporary floats; preview support is capped at four
+cache pixels per axis for interactive cost. This is an approximate preview on
+large documents and strong reductions. Apply uses the full-resolution Rust job,
+its uncapped reduction support and one final resample. No full-resolution preview
+or fixed P7 latency promise is implied.
+
+Source uploads and background preparation hydrate/yield in bounded steps. View
+changes rebuild the viewport cache against the same source/matrix. GPU completion
+fences, captured frame snapshots and preview acknowledgements remain in use.
+Cancellation drops prepared caches; exports can read the unchanged document
+without destroying a transform session. Pixel mutation invalidates stale sources.
+
+Move provides optional alpha/mask/group/clipping-aware layer hit testing, one
+command per drag, and document-axis arrow nudges (Shift: ten pixels). Eight
+handles plus a rotation handle support scale, skew, distort and perspective;
+Shift preserves scale proportions and snaps rotation to 15 degrees. Enter applies,
+Escape cancels. Screen-distance snapping uses document guides and canvas edges,
+through the rotated/flipped/zoomed view. Controls expose the four interpolation
+modes, translation, scale, rotation and skew. New sessions default to Lanczos3.
 
 ## Processing and integration contracts
 

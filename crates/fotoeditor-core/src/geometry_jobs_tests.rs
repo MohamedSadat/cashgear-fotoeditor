@@ -304,3 +304,141 @@ fn noop_refusal_and_cancel_keep_redo_and_original_generations() {
     assert!(h.redo(&mut d));
     assert_eq!(d.raster().sample(6, 0), Rgba8([87, 33, 19, 0]));
 }
+
+#[test]
+fn layer_translation_moves_linked_mask_and_keeps_other_layers_selection_and_canvas_fixed() {
+    let mut d = Document::blank(513, 259, 72.0).unwrap();
+    d.raster_mut().write(0, 0, Rgba8([87, 33, 19, 0]));
+    d.raster_mut().write(300, 100, Rgba8([2, 3, 4, 1]));
+    let target = d.layers[0].id;
+    let mut mask = TileSurface::with_default(513, 259, Gray8(255));
+    mask.write(300, 100, Gray8(73));
+    d.layers[0].mask = Some(LayerMask {
+        enabled: true,
+        samples: Arc::new(mask),
+    });
+    let mut other = TileSurface::new(513, 259);
+    other.write(20, 20, Rgba8([5, 6, 7, 255]));
+    d.layers.push(Layer::raster("fixed".into(), other));
+    let mut selection = TileSurface::new(513, 259);
+    selection.write(300, 100, Gray8(128));
+    d.selection = Some(Arc::new(selection));
+    let original = d.clone();
+    let c = command(
+        &d,
+        GeometryAction::LayerTransform {
+            target,
+            matrix: TransformMatrix::translation(-3.0, 7.0),
+            interpolation: Interpolation::Lanczos3,
+            selection: false,
+        },
+    );
+    c.apply(&mut d);
+    assert_eq!(
+        d.canvas_rect(),
+        CanvasRect {
+            x: 3,
+            y: 0,
+            width: 513,
+            height: 259
+        }
+    );
+    assert_eq!(
+        d.layer(target)
+            .unwrap()
+            .raster_samples()
+            .unwrap()
+            .sample(0, 7),
+        Rgba8([87, 33, 19, 0])
+    );
+    assert_eq!(
+        d.layer(target)
+            .unwrap()
+            .raster_samples()
+            .unwrap()
+            .sample(300, 107),
+        Rgba8([2, 3, 4, 1])
+    );
+    assert_eq!(
+        d.layer(target)
+            .unwrap()
+            .mask
+            .as_ref()
+            .unwrap()
+            .samples
+            .sample(300, 107),
+        Gray8(73)
+    );
+    assert_eq!(
+        d.layers[1].raster_samples().unwrap().sample(23, 20),
+        Rgba8([5, 6, 7, 255])
+    );
+    assert_eq!(d.selection.as_ref().unwrap().sample(303, 100), Gray8(128));
+    c.revert(&mut d);
+    assert_eq!(
+        d.raster().tiles()[&(0, 0)].id(),
+        original.raster().tiles()[&(0, 0)].id()
+    );
+}
+
+#[test]
+fn selected_transform_lifts_fractional_coverage_once_and_keeps_linked_mask_fixed() {
+    let mut d = Document::blank(6, 2, 72.0).unwrap();
+    let target = d.layers[0].id;
+    d.raster_mut().write(1, 0, Rgba8([200, 20, 40, 128]));
+    d.raster_mut().write(2, 0, Rgba8([87, 33, 19, 0]));
+    let mut selection = TileSurface::new(6, 2);
+    selection.write(1, 0, Gray8(128));
+    selection.write(2, 0, Gray8(255));
+    d.selection = Some(Arc::new(selection));
+    let mut mask = TileSurface::with_default(6, 2, Gray8(255));
+    mask.write(1, 0, Gray8(37));
+    d.layers[0].mask = Some(LayerMask {
+        enabled: true,
+        samples: Arc::new(mask),
+    });
+    let original = d.clone();
+    let c = command(
+        &d,
+        GeometryAction::LayerTransform {
+            target,
+            matrix: TransformMatrix::translation(2.0, 0.0),
+            interpolation: Interpolation::Lanczos3,
+            selection: true,
+        },
+    );
+    c.apply(&mut d);
+    assert_eq!(d.raster().sample(1, 0), Rgba8([200, 20, 40, 64]));
+    assert_eq!(d.raster().sample(3, 0), Rgba8([200, 20, 40, 64]));
+    assert_eq!(d.raster().sample(4, 0), Rgba8([87, 33, 19, 0]));
+    assert_eq!(d.selection.as_ref().unwrap().sample(1, 0), Gray8(0));
+    assert_eq!(d.selection.as_ref().unwrap().sample(3, 0), Gray8(128));
+    assert_eq!(
+        d.layers[0].mask.as_ref().unwrap().samples.sample(1, 0),
+        Gray8(37)
+    );
+    assert_eq!(
+        d.layers[0].mask.as_ref().unwrap().samples.sample(3, 0),
+        Gray8(255)
+    );
+    c.revert(&mut d);
+    assert_eq!(
+        d.raster().tiles()[&(0, 0)].id(),
+        original.raster().tiles()[&(0, 0)].id()
+    );
+    assert!(Arc::ptr_eq(
+        d.selection.as_ref().unwrap(),
+        original.selection.as_ref().unwrap()
+    ));
+    let c = command(
+        &d,
+        GeometryAction::LayerTransform {
+            target,
+            matrix: TransformMatrix::rotation(10.0, [3.0, 1.0])
+                .then(TransformMatrix::rotation(-10.0, [3.0, 1.0])),
+            interpolation: Interpolation::Lanczos3,
+            selection: true,
+        },
+    );
+    assert!(c.is_empty());
+}

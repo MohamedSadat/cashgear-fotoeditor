@@ -28,6 +28,35 @@ impl Default for View {
     }
 }
 impl View {
+    /// Rebased retained coordinates keep the visible canvas in the same screen
+    /// position. A changed visible size gets the existing fit behavior.
+    pub fn sync_geometry(
+        &mut self,
+        width: u32,
+        height: u32,
+        canvas: Option<crate::CanvasRect>,
+    ) -> bool {
+        if self.document_width == width as f64
+            && self.document_height == height as f64
+            && self.canvas == canvas
+        {
+            return false;
+        }
+        let before = self.canvas_rect();
+        let anchor = self.document_to_screen(before.x, before.y);
+        self.document_width = width as f64;
+        self.document_height = height as f64;
+        self.canvas = canvas;
+        let after = self.canvas_rect();
+        if before.width == after.width && before.height == after.height {
+            let point = self.document_to_screen(after.x, after.y);
+            self.pan_x += anchor.0 - point.0;
+            self.pan_y += anchor.1 - point.1;
+        } else {
+            self.fit();
+        }
+        true
+    }
     pub fn canvas_rect(&self) -> crate::TransformRect {
         self.canvas.map_or(
             crate::TransformRect {
@@ -110,6 +139,48 @@ impl View {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn rebasing_retained_extents_preserves_canvas_position_at_rotated_flipped_views() {
+        for rotation in [0.0, 0.43, 1.57] {
+            for flipped in [false, true] {
+                let mut view = View {
+                    width: 800.0,
+                    height: 600.0,
+                    document_width: 513.0,
+                    document_height: 259.0,
+                    zoom: 2.3,
+                    rotation,
+                    flipped,
+                    pan_x: 37.0,
+                    pan_y: -19.0,
+                    canvas: None,
+                };
+                let points = [(0.0, 0.0), (300.0, 100.0), (513.0, 259.0)];
+                let before = points.map(|p| view.document_to_screen(p.0, p.1));
+                assert!(view.sync_geometry(
+                    520,
+                    270,
+                    Some(crate::CanvasRect {
+                        x: 7,
+                        y: 11,
+                        width: 513,
+                        height: 259
+                    })
+                ));
+                assert_eq!(view.zoom, 2.3);
+                for (p, q) in points.into_iter().zip(before) {
+                    let actual = view.document_to_screen(p.0 + 7.0, p.1 + 11.0);
+                    assert!((actual.0 - q.0).abs().max((actual.1 - q.1).abs()) < 1e-9);
+                }
+                assert!(view.sync_geometry(513, 259, None));
+                assert_eq!(view.zoom, 2.3);
+                for (p, q) in points.into_iter().zip(before) {
+                    let actual = view.document_to_screen(p.0, p.1);
+                    assert!((actual.0 - q.0).abs().max((actual.1 - q.1).abs()) < 1e-9);
+                }
+            }
+        }
+    }
     #[test]
     fn cropped_canvas_fit_and_visibility_follow_rotation_flip_and_retained_coordinates() {
         for rotation in [0.0, 0.43, 1.57] {

@@ -1,5 +1,12 @@
 import { expose, transfer } from 'comlink';
-import type { EngineApi, EngineInfo, InitOptions, PhysicalSize, Interaction } from './types';
+import type {
+  EngineApi,
+  EngineInfo,
+  InitOptions,
+  PhysicalSize,
+  Interaction,
+  TransformUpdate,
+} from './types';
 import initWasm, { Engine } from './pkg/fotoeditor_wasm';
 import type { Adjustment, AdjustmentPreviewTarget, SpatialFilter, DocumentSnapshot } from './types';
 import type { RecoveryStatus } from './types';
@@ -450,74 +457,265 @@ async function runFilter(begin: (engine: Engine) => void) {
     }
   }
 }
-const api: EngineApi = {
-  async geometryAction(action) {
-    const e = requireIdle();
-    busy = true;
-    operation = 'Updating geometry…';
-    const token = beginJob();
-    const start = performance.now();
-    const fault = adjustmentFault;
-    adjustmentFault = undefined;
-    const priorExternal = externalBytes;
-    let kernelMs = 0;
-    try {
-      await pages.persist(e);
+async function runGeometry(begin: (engine: Engine) => void) {
+  const e = requireIdle();
+  busy = true;
+  operation = 'Updating geometry…';
+  const token = beginJob();
+  const start = performance.now();
+  const fault = adjustmentFault;
+  adjustmentFault = undefined;
+  const priorExternal = externalBytes;
+  let kernelMs = 0;
+  try {
+    await pages.persist(e);
+    cancelled(token);
+    if (fault === 'budget') {
+      const m = snapshot().memory;
+      external(priorExternal + 768 * 1048576 - m.document - m.history - m.temporary);
+    }
+    begin(e);
+    let slice = performance.now();
+    let persistedTemporary = snapshot().memory.temporary;
+    while (!e.geometry_ready()) {
       cancelled(token);
-      if (fault === 'budget') {
+      await pages.hydrate(e, 'geometry');
+      cancelled(token);
+      const t = performance.now();
+      e.geometry_step();
+      kernelMs += performance.now() - t;
+      if (fault === 'budget-after-step') {
         const m = snapshot().memory;
         external(priorExternal + 768 * 1048576 - m.document - m.history - m.temporary);
       }
-      e.geometry_begin(JSON.stringify(action));
-      let slice = performance.now();
-      let persistedTemporary = snapshot().memory.temporary;
-      while (!e.geometry_ready()) {
-        cancelled(token);
-        await pages.hydrate(e, 'geometry');
-        cancelled(token);
-        const t = performance.now();
-        e.geometry_step();
-        kernelMs += performance.now() - t;
-        if (fault === 'budget-after-step') {
-          const m = snapshot().memory;
-          external(priorExternal + 768 * 1048576 - m.document - m.history - m.temporary);
+      if (performance.now() - slice >= 4) {
+        const temporary = snapshot().memory.temporary;
+        if (temporary - persistedTemporary >= 32 * CHUNK) {
+          await pages.persist(e);
+          persistedTemporary = temporary;
         }
+        await yieldProjectTask();
+        slice = performance.now();
+      }
+    }
+    if (fault === 'pause-before-commit') {
+      operation = 'Geometry ready (diagnostic)…';
+      await new Promise<void>((resolve) => {
+        releaseAdjustmentPause = resolve;
+      });
+    }
+    cancelled(token);
+    e.geometry_commit();
+    cancelAllowed = false;
+    await recompose(token);
+    geometryTiming = {
+      kernelMs,
+      totalMs: performance.now() - start,
+      cpuPeakBytes: e.geometry_cpu_peak(),
+    };
+    dirty = true;
+    return snapshot();
+  } finally {
+    if (token === job) {
+      external(priorExternal);
+      releaseAdjustmentPause = undefined;
+      e.geometry_cancel();
+      busy = false;
+      operation = undefined;
+    }
+  }
+}
+async function runTransformPreview(update: TransformUpdate) {
+  const e = requireIdle();
+  const request = ++previewRequest;
+  const token = job;
+  busy = true;
+  previewRunning = true;
+  cancelAllowed = true;
+  let finishPreview: () => void = () => {};
+  const completion = new Promise<void>((resolve) => {
+    finishPreview = resolve;
+  });
+  previewCompletion = completion;
+  const fault = previewFault;
+  previewFault = undefined;
+  const priorExternal = externalBytes;
+  const current = () => {
+    cancelled(token);
+    if (request !== previewRequest) throw new Error('Preview cancelled');
+  };
+  const start = performance.now();
+  let preparationMs = 0;
+  let started = false;
+  try {
+    if (fault === 'budget') {
+      const m = snapshot().memory;
+      external(priorExternal + 768 * 1048576 - m.document - m.history - m.temporary);
+    }
+    e.transform_update(JSON.stringify(update));
+    started = true;
+    const cold = !e.transform_source_ready() || !e.transform_background_ready();
+    let slice = performance.now();
+    while (!e.transform_source_ready()) {
+      current();
+      await pages.hydrate(e, 'transform-source');
+      current();
+      e.transform_source_step();
+      if (performance.now() - slice >= 4) {
+        await yieldProjectTask();
+        slice = performance.now();
+      }
+    }
+    while (!e.transform_background_ready()) {
+      current();
+      await pages.hydrate(e, 'transform-background');
+      current();
+      e.transform_background_step();
+      if (performance.now() - slice >= 4) {
+        await yieldProjectTask();
+        slice = performance.now();
+      }
+    }
+    if (cold) preparationMs = performance.now() - start;
+    if (fault === 'pause-before-render') {
+      operation = 'Transform preview ready (diagnostic)…';
+      await new Promise<void>((resolve) => {
+        releasePreviewPause = resolve;
+      });
+      current();
+    }
+    const updated = performance.now();
+    let done = false;
+    while (!done) {
+      current();
+      await pages.hydrate(e, 'transform-render');
+      current();
+      done = e.transform_render_step();
+    }
+    const submitted = performance.now();
+    dirty = true;
+    await new Promise<void>((resolve, reject) => {
+      presentation = { resolve, reject };
+    });
+    current();
+    const presented = performance.now();
+    if (!e.transform_preview_valid()) throw new Error('Transform preview view changed');
+    if (cold) {
+      if (fault === 'hold-gpu-wait') operation = 'Transform GPU wait (diagnostic)…';
+      await e.preview_settled(fault === 'hold-gpu-wait');
+      current();
+      preparationMs += performance.now() - presented;
+    }
+    if (!e.transform_preview_valid()) throw new Error('Transform preview view changed');
+    return {
+      serial: request,
+      preparationMs,
+      updateMs: presented - updated,
+      renderSubmitMs: submitted - updated,
+      frameWaitMs: presented - submitted,
+      width: e.transform_preview_width(),
+      height: e.transform_preview_height(),
+    };
+  } catch (error) {
+    if (
+      started &&
+      !disposed &&
+      token === job &&
+      request === previewRequest &&
+      !/Transform preview view changed/.test(String(error))
+    ) {
+      e.transform_cancel();
+      dirty = true;
+    }
+    throw error;
+  } finally {
+    if (token === job) {
+      external(priorExternal);
+      busy = false;
+      operation = undefined;
+      releasePreviewPause = undefined;
+    }
+    finishPreview();
+    if (previewCompletion === completion) {
+      previewRunning = false;
+      previewCompletion = undefined;
+    }
+  }
+}
+const api: EngineApi = {
+  async hitTest(x, y) {
+    const e = requireIdle();
+    busy = true;
+    operation = 'Selecting layer…';
+    const token = beginJob();
+    try {
+      e.hit_test_begin(x, y);
+      let done = false,
+        slice = performance.now();
+      while (!done) {
+        cancelled(token);
+        await pages.hydrate(e, 'hit-test');
+        cancelled(token);
+        done = e.hit_test_step();
         if (performance.now() - slice >= 4) {
-          const temporary = snapshot().memory.temporary;
-          if (temporary - persistedTemporary >= 32 * CHUNK) {
-            await pages.persist(e);
-            persistedTemporary = temporary;
-          }
           await yieldProjectTask();
           slice = performance.now();
         }
       }
-      if (fault === 'pause-before-commit') {
-        operation = 'Geometry ready (diagnostic)…';
-        await new Promise<void>((resolve) => {
-          releaseAdjustmentPause = resolve;
-        });
-      }
-      cancelled(token);
-      e.geometry_commit();
-      cancelAllowed = false;
-      await recompose(token);
-      geometryTiming = {
-        kernelMs,
-        totalMs: performance.now() - start,
-        cpuPeakBytes: e.geometry_cpu_peak(),
-      };
-      dirty = true;
-      return snapshot();
+      return e.hit_test_finish() || null;
     } finally {
       if (token === job) {
-        external(priorExternal);
-        releaseAdjustmentPause = undefined;
-        e.geometry_cancel();
+        e.hit_test_cancel();
         busy = false;
         operation = undefined;
       }
     }
+  },
+  geometryAction(action) {
+    return runGeometry((e) => e.geometry_begin(JSON.stringify(action)));
+  },
+  async beginTransform(target, selected) {
+    const e = requireIdle();
+    busy = true;
+    operation = 'Preparing transform…';
+    const token = beginJob();
+    try {
+      e.transform_begin(target, selected);
+      let slice = performance.now();
+      while (!e.transform_bounds_ready()) {
+        cancelled(token);
+        await pages.hydrate(e, 'transform-bounds');
+        cancelled(token);
+        e.transform_bounds_step();
+        if (performance.now() - slice >= 4) {
+          await yieldProjectTask();
+          slice = performance.now();
+        }
+      }
+      dirty = true;
+      return snapshot();
+    } catch (error) {
+      if (token === job) {
+        e.transform_cancel();
+        dirty = true;
+      }
+      throw error;
+    } finally {
+      if (token === job) {
+        busy = false;
+        operation = undefined;
+      }
+    }
+  },
+  previewTransform(update) {
+    return runTransformPreview(update);
+  },
+  applyTransform() {
+    return runGeometry((e) => e.transform_apply_begin());
+  },
+  async cancelTransform() {
+    await api.endAdjustmentPreview();
+    return snapshot();
   },
   async compareFilterCompositors(index?: number) {
     if (!diagnostic) throw new Error('Diagnostics are disabled');

@@ -14,10 +14,23 @@ pub use renderer::Renderer;
 #[cfg(target_arch = "wasm32")]
 mod selection;
 #[cfg(target_arch = "wasm32")]
+mod transform_preview;
+#[cfg(target_arch = "wasm32")]
 mod viewport;
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn transform_shader_is_valid_portable_wgsl() {
+        let m = naga::front::wgsl::parse_str(include_str!("transform_preview.wgsl"))
+            .expect("transform WGSL");
+        naga::valid::Validator::new(
+            naga::valid::ValidationFlags::all(),
+            naga::valid::Capabilities::empty(),
+        )
+        .validate(&m)
+        .expect("portable transform shader");
+    }
     #[test]
     fn filter_shader_is_valid_portable_wgsl() {
         let m = naga::front::wgsl::parse_str(include_str!("filter.wgsl")).expect("filter WGSL");

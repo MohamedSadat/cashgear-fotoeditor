@@ -666,7 +666,7 @@ button.primary:hover:enabled {
   height: 40px;
   font-size: 18px;
 }
-.rail button:first-child {
+.rail button[aria-pressed='true'] {
   color: #f7a976;
   background: #332921;
   border-color: #57402f;
@@ -1272,6 +1272,25 @@ select {
   height: 100%;
   pointer-events: none;
   overflow: hidden;
+}
+.transform-overlay {
+  z-index: 3;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: hidden;
+}
+.transform-overlay path {
+  fill: none;
+  stroke: #ffd0a8;
+  stroke-width: 1;
+}
+.transform-overlay circle {
+  fill: #20242a;
+  stroke: #ffd0a8;
+  stroke-width: 1.5;
 }
 .geometry-overlay path {
   fill: none;

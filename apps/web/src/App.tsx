@@ -8,6 +8,8 @@ import { SelectionControls } from './SelectionControls';
 import { AdjustmentPanel } from './AdjustmentPanel';
 import { FilterPanel } from './FilterPanel';
 import { GeometryPanel } from './GeometryPanel';
+import { TransformPanel } from './TransformPanel';
+import { startTransform, cancelTransform, useTransform } from './transform-state';
 import { useSelection } from './selection-state';
 import { useBrush } from './brush-state';
 import { updateWorkspace, useWorkspace } from './state';
@@ -61,7 +63,8 @@ export function App() {
   const selectionBusy = useSelection((state) => state.busy);
   const selectionNotice = useSelection((state) => state.notice);
   const painting = !!snapshot?.painting;
-  const working = !!busy || !!snapshot?.operation || selectionBusy;
+  const transformBusy = useTransform((s) => s.busy || s.pending);
+  const working = !!busy || !!snapshot?.operation || selectionBusy || transformBusy;
   const recovery = snapshot?.recovery;
   const recoverable = recovery?.candidates[0];
   useEffect(() => {
@@ -310,6 +313,23 @@ export function App() {
       />
       <main className="workspace">
         <aside className="rail" aria-label="Tools">
+          <button
+            aria-label="Move"
+            title="Move · V"
+            aria-pressed={tool === 'move'}
+            onClick={() => useBrush.setState({ tool: 'move' })}
+          >
+            V
+          </button>
+          <button
+            aria-label="Free transform"
+            title="Free transform · Ctrl+T"
+            aria-pressed={tool === 'transform'}
+            disabled={!doc || working || painting}
+            onClick={() => engineApi && void startTransform(engineApi)}
+          >
+            T
+          </button>
           {(
             [
               'brush',
@@ -522,6 +542,11 @@ export function App() {
           </nav>
           <BrushPanel />
           <div className="section-divider" />
+          <TransformPanel
+            api={engineApi}
+            disabled={status !== 'ready' || working || painting || !doc}
+          />
+          <div className="section-divider" />
           <GeometryPanel
             api={engineApi}
             disabled={status !== 'ready' || working || painting || !doc}
@@ -656,21 +681,23 @@ export function App() {
             {busy ||
               snapshot?.operation ||
               snapshot?.editError ||
+              (transformBusy ? 'Updating transform…' : '') ||
               selectionNotice ||
               notice ||
               (painting ? 'Painting…' : 'B brush · E eraser · Alt sample · Ctrl+Z undo')}
           </span>
-          {(busy || selectionBusy) && (
+          {(busy || selectionBusy || transformBusy) && (
             <button
               onClick={() => {
                 const token = operation.current;
                 void Promise.resolve(
-                  selectionBusy
+                  selectionBusy || transformBusy
                     ? api.current?.cancelJob()
                     : !workerJobStarted.current || api.current?.cancelJob(),
                 )
                   .then((cancelled) => {
                     if (cancelled && token === operation.current) {
+                      if (transformBusy && api.current) void cancelTransform(api.current);
                       ++operation.current;
                       setBusy('');
                       setNotice('Operation cancelled');

@@ -149,6 +149,10 @@ impl Engine {
         (std::arch::wasm32::memory_size(0) as u64 * 65536) as f64
     }
     pub fn selection_overlay_prepare(&mut self) -> Result<(), JsValue> {
+        if self.geometric.session.is_some() {
+            self.renderer.clear_selection();
+            return Ok(());
+        }
         let Some(doc) = &self.document else {
             self.renderer.clear_selection();
             return Ok(());

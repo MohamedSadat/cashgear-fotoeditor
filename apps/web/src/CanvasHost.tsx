@@ -5,6 +5,8 @@ import { pointerSamples } from './engine/pointer-input';
 import type { BackendPreference, EngineApi, Interaction } from './engine/types';
 import { updateWorkspace, useWorkspace } from './state';
 import { useGeometry } from './geometry-state';
+import { bindTransformInteractions } from './transform-interaction';
+import { cancelTransform } from './transform-state';
 import { evaluateCurve, setBrush, useBrush } from './brush-state';
 import type { BrushSettings } from './brush-state';
 import {
@@ -76,7 +78,10 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
     let polygon: [number, number][] = [];
     let gestureRevision: number | undefined;
     let polygonMode: ReturnType<typeof selectionMode> = 'new';
-    const isSelecting = () => !['brush', 'eraser', 'eyedropper'].includes(useBrush.getState().tool);
+    const isSelecting = () =>
+      !['brush', 'eraser', 'eyedropper', 'move', 'transform', 'crop'].includes(
+        useBrush.getState().tool,
+      );
     const documentPoint = (x: number, y: number): [number, number] => {
       const s = useWorkspace.getState().snapshot!;
       const d = s.document!;
@@ -101,6 +106,13 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
         s.view.screenHeight / 2 + s.view.panY + (x * sn + y * c) * s.view.zoom,
       ];
     };
+    const transform = bindTransformInteractions(
+      canvas,
+      container,
+      () => client.api,
+      documentPoint,
+      screenPoint,
+    );
     const drawGeometry = () => {
       const s = useWorkspace.getState().snapshot;
       const prefs = useGeometry.getState();
@@ -222,6 +234,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
         space ||
         rotate ||
         brush.tool === 'eyedropper' ||
+        ['move', 'transform', 'crop'].includes(brush.tool) ||
         isSelecting();
       canvas.style.cursor = outline.hidden ? 'crosshair' : 'none';
       if (!lastScreen || !snapshot) return;
@@ -247,6 +260,12 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
     }
     const unsubscribeBrush = useBrush.subscribe((state, previous) => {
       if (state.tool !== previous.tool) clearSelectionGesture();
+      if (
+        previous.tool === 'transform' &&
+        state.tool !== 'transform' &&
+        useWorkspace.getState().snapshot?.transform
+      )
+        void cancelTransform(client.api, false);
       refreshOutline();
     });
     function key(event: KeyboardEvent) {
@@ -262,6 +281,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
           event.target.isContentEditable)
       )
         return;
+      if (transform.key(event)) return;
       if (event.code === 'Space') {
         if (event.target instanceof HTMLButtonElement && !canvas.matches(':hover')) return;
         space = event.type === 'keydown';
@@ -365,6 +385,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       refreshOutline();
     }
     function resetKeys() {
+      transform.cancelDrag();
       clearSelectionGesture();
       space = false;
       rotate = false;
@@ -381,7 +402,8 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       'wheel',
       (event) => {
         event.preventDefault();
-        if (strokePointer !== undefined || selectionDrag || polygon.length) return;
+        if (strokePointer !== undefined || selectionDrag || polygon.length || transform.dragging())
+          return;
         const rect = canvas.getBoundingClientRect();
         const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rect.height : 1;
         if (event.ctrlKey || event.metaKey)
@@ -413,6 +435,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
         !useSelection.getState().busy
       ) {
         event.preventDefault();
+        if (transform.down(event)) return;
         const brush = useBrush.getState();
         const rect = canvas.getBoundingClientRect();
         const x = event.clientX - rect.left,
@@ -570,6 +593,10 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
     canvas.addEventListener('pointermove', (event) => {
       const rect = canvas.getBoundingClientRect();
       lastScreen = [event.clientX - rect.left, event.clientY - rect.top];
+      if (transform.move(event)) {
+        input('cursor', ...lastScreen);
+        return;
+      }
       refreshOutline();
       if (drag) {
         const dx = event.clientX - drag.x;
@@ -582,6 +609,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       input('cursor', event.clientX - rect.left, event.clientY - rect.top);
     });
     canvas.addEventListener('pointerup', (event) => {
+      if (transform.up(event)) return;
       drag = undefined;
       if (selectionDrag?.pointer === event.pointerId) {
         if (!gestureCurrent()) return;
@@ -630,11 +658,13 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       }
     });
     canvas.addEventListener('pointercancel', () => {
+      transform.cancelDrag();
       clearSelectionGesture();
       drag = undefined;
       cancelStroke();
     });
     canvas.addEventListener('lostpointercapture', () => {
+      if (transform.dragging()) transform.cancelDrag();
       if (selectionDrag) clearSelectionGesture();
       drag = undefined;
       cancelStroke();
@@ -790,6 +820,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       outline.remove();
       svg.remove();
       geometrySvg.remove();
+      transform.dispose();
     };
   }, [generation, diagnostic, onFaultReady, onApiReady]);
   return <div className="canvas-host" ref={host} />;

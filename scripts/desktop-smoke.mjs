@@ -786,6 +786,55 @@ try {
     expect(result.geometry.grown).toMatchObject({ width: 40, height: 32 });
     for (const key of ['exactRotation', 'exactResize', 'exactUndo'])
       expect(result.geometry[key], key).toBe(true);
+    result.transform = await page.evaluate(async () => {
+      const api = window.__fotoeditor;
+      const digest = async () =>
+        Array.from(
+          new Uint8Array(await crypto.subtle.digest('SHA-256', await api.exportPng())),
+        ).join(',');
+      const initial = await api.selectionAction({ kind: 'none' }),
+        target = initial.layers.nodes[0].id;
+      const before = await digest();
+      await api.beginTransform(target, false);
+      const a = (10 * Math.PI) / 180,
+        c = Math.cos(a),
+        s = Math.sin(a);
+      const matrix = (s) => ({
+        values: [c, -s, 16 - 16 * c + 12 * s, s, c, 12 - 16 * s - 12 * c, 0, 0, 1],
+      });
+      const cold = await api.previewTransform({ kind: 'compose', matrix: matrix(s) });
+      const warm = await api.previewTransform({ kind: 'compose', matrix: matrix(-s) });
+      const immutable = before === (await digest());
+      const applied = await api.applyTransform();
+      const inverseExact = before === (await digest());
+      await api.beginTransform(target, false);
+      await api.previewTransform({
+        kind: 'matrix',
+        matrix: { values: [1, 0, 3, 0, 1, 2, 0, 0, 1] },
+      });
+      const moved = await api.applyTransform();
+      const changed = before !== (await digest());
+      await api.historyJump(initial.history.undo);
+      return {
+        cold,
+        warm,
+        immutable,
+        inverseExact,
+        noExtraCommand: applied.history.undo === initial.history.undo,
+        oneMoveCommand: moved.history.undo === initial.history.undo + 1,
+        changed,
+        exactUndo: before === (await digest()),
+      };
+    });
+    for (const key of [
+      'immutable',
+      'inverseExact',
+      'noExtraCommand',
+      'oneMoveCommand',
+      'changed',
+      'exactUndo',
+    ])
+      expect(result.transform[key], key).toBe(true);
     result.software = process.env.GPU_TEST_SOFTWARE === '1';
     await mkdir(join(root, 'bench/results'), { recursive: true });
     await page.screenshot({ path: join(root, 'bench/results/desktop-p4-' + backend + '.png') });

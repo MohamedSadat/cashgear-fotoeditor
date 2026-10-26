@@ -10,7 +10,46 @@ The user answered all four questions: Lanczos3 default, non-destructive crop,
 warp/puppet warp after v1 and content-aware scale outside v1. DECISIONS.md records
 these choices.
 
-The next increment adds bounded Rust nearest/bilinear/bicubic/Lanczos3 sampling,
+### Immutable transform and Move checkpoint (2026-10-26)
+
+Adds immutable free-transform sessions with eight handles and a rotation handle,
+scale/rotate/skew/distort/perspective controls, Shift proportions, Enter/Escape,
+live GPU previews, one final full-resolution Rust resample, Move dragging,
+optional layer auto-selection, arrow nudging and guide/canvas snapping. Pageable
+exact occupied bounds avoid sparse-padding growth. Linked masks move with the
+whole layer; selected coverage is lifted/cleared/composited once. Invalid matrices,
+locks, cancellation and budget refusal retain samples/history/redo. View changes
+rebuild the preview against the same source and preserve the visible screen anchor.
+
+All 150 Rust tests, native/WASM clippy, formatting, TypeScript, ESLint, 16 Vitest
+cases and 451 dependency licenses pass. Release WASM is 3,813,445 bytes / gzip9
+1,421,962. Twenty-four installed Chrome/Edge transform/API/control cases and eight
+additional masked-preview/view/cancellation/refusal cases pass, one attempt each.
+All 116 applicable GPU/viewport/crop/size/filter/adjustment-preview regression
+cases also pass on the installed Chrome/Edge API pairs, without skipped/retried
+cases. The exact filter-preview screenshot passes in both browsers/backends.
+The Windows shell builds and WebView2 passes both APIs, including immutable
+inverse rotations, a single move command and exact undo. These small fixtures are
+functional evidence, not the outstanding 6000x4000 P7 performance measurement.
+Raw evidence is `bench/results/p7-transform-*`.
+
+The added screenshot initially included the overlapping DOM handles before Apply
+and their removal after Apply. Hiding only that overlay for the pixel comparison
+gives exact GPU preview/committed equality in the rotated/flipped masked-group
+fixture. The budget-after-step test now uses multiple tiles so refusal occurs
+before completion. Superseded reports/traces remain recorded. The earlier remote
+`5e3dd87` CI had a retry and `929cbc3` CI failed the same filter-preview screenshot.
+Trace evidence showed its final screenshot could precede the committed frame.
+That test now waits for the committed content revision and inactive preview before
+its existing two animation frames; the exact pixel assertion remains unchanged.
+Neither old CI run satisfies the clean-attempt acceptance gate.
+
+Crop gestures/ratios/straightening/thirds, crop-edge mip isolation, hardware P7
+measurements and final full local/remote gates remain. No `p7-transform` tag yet.
+
+### Earlier resampling and size checkpoint
+
+This increment adds bounded Rust nearest/bilinear/bicubic/Lanczos3 sampling,
 image size/DPI, anchored canvas size, canvas rotation/flipping and their controls.
 Whole-tree jobs include nested rasters, masks, selection and guides, publish one
 exact document command, and hydrate/yield/persist through the existing pager.
@@ -32,8 +71,8 @@ The first browser reference incorrectly compared retained columns outside the
 visible export window. The corrected test uses Reveal All before checking every
 original sample, then verifies undo/redo and two flips exactly. The superseded
 report and trace remain under `p7-size-export-window-fixture-failure*`.
-P7 sessions/GPU transform preview, move/nudge/auto-select, crop gestures/ratios/
-straightening/thirds, snapping, full performance and final gates remain.
+At that checkpoint sessions/GPU preview, move/nudge/auto-select, crop gestures/
+ratios/straightening/thirds, snapping, full performance and final gates remained.
 
 ### Earlier canvas-window checkpoint
 

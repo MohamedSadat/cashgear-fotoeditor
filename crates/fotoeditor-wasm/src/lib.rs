@@ -7,6 +7,7 @@ mod bridge {
     mod layers;
     mod preview;
     mod selection;
+    mod transforms;
     use fotoeditor_brush::{BrushSettings, Sample, StrokeCommand};
     use fotoeditor_core::{Document, History, HistoryLimits, Residency, ResolutionCommand, View};
     use fotoeditor_io::{ExportJob, ImportJob, ProjectReader, ProjectWriter};
@@ -60,10 +61,7 @@ mod bridge {
                     || self.view.document_height != doc.height as f64
                     || self.view.canvas != doc.canvas
                 {
-                    self.view.document_width = doc.width as f64;
-                    self.view.document_height = doc.height as f64;
-                    self.view.canvas = doc.canvas;
-                    self.view.fit();
+                    self.view.sync_geometry(doc.width, doc.height, doc.canvas);
                     self.renderer.clear_tiles();
                     self.renderer.clear_selection();
                     self.layered.invalidate_geometry();
@@ -193,6 +191,22 @@ mod bridge {
         }
         pub fn frame(&mut self) -> Result<bool, JsValue> {
             self.sync_view_geometry();
+            if self.geometric.session.as_ref().is_some_and(|p| {
+                p.revision != self.revision
+                    || Some(p.session.target)
+                        != self.layered.active.or_else(|| {
+                            self.document
+                                .as_ref()
+                                .and_then(|d| d.layers.first().map(|l| l.id))
+                        })
+            }) {
+                self.preview_cancel();
+            }
+            if self.geometric.session.as_ref().is_some_and(|p| {
+                !p.valid_view(self.view, (self.renderer.width(), self.renderer.height()))
+            }) {
+                self.renderer.preview_hide();
+            }
             // Rendering may prepare display/selection scratch. Refresh the
             // filter's incremental residency bound after every UI frame.
             if self.adjusted.filter.scratch_bytes() > 0 {
@@ -716,6 +730,7 @@ mod bridge {
                 "adjustmentPreview":{"cached":self.preview_ready(),"active":self.preview_valid() && self.adjusted.preview.as_ref().is_some_and(|p| (p.settings.is_some() || p.filter.is_some()) && p.next == p.job.output.width.div_ceil(256)*p.job.output.height.div_ceil(256))},
                 "layers":self.layer_json(),
                 "selection":self.selection_json(),
+                "transform":self.transform_json(),
                 "view":{"zoom":v.zoom,"rotation":v.rotation,"flipped":v.flipped,"panX":v.pan_x,"panY":v.pan_y,"screenWidth":v.width,"screenHeight":v.height},
                 "memory":{"document":r.document,"history":r.history,"temporary":r.temporary,"gpu":r.gpu},
                 "history":{"undo":self.history.depths().0,"redo":self.history.depths().1,"labels":self.history.labels(),"bytesLimit":self.history.limits.bytes,"stepsLimit":self.history.limits.steps,"evicted":self.history.evicted},

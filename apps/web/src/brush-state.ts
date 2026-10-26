@@ -90,6 +90,9 @@ export const presets: Record<string, Partial<BrushSettings>> = {
 };
 interface BrushState {
   tool:
+    | 'move'
+    | 'transform'
+    | 'crop'
     | 'brush'
     | 'eraser'
     | 'eyedropper'

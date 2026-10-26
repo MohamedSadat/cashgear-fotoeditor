@@ -4,18 +4,31 @@ use fotoeditor_core::{
 };
 #[derive(Default)]
 pub(super) struct GeometryRuntime {
-    apply: Option<GeometryJob>,
-    cpu_peak: u64,
+    pub(super) apply: Option<GeometryJob>,
+    pub(super) session: Option<super::transforms::TransformRuntime>,
+    pub(super) hit: Option<(u32, fotoeditor_core::HitTestJob)>,
+    pub(super) cpu_peak: u64,
 }
 impl GeometryRuntime {
     pub fn has_tiles(&self) -> bool {
-        self.apply.is_some()
+        self.apply.is_some() || self.session.is_some() || self.hit.is_some()
     }
     pub fn scratch_bytes(&self) -> u64 {
         self.apply.as_ref().map_or(0, GeometryJob::scratch_bytes)
+            + self
+                .session
+                .as_ref()
+                .map_or(0, super::transforms::TransformRuntime::scratch_bytes)
+            + self.hit.as_ref().map_or(0, |(_, j)| j.scratch_bytes())
     }
     pub fn visit_tiles(&self, v: &mut dyn FnMut(TileRef<'_>)) {
         if let Some(j) = &self.apply {
+            j.visit_tiles(v);
+        }
+        if let Some(j) = &self.session {
+            j.visit_tiles(v);
+        }
+        if let Some((_, j)) = &self.hit {
             j.visit_tiles(v);
         }
     }
@@ -59,7 +72,7 @@ impl Engine {
     }
     pub fn geometry_step(&mut self) -> Result<bool, JsValue> {
         let m = self.paging_residency();
-        m.check_cpu((TILE_PIXELS * 8) as u64).map_err(js)?;
+        m.check_cpu((TILE_PIXELS * 12) as u64).map_err(js)?;
         self.geometric.cpu_peak = self
             .geometric
             .cpu_peak
@@ -107,6 +120,7 @@ impl Engine {
     }
     pub fn geometry_cancel(&mut self) {
         self.geometric.apply = None;
+        self.geometric.hit = None;
         self.refresh_pages();
     }
     pub fn geometry_metadata(&mut self, encoded: &str) -> Result<(), JsValue> {
