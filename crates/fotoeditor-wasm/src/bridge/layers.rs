@@ -61,11 +61,13 @@ impl LayerRuntime {
         &self,
         document: Option<&Document>,
         history: &History,
-        preview: Option<&Document>,
+        stroke: Option<&StrokeCommand>,
         selection: &super::selection::SelectionRuntime,
         adjustment: &super::adjustments::AdjustmentRuntime,
         geometry: &super::geometry::GeometryRuntime,
     ) -> u64 {
+        let preview = stroke.map(|s| &s.preview);
+        let sampled_source = stroke.and_then(|s| s.sampled_source.as_ref());
         if self.render.is_none()
             && self.thumbnail.is_none()
             && self.display.is_none()
@@ -75,6 +77,7 @@ impl LayerRuntime {
             && adjustment.preview.is_none()
             && !adjustment.filter.has_tiles()
             && !geometry.has_tiles()
+            && sampled_source.is_none()
         {
             return 0;
         }
@@ -111,6 +114,9 @@ impl LayerRuntime {
         selection.visit_tiles(&mut count);
         adjustment.visit_tiles(&mut count);
         geometry.visit_tiles(&mut count);
+        if let Some(source) = sampled_source {
+            source.visit_tiles(&mut count);
+        }
         bytes
     }
     pub fn cancel(&mut self) {
@@ -326,6 +332,9 @@ impl Engine {
         }
         if let Some(stroke) = &self.stroke {
             stroke.preview.visit_tiles(&mut add);
+            if let Some(source) = &stroke.sampled_source {
+                source.visit_tiles(&mut add);
+            }
         }
         if let Some(job) = &self.layered.thumbnail {
             job.source.visit_tiles(&mut add);
@@ -631,6 +640,18 @@ impl Engine {
         else {
             return Ok(None);
         };
+        // A small flat retouch stack is cheaper to composite beside the Rust
+        // stroke than to read a float tile back from the GPU and upload it again.
+        // Complex stacks keep their existing GPU route and reference semantics.
+        if self.sampled_stroke()
+            && plan.steps.len() <= 2
+            && plan.steps.iter().all(|step| {
+                matches!(step, CompositeStep::Raster {properties,clipped:false,adjustment:None,..}
+                if properties.blend == BlendMode::Normal)
+            })
+        {
+            return Ok(None);
+        }
         self.residency().check_cpu(4 * 1024 * 1024).map_err(js)?;
         self.layered.gpu_coord = Some(coord);
         self.renderer.composite(&plan).map(Some).map_err(js)
@@ -805,6 +826,12 @@ impl Engine {
             }
         };
         match scope {
+            "stroke" => {
+                if let Some(stroke) = &mut self.stroke {
+                    stroke.prepare_clone();
+                    stroke.clone_needed(&mut add);
+                }
+            }
             "transform-bounds" => {
                 if let Some(p) = &self.geometric.session {
                     p.needed_bounds(&mut add);

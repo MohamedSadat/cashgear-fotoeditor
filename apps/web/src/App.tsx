@@ -478,6 +478,14 @@ export function App() {
           >
             C
           </button>
+          <button
+            aria-label="Clone Stamp"
+            title="Clone Stamp · S"
+            aria-pressed={tool === 'clone'}
+            onClick={() => useBrush.setState({ tool: 'clone' })}
+          >
+            S
+          </button>
           {(
             [
               'brush',

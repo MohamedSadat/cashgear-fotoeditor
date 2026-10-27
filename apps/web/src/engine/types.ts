@@ -121,6 +121,7 @@ export interface DocumentSnapshot {
   timing?: { paintMs: number; renderMs: number; snapshotMs: number };
   editError?: string;
   sampledColor?: { rgba: Rgba; serial: number };
+  cloneStamp?: { source: [number, number] | null; offset: [number, number] | null };
   name?: string;
   cursor?: [number, number];
 }
@@ -139,12 +140,17 @@ export interface Interaction {
     | 'stroke-end'
     | 'stroke-cancel'
     | 'sample-color'
+    | 'clone-source'
     | 'undo'
     | 'redo';
   x: number;
   y: number;
   amount: number;
-  brush?: BrushSettings & { color: Rgba; eraser: boolean };
+  brush?: BrushSettings & {
+    color: Rgba;
+    eraser: boolean;
+    clone?: { aligned: boolean; allLayers: boolean };
+  };
   sample?: [number, number, number, number, number, number];
 }
 export interface EngineApi {

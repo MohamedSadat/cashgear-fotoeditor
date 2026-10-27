@@ -43,6 +43,11 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
     outline.hidden = true;
     outline.setAttribute('aria-hidden', 'true');
     container.appendChild(outline);
+    const cloneMarker = document.createElement('div');
+    cloneMarker.className = 'clone-source-marker';
+    cloneMarker.setAttribute('aria-label', 'Clone source');
+    cloneMarker.hidden = true;
+    container.appendChild(cloneMarker);
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.classList.add('selection-gesture');
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -80,7 +85,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
     let gestureRevision: number | undefined;
     let polygonMode: ReturnType<typeof selectionMode> = 'new';
     const isSelecting = () =>
-      !['brush', 'eraser', 'eyedropper', 'move', 'transform', 'crop'].includes(
+      !['brush', 'clone', 'eraser', 'eyedropper', 'move', 'transform', 'crop'].includes(
         useBrush.getState().tool,
       );
     const documentPoint = (x: number, y: number): [number, number] => {
@@ -236,6 +241,19 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       const brush = useBrush.getState();
       const settings = strokeSettings ?? brush.settings;
       const snapshot = useWorkspace.getState().snapshot;
+      const source = snapshot?.cloneStamp?.source;
+      const offset = snapshot?.cloneStamp?.offset;
+      cloneMarker.hidden = brush.tool !== 'clone' || !source || !snapshot?.document;
+      if (!cloneMarker.hidden && source) {
+        const destination = lastScreen ? documentPoint(...lastScreen) : undefined;
+        const point: [number, number] =
+          (brush.cloneAligned || snapshot?.painting) && offset && destination
+            ? [destination[0] + offset[0], destination[1] + offset[1]]
+            : source;
+        const screen = screenPoint(point.map((v) => Math.floor(v) + 0.5) as [number, number]);
+        cloneMarker.style.left = screen[0] + 'px';
+        cloneMarker.style.top = screen[1] + 'px';
+      }
       outline.hidden =
         !lastScreen ||
         !snapshot?.document ||
@@ -372,9 +390,9 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
             amount: 0,
           });
       } else if (!modifier) {
-        const tool = ({ KeyB: 'brush', KeyE: 'eraser', KeyI: 'eyedropper' } as const)[
-          event.code as 'KeyB' | 'KeyE' | 'KeyI'
-        ];
+        const tool = (
+          { KeyB: 'brush', KeyE: 'eraser', KeyI: 'eyedropper', KeyS: 'clone' } as const
+        )[event.code as 'KeyB' | 'KeyE' | 'KeyI' | 'KeyS'];
         if (tool) useBrush.setState({ tool });
         if (event.code === 'KeyX') useBrush.getState().swap();
         if (event.code === 'BracketLeft' || event.code === 'BracketRight') {
@@ -508,6 +526,10 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
           }
           return;
         }
+        if (event.altKey && brush.tool === 'clone') {
+          send({ kind: 'clone-source', x, y, amount: 0 });
+          return;
+        }
         if (event.altKey || brush.tool === 'eyedropper') {
           send({ kind: 'sample-color', x, y, amount: 0 });
           return;
@@ -538,6 +560,9 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
             ...brush.settings,
             color: brush.primary,
             eraser: brush.tool === 'eraser' || event.button === 5,
+            ...(brush.tool === 'clone'
+              ? { clone: { aligned: brush.cloneAligned, allLayers: brush.cloneAllLayers } }
+              : {}),
           },
         });
         if (brush.settings.flow < 1 && !brush.settings.pencil)

@@ -2067,6 +2067,14 @@ const api: EngineApi = {
     try {
       if (!busy) {
         const wasPainting = engine.painting();
+        if (engine.sampled_stroke()) {
+          busy = true;
+          try {
+            await pages.hydrate(engine, 'stroke');
+          } finally {
+            busy = false;
+          }
+        }
         engine.stroke_step();
         if (wasPainting && !engine.painting()) {
           dirty = true;
@@ -2210,7 +2218,7 @@ const api: EngineApi = {
     inputsWaiting = [];
     for (let index = 0; index < pending.length; index++) {
       const input = pending[index];
-      if (e.painting() && ['stroke-begin', 'undo', 'redo'].includes(input.kind)) {
+      if (e.painting() && ['stroke-begin', 'clone-source', 'undo', 'redo'].includes(input.kind)) {
         inputsWaiting = pending.slice(index);
         break;
       }
@@ -2222,7 +2230,11 @@ const api: EngineApi = {
         )
           dirty = true;
         if (input.kind === 'cursor') cursorScreen = [input.x, input.y];
-        else if (input.kind === 'stroke-cancel') {
+        else if (input.kind === 'clone-source') {
+          if (busy || e.painting()) throw new Error('Finish the current stroke or operation first');
+          e.clone_source(input.x, input.y);
+          editError = undefined;
+        } else if (input.kind === 'stroke-cancel') {
           e.stroke_cancel();
           if (input.amount < 0) editError = 'Stroke input queue exceeded; stroke cancelled';
         } else if (input.kind.startsWith('stroke-')) {
@@ -2230,6 +2242,14 @@ const api: EngineApi = {
           if (busy) throw new Error('Finish the current operation first');
           if (input.kind === 'stroke-begin') {
             editError = undefined;
+            if (input.brush?.clone?.allLayers) {
+              busy = true;
+              try {
+                await recompose();
+              } finally {
+                busy = false;
+              }
+            }
             if (e.quick_mask_enabled() || e.active_cold()) {
               busy = true;
               try {
@@ -2238,7 +2258,7 @@ const api: EngineApi = {
                 busy = false;
               }
             }
-            e.stroke_begin(JSON.stringify(input.brush));
+            e.stroke_begin(JSON.stringify(input.brush), input.x, input.y);
           }
           if (input.sample) e.stroke_sample(new Float64Array(input.sample));
           if (input.kind === 'stroke-end') e.stroke_end();

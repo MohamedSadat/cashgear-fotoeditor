@@ -1396,3 +1396,32 @@ select {
 .recovery-status {
   scroll-margin-top: 48px;
 }
+
+.clone-source-marker {
+  position: absolute;
+  width: 15px;
+  height: 15px;
+  transform: translate(-50%, -50%);
+  border: 1px solid white;
+  box-shadow: 0 0 0 1px black;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 5;
+  background:
+    linear-gradient(white, white) center / 1px 100% no-repeat,
+    linear-gradient(white, white) center / 100% 1px no-repeat;
+}
+.clone-controls {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+.clone-controls p {
+  margin: 0;
+  font-size: 12px;
+}
+.clone-controls label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}

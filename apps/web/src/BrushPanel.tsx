@@ -31,7 +31,17 @@ export function hsvToRgb(h: number, s: number, v: number, alpha = 255): Rgba {
   return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255), alpha];
 }
 export const BrushPanel = memo(function BrushPanel() {
-  const { settings, primary, secondary, recent, setColor, swap } = useBrush();
+  const {
+    settings,
+    primary,
+    secondary,
+    recent,
+    setColor,
+    swap,
+    tool,
+    cloneAligned,
+    cloneAllLayers,
+  } = useBrush();
   const color = hex(primary);
   const [picker, setPicker] = useState({ ...rgbToHsv(primary), color });
   const hsv = picker.color === color ? picker : { ...rgbToHsv(primary), color };
@@ -54,6 +64,31 @@ export const BrushPanel = memo(function BrushPanel() {
   return (
     <div className="brush-panel">
       <span className="section-eyebrow">BRUSH & COLOR</span>
+      {tool === 'clone' && (
+        <fieldset className="clone-controls">
+          <legend>Clone Stamp</legend>
+          <p>Alt-click to pick a source. S selects Clone Stamp.</p>
+          <label>
+            <input
+              type="checkbox"
+              checked={cloneAligned}
+              onChange={(e) => useBrush.setState({ cloneAligned: e.target.checked })}
+            />
+            Aligned source
+          </label>
+          <label>
+            Clone sample
+            <select
+              aria-label="Clone sample"
+              value={cloneAllLayers ? 'all' : 'current'}
+              onChange={(e) => useBrush.setState({ cloneAllLayers: e.target.value === 'all' })}
+            >
+              <option value="current">Current layer</option>
+              <option value="all">All visible layers</option>
+            </select>
+          </label>
+        </fieldset>
+      )}
       <div className="color-swatches">
         <button
           aria-label="Primary color"

@@ -94,6 +94,7 @@ interface BrushState {
     | 'transform'
     | 'crop'
     | 'brush'
+    | 'clone'
     | 'eraser'
     | 'eyedropper'
     | 'rectangle'
@@ -107,6 +108,8 @@ interface BrushState {
   secondary: Rgba;
   recent: string[];
   sampledSerial: number;
+  cloneAligned: boolean;
+  cloneAllLayers: boolean;
   setColor: (color: Rgba) => void;
   swap: () => void;
 }
@@ -136,6 +139,8 @@ export const useBrush = create<BrushState>((set) => ({
   secondary: [255, 255, 255, 255],
   recent: [],
   sampledSerial: 0,
+  cloneAligned: true,
+  cloneAllLayers: false,
   setColor: (color) =>
     set((state) => ({
       primary: color,

@@ -86,6 +86,7 @@ export class PagingStore {
   async hydrate(
     engine: Engine,
     scope:
+      | 'stroke'
       | 'active'
       | 'render'
       | 'write'

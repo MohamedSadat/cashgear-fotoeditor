@@ -10,7 +10,7 @@ mod bridge {
     mod preview;
     mod selection;
     mod transforms;
-    use fotoeditor_brush::{BrushSettings, Sample, StrokeCommand};
+    use fotoeditor_brush::{BrushSettings, CloneAnchor, Sample, StrokeCommand};
     use fotoeditor_core::{Document, History, HistoryLimits, Residency, ResolutionCommand, View};
     use fotoeditor_io::{ExportJob, ImportJob, ProjectReader, ProjectWriter, PsdImportJob};
     use std::cell::RefCell;
@@ -35,6 +35,8 @@ mod bridge {
         document: Option<Document>,
         history: History,
         stroke: Option<StrokeCommand>,
+        clone_anchor: CloneAnchor,
+        clone_pending: Option<([i32; 2], bool)>,
         paint_time: f64,
         paint_complete_time: f64,
         view: View,
@@ -108,6 +110,8 @@ mod bridge {
                     self.document = Some(doc);
                     self.history.clear();
                     self.stroke = None;
+                    self.clone_anchor = CloneAnchor::default();
+                    self.clone_pending = None;
                     self.paint_time = 0.0;
                     self.paint_complete_time = 0.0;
                     self.renderer.clear_tiles();
@@ -136,7 +140,7 @@ mod bridge {
                     + self.layered.extra_source_bytes(
                         self.document.as_ref(),
                         &self.history,
-                        self.stroke.as_ref().map(|s| &s.preview),
+                        self.stroke.as_ref(),
                         &self.selected,
                         &self.adjusted,
                         &self.geometric,
@@ -183,6 +187,8 @@ mod bridge {
                 document: None,
                 history: History::default(),
                 stroke: None,
+                clone_anchor: CloneAnchor::default(),
+                clone_pending: None,
                 paint_time: 0.0,
                 paint_complete_time: 0.0,
                 view: View::default(),
@@ -404,7 +410,20 @@ mod bridge {
             self.content_revision = self.content_revision.wrapping_add(u32::from(changed));
             Ok(())
         }
-        pub fn stroke_begin(&mut self, settings: &str) -> Result<(), JsValue> {
+        pub fn clone_source(&mut self, x: f64, y: f64) -> Result<(), JsValue> {
+            if self.stroke.is_some() {
+                return Err(JsValue::from_str("Finish the stroke first"));
+            }
+            let doc = self
+                .document
+                .as_ref()
+                .ok_or("Create or open a document first")?;
+            let (x, y) = self.view.screen_to_document(x, y);
+            self.clone_anchor
+                .select([x, y], doc.canvas_rect())
+                .map_err(|e| JsValue::from_str(&e))
+        }
+        pub fn stroke_begin(&mut self, settings: &str, x: f64, y: f64) -> Result<(), JsValue> {
             self.preview_cancel();
             self.layered.invalidate_memory();
             if self.stroke.is_some() {
@@ -412,6 +431,9 @@ mod bridge {
             }
             let mut settings: BrushSettings =
                 serde_json::from_str(settings).map_err(|e| JsValue::from_str(&e.to_string()))?;
+            if settings.clone.is_some() && (self.selected.quick_mask || self.layered.mask_target) {
+                return Err(JsValue::from_str("Clone Stamp needs a raster pixel target"));
+            }
             let doc = self
                 .document
                 .as_ref()
@@ -450,6 +472,46 @@ mod bridge {
             } else {
                 target
             };
+            if let Some(options) = settings.clone {
+                if self.selected.quick_mask || self.layered.mask_target {
+                    return Err(JsValue::from_str("Clone Stamp needs a raster pixel target"));
+                }
+                let (x, y) = self.view.screen_to_document(x, y);
+                let offset = self
+                    .clone_anchor
+                    .mapping([x, y], options.aligned)
+                    .map_err(|e| JsValue::from_str(&e))?;
+                let mut sampled = if options.all_layers {
+                    if self.layered.requires_composite(Some(doc)) {
+                        self.layered
+                            .display
+                            .as_ref()
+                            .ok_or("Prepare the visible composite first")?
+                            .clone()
+                    } else {
+                        doc.clone()
+                    }
+                } else {
+                    let mut source = doc.clone();
+                    source.layers = vec![doc
+                        .layer(target)
+                        .map_err(|e| JsValue::from_str(&e))?
+                        .clone()];
+                    source
+                };
+                // This source is a raw sample surface, even for a locked/masked current layer.
+                sampled.layers[0].properties = Default::default();
+                sampled.layers[0].mask = None;
+                sampled.selection = None;
+                sampled.guides.clear();
+                self.stroke = Some(
+                    StrokeCommand::for_clone(doc, settings, available, target, sampled, offset)
+                        .map_err(|e| JsValue::from_str(&e))?,
+                );
+                self.clone_pending = Some((offset, options.aligned));
+                self.refresh_pages();
+                return Ok(());
+            }
             self.stroke = Some(
                 StrokeCommand::for_layer(
                     source,
@@ -487,6 +549,11 @@ mod bridge {
         pub fn painting(&self) -> bool {
             self.stroke.is_some()
         }
+        pub fn sampled_stroke(&self) -> bool {
+            self.stroke
+                .as_ref()
+                .is_some_and(|s| s.sampled_source.is_some())
+        }
         pub fn needs_render(&self) -> bool {
             if self.layered.requires_composite(self.document.as_ref()) {
                 return false;
@@ -499,6 +566,7 @@ mod bridge {
                 .is_some_and(|d| d.raster().has_dirty())
         }
         pub fn stroke_cancel(&mut self) {
+            self.clone_pending = None;
             self.layered.mask_base_bytes = 0;
             if self.stroke.take().is_some() {
                 self.layered.invalidate_display();
@@ -511,6 +579,15 @@ mod bridge {
             }
             if self.stroke.is_some() {
                 self.layered.invalidate_memory();
+            }
+            if self.sampled_stroke() {
+                let r = self.residency();
+                r.check_cpu(0).map_err(|e| JsValue::from_str(&e))?;
+                let remaining = fotoeditor_core::CPU_BUDGET
+                    .saturating_sub(r.document + r.history + r.temporary);
+                if let Some(s) = &mut self.stroke {
+                    s.limit_available(s.temporary_bytes() + remaining);
+                }
             }
             if let Some(s) = &mut self.stroke {
                 s.step(262144).map_err(|e| JsValue::from_str(&e))?;
@@ -565,6 +642,11 @@ mod bridge {
                     .map_err(|e| JsValue::from_str(&e))?;
                 self.revision = self.revision.wrapping_add(u32::from(changed));
                 self.content_revision = self.content_revision.wrapping_add(u32::from(changed));
+                if let Some((offset, aligned)) = self.clone_pending.take() {
+                    if aligned {
+                        self.clone_anchor.offset = Some(offset);
+                    }
+                }
                 self.layered.mask_base_bytes = 0;
             }
             Ok(())
@@ -863,6 +945,7 @@ mod bridge {
                 "revision":self.revision,
                 "contentRevision":self.content_revision,
                 "painting":self.stroke.is_some(),"pendingSamples":self.stroke.as_ref().map_or(0,|s|s.pending()),
+                "cloneStamp":{"source":self.clone_anchor.source,"offset":self.clone_pending.map(|p|p.0).or(self.clone_anchor.offset)},
                 "paintTime":self.paint_time,
                 "paintCompleteTime":self.paint_complete_time,
                 "visibleTiles":self.renderer.visible_tiles(),"refining":self.renderer.refining_tiles(),"uploadedBytes":self.renderer.uploaded_bytes()}).to_string()

@@ -1056,6 +1056,58 @@ try {
         throw new Error('Image export changed document samples');
       return results;
     });
+    const cloneBaseline = await page.evaluate(async () => {
+      const api = window.__fotoeditor;
+      await api.newDocument(64, 32, 300);
+      await api.selectionAction({
+        kind: 'shape',
+        shape: { kind: 'rectangle', x0: 0, y0: 0, x1: 16, y1: 32 },
+        mode: 'new',
+        antialias: false,
+      });
+      await api.selectionAction({ kind: 'fill', color: [200, 40, 80, 255] });
+      const s = await api.selectionAction({ kind: 'none' });
+      await api.interact([{ kind: 'actual', x: 0, y: 0, amount: 0 }]);
+      return { history: s.history.undo, png: Array.from(await api.exportPng()) };
+    });
+    await expect(page.getByTestId('zoom')).toHaveText('100.0%');
+    await page.getByRole('combobox', { name: 'Brush preset' }).selectOption('Pixel pencil');
+    await page.getByRole('button', { name: 'Clone Stamp', exact: true }).click();
+    const cloneBox = await page.getByTestId('gpu-canvas').boundingBox();
+    const cloneX = cloneBox.x + cloneBox.width / 2,
+      cloneY = cloneBox.y + cloneBox.height / 2;
+    await page.keyboard.down('Alt');
+    await page.mouse.click(cloneX - 24 + 0.5, cloneY + 0.5);
+    await page.keyboard.up('Alt');
+    await page.waitForFunction(
+      () =>
+        JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot).cloneStamp
+          .source?.[0] === 8,
+    );
+    await page.mouse.click(cloneX + 8 + 0.5, cloneY + 0.5);
+    await page.waitForFunction((baseline) => {
+      const s = JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot);
+      return s.history.undo === baseline + 1 && !s.painting && !s.operation;
+    }, cloneBaseline.history);
+    const cloned = PNG.sync.read(Buffer.from(await exportedPng()));
+    const cloneAt = (16 * 64 + 40) * 4;
+    expect([...cloned.data.subarray(cloneAt, cloneAt + 4)]).toEqual([200, 40, 80, 255]);
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await page.waitForFunction(
+      (baseline) =>
+        JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot).history
+          .undo === baseline,
+      cloneBaseline.history,
+    );
+    const cloneUndo = await exportedPng();
+    expect(Buffer.from(cloneUndo).equals(Buffer.from(cloneBaseline.png))).toBe(true);
+    result.cloneStamp = {
+      source: [8, 16],
+      destination: [40, 16],
+      oneCommand: true,
+      exactUndo: true,
+      pixel: [...cloned.data.subarray(cloneAt, cloneAt + 4)],
+    };
     result.software = process.env.GPU_TEST_SOFTWARE === '1';
     await mkdir(join(root, 'bench/results'), { recursive: true });
     await page.screenshot({ path: join(root, 'bench/results/desktop-p4-' + backend + '.png') });
