@@ -8,7 +8,9 @@ permissions:
 jobs:
   foundation:
     runs-on: windows-latest
-    timeout-minutes: 60
+    # The complete P8 software browser matrix takes about 47 minutes, before
+    # production/desktop builds and both WebView2 backends.
+    timeout-minutes: 90
     env:
       GPU_TEST_SOFTWARE: '1'
     steps:

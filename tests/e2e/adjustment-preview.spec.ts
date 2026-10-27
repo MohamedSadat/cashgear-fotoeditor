@@ -30,7 +30,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
         await api.selectionAction({ kind: 'fill', color: [128, 64, 0, 255] });
         await api.interact([
           { kind: 'actual', x: 0, y: 0, amount: 0 },
-          { kind: 'zoom', x: 439, y: 247, amount: 8 },
+          { kind: 'zoom', x: s.view.screenWidth / 2, y: s.view.screenHeight / 2, amount: 8 },
           { kind: 'pan', x: 0.25, y: 0.25, amount: 0 },
         ]);
         return s.layers.nodes[0].id;

@@ -2,6 +2,25 @@
 
 ## P8 - In progress; product choices recorded
 
+The integrated source is committed/pushed through `d05d5d1`. Its current worker
+passes all 128 focused hardware file/export/PSD/viewport/GPU cases on one attempt
+each, with no errors/skips/retries. The rebuilt expanded WebView2 smoke passes
+both NVIDIA APIs, all 13 public PSDs and all four export modes. Evidence is
+`bench/results/p8-files-current-*`.
+
+Remote checks 40481412322 (`339bdde`) and 40487063891 (`d05d5d1`) fail the same
+three high-zoom preview cases. The latter artifact has 410 other software cases
+passing once, no skips/flaky/global errors; each affected case failed twice.
+The test used a fixed zoom anchor tied to the old canvas height. The new recent-
+files row reduces canvas height by 24 px, so 8x zoom shifts the small document
+away from the sampled center. The fix uses the actual view center and keeps
+the grid/identity-preview assertions. Local reproduction confirmed the cause;
+all 20 installed-browser hardware and 15 software preview cases now pass once
+without failures/skips/retries/global errors. Evidence:
+`bench/results/p8-preview-grid-*`. New-head remote verification remains required.
+The full software matrix takes 46.5 minutes before desktop work, so CI's job
+envelope increases from 60 to 90 minutes without removing tests or backends.
+
 Native export sources/codecs are committed at `f6d86ed`. The integrated export
 candidate passes 173 Rust tests, native/WASM clippy, formatting, TypeScript,
 ESLint, 16 Vitest cases and 459 license expressions. Release WASM is 4,440,303
