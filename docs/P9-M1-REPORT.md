@@ -196,6 +196,19 @@ an asynchronous worker command. Screenshot/trace showed the command updating;
 the fixture now clicks and awaits the reported lock state. Sixteen focused cases
 then pass on both installed browsers/APIs. Initial reports/traces are retained.
 
+Implementation CI `40570505462` is green but has 429 first-attempt passes and
+two retried WebGL2 clone fixtures, so it does not certify acceptance. Trace
+snapshots show both clicks while the UI still reports "Updating layers...": the
+canvas correctly ignores input during an operation. The fixtures now await the
+prepared revision, selected mask target and idle presentation before real input,
+without retrying clicks or weakening pixel/history assertions. The final-head
+run must still have zero retries/flaky cases. Its artifact inspection and the
+milestone completion message distinguish this earlier run from certification.
+All 36 local software cases (three repetitions of the complete clone matrix)
+and sixteen installed-browser hardware cases pass with the corrected fixture,
+one attempt each, without skips, retries, flaky cases or global errors. Only
+test synchronization and this report changed; runtime/performance code is intact.
+
 Earlier serial-native input delivered only 170-197 requested moves per four
 seconds. Later probes corrected bounded input delivery, pressed-button state and
 first-frame preparation accounting; zero-change runs are rejected. GPU readback

@@ -52,6 +52,7 @@ async function setup(page: Page, backend: string) {
   return { x: box.x + box.width / 2 - 256, y: box.y + box.height / 2 - 128 };
 }
 async function pick(page: Page, origin: { x: number; y: number }, x = 32, y = 128) {
+  await idle(page);
   await page.keyboard.down('Alt');
   await page.mouse.click(origin.x + x + 0.5, origin.y + y + 0.5);
   await page.keyboard.up('Alt');
@@ -101,7 +102,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
     page,
   }) => {
     const origin = await setup(page, backend);
-    await whenIdle(page, () =>
+    const prepared = await whenIdle(page, () =>
       page.evaluate(async () => {
         const api = Reflect.get(window, '__fotoeditor') as EngineApi;
         let s = await api.layerAction({
@@ -131,7 +132,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
           target: group.id,
           properties: { ...group.properties, opacity: 0.5 },
         });
-        await api.layerAction({
+        return api.layerAction({
           kind: 'add',
           name: 'Retouch',
           parent: null,
@@ -140,6 +141,8 @@ for (const backend of ['WebGPU', 'WebGL2']) {
         });
       }),
     );
+    await expect.poll(async () => (await state(page)).revision).toBe(prepared.revision);
+    await idle(page);
     const before = await exported(page),
       baseline = (await state(page)).history.undo;
     await pick(page, origin);
@@ -220,15 +223,18 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       .poll(async () => (await state(page)).layers.nodes[0].properties.locks.pixels)
       .toBe(false);
     await idle(page);
-    await whenIdle(page, () =>
+    const maskTarget = await whenIdle(page, () =>
       page.evaluate(async () => {
         const api = Reflect.get(window, '__fotoeditor') as EngineApi;
         const s = await api.selectionAction({ kind: 'none' });
         const target = s.layers.nodes[0].id;
         await api.layerAction({ kind: 'mask-add', target });
-        await api.selectLayer(target, true);
+        return api.selectLayer(target, true);
       }),
     );
+    await expect.poll(async () => (await state(page)).revision).toBe(maskTarget.revision);
+    await expect.poll(async () => (await state(page)).layers.maskTarget).toBe(true);
+    await idle(page);
     const maskBaseline = (await state(page)).history.undo;
     await page.mouse.click(origin.x + 256.5, origin.y + 128.5);
     await expect.poll(async () => (await state(page)).editError).toMatch(/raster pixel target/);

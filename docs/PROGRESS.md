@@ -36,7 +36,15 @@ separated from the final measurements.
 
 Exact-final-head remote CI/deployment and downloaded artifact inspection remain
 required before M1 acceptance; immutable results are recorded in the milestone
-completion message. No software result establishes hardware performance.
+completion message. Implementation CI `40570505462` is green but contains two
+retried clone fixtures, so it does not certify acceptance. Their traces show
+input before the layer-operation presentation becomes idle. The fixtures now
+await the expected revision/mask target and idle UI before clicking; pixel and
+history assertions remain unchanged. All 36 local software cases (three complete
+repetitions) and sixteen hardware cases then pass once each without skips,
+retries, flaky cases or global errors. Runtime code is unchanged. A clean
+final-head run remains mandatory.
+No software result establishes hardware performance.
 Inherited P5/Ink/performance boundaries remain. P9 is still in progress, without
 `p9-retouch`. Stop before M2 healing/spot healing after M1 certification.
 
