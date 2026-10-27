@@ -1,5 +1,19 @@
 # Decisions
 
+## 2026-10-27 - P9 product choices and first milestone
+
+- The user explicitly requested P9 in a fresh session, directly on main without
+  worktrees or agents. P8 is complete at `af66e10` / annotated `p8-files`.
+- Priority: Clone Stamp, healing/spot healing, then content-aware fill.
+- CashGear brush presets only; Photoshop ABR import is not selected.
+- Include both mirror and radial symmetry painting in v1.
+- Include editable multi-stop gradient presets.
+- P9 remains split into independently accepted milestones. P9-DESIGN.md records
+  the complete roadmap scope, M1 Clone Stamp behavior and acceptance before
+  implementation. Later milestones retain every selected roadmap requirement.
+- Preserve existing budgets, exact samples/undo/paging/crop and file limits,
+  the 2,000,000-byte gzip WASM gate and all inherited recorded deferrals.
+
 ## 2026-10-27 - P8 measured save-speed exception
 
 - After reviewing the real 20-layer 6000x4000 dense save (2,123,367,314-byte

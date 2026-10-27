@@ -3,6 +3,8 @@ use fotoeditor_core::{Document, Rgba8, TileCommand, TileCoord, TILE_PIXELS, TILE
 use kurbo::{Line, ParamCurve, Point};
 use serde::Deserialize;
 use std::collections::{HashMap, VecDeque};
+mod clone;
+pub use clone::{CloneAnchor, CloneOptions};
 const QUEUE_LIMIT: usize = 2048;
 const TILE_BYTES: u64 = (TILE_PIXELS * 4) as u64;
 
@@ -19,6 +21,7 @@ pub struct BrushSettings {
     pub color: [u8; 4],
     pub eraser: bool,
     pub pencil: bool,
+    pub clone: Option<CloneOptions>,
     #[serde(skip)]
     pub alpha_lock: bool,
     pub stabilizer: Stabilizer,
@@ -45,6 +48,7 @@ impl Default for BrushSettings {
             color: [0, 0, 0, 255],
             eraser: false,
             pencil: false,
+            clone: None,
             alpha_lock: false,
             stabilizer: Stabilizer::Off,
             strength: 0.35,
@@ -244,6 +248,9 @@ impl Tip {
 /// Scratch preview becomes one atomic TileCommand; work and input are bounded.
 pub struct StrokeCommand {
     pub preview: Document,
+    /// Immutable pre-stroke samples; adapters enumerate these for unique residency.
+    pub sampled_source: Option<Document>,
+    clone_offset: [i32; 2],
     pub applied_time: f64,
     pub completed_time: f64,
     base: Document,
@@ -275,6 +282,9 @@ impl StrokeCommand {
         available: u64,
         layer: fotoeditor_core::LayerId,
     ) -> Result<Self, String> {
+        if settings.clone.is_some() {
+            return Err("Clone Stamp requires an immutable sampled source".into());
+        }
         let node = base.layer(layer)?;
         fotoeditor_core::check_layer_edit(&base.layers, layer, false)?;
         settings.alpha_lock = node.properties.locks.alpha;
@@ -301,6 +311,8 @@ impl StrokeCommand {
         preview.raster_mut().drain_dirty();
         Ok(Self {
             preview,
+            sampled_source: None,
+            clone_offset: [0, 0],
             applied_time: 0.0,
             completed_time: 0.0,
             base: base.clone(),
@@ -321,6 +333,10 @@ impl StrokeCommand {
         self.coverage.len() as u64 * TILE_BYTES * 2
             + (self.queue.capacity() * size_of::<Sample>()) as u64
             + self.tip.bytes()
+    }
+    /// Hydration can consume budget after stroke admission; never grow its ceiling.
+    pub fn limit_available(&mut self, available: u64) {
+        self.available = self.available.min(available);
     }
     pub fn push(&mut self, sample: Sample) -> Result<(), String> {
         if !sample.valid() {
@@ -469,6 +485,9 @@ impl StrokeCommand {
     }
     #[inline(never)]
     pub fn step(&mut self, mut pixels: usize) -> Result<(), String> {
+        if self.clone_source_cold() {
+            return Ok(());
+        }
         let mut dabs = 0;
         while pixels > 0 && dabs < 512 {
             if self.dab.is_none() {
@@ -479,6 +498,9 @@ impl StrokeCommand {
                 dabs += 1;
                 if self.dab.is_none() {
                     continue;
+                }
+                if self.clone_source_cold() {
+                    break;
                 }
             }
             let dab = self.dab.as_mut().unwrap();
@@ -520,15 +542,29 @@ impl StrokeCommand {
                     y1: dab.y % TILE_SIZE + 1,
                 },
             );
-            let changed = stamp_row(
-                dab,
-                &self.tip,
-                &self.settings,
-                (base.as_deref(), clip.as_deref(), clip_default),
-                mask,
-                &mut output,
-                end,
-            );
+            let changed = if let Some(source) = &self.sampled_source {
+                clone::stamp_row(
+                    dab,
+                    &self.tip,
+                    &self.settings,
+                    (base.as_deref(), clip.as_deref(), clip_default),
+                    mask,
+                    &mut output,
+                    end,
+                    source,
+                    self.clone_offset,
+                )?
+            } else {
+                stamp_row(
+                    dab,
+                    &self.tip,
+                    &self.settings,
+                    (base.as_deref(), clip.as_deref(), clip_default),
+                    mask,
+                    &mut output,
+                    end,
+                )
+            };
             if changed {
                 self.applied_time = self.applied_time.max(dab.p.time);
             }
@@ -553,7 +589,12 @@ impl StrokeCommand {
             self.preview.raster_mut().edit_tile(*coord);
         }
         self.preview.raster_mut().compact_dirty();
-        TileCommand::between(&self.base, &self.preview)
+        let command = TileCommand::between(&self.base, &self.preview)?;
+        Ok(if self.sampled_source.is_some() {
+            command.named("Clone Stamp")
+        } else {
+            command
+        })
     }
 }
 // Keep the hot loop small and frequently called for browser WASM tiering.

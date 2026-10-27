@@ -1,5 +1,19 @@
 # Progress
 
+## P9 - M1 Clone Stamp in progress
+
+Started 2026-10-27 directly on clean main at `af66e10` / remotely certified
+`p8-files`, without worktrees or agents. Read AGENTS.md, PLAN.md, PROGRESS.md,
+DECISIONS.md and P8-REPORT.md, plus the complete original P9 roadmap on printed
+page 17 as text and a rendered page. The PDF hash matches the handoff.
+
+All four P9 choices are answered: clone first, CashGear presets only, both
+symmetry modes and editable multi-stop gradients. P9-DESIGN.md records full
+scope, independently accepted milestone boundaries and M1 acceptance before
+implementation. M1 implements Clone Stamp; healing and later tools are not yet
+started. No P9 completion or performance result is claimed at this checkpoint.
+Inherited P5/Ink/performance boundaries remain; no `p9-retouch` tag.
+
 ## P8 - Files, color and raster PSD delivery
 
 Implementation and local acceptance are complete. Completion is certified by the

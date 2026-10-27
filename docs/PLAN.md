@@ -351,3 +351,29 @@ annotation. P8 starts directly on main, without worktrees or agents.
 
 The existing `.cgfoto` extension is retained rather than asking again about an
 already shipped product name. See P8-DESIGN.md for the current investigation.
+
+## P9 acceptance and milestone boundaries
+
+Source: complete original roadmap P9 section on printed page 17, extracted and
+visually inspected on 2026-10-27. Source SHA-256 is recorded in P9-DESIGN.md.
+The user answered all four questions: clone first, CashGear presets only, mirror
+and radial symmetry, editable multi-stop gradients. See DECISIONS.md.
+
+- M1: aligned/non-aligned Clone Stamp, current/all-layer sampling, 200 px brush
+  at 60 fps on measured hardware, selection clipping and exact command undo.
+- M2: Poisson healing brush and nearby patch-search spot healing. Healing a
+  blemish on an identifiable reference portrait must leave no visible seam.
+- M3: own PatchMatch content-aware fill without GPL code.
+- M4: smudge, blur/sharpen, dodge/burn, sponge; linear/radial/angle/reflected/
+  diamond gradients with editor and reusable multi-stop presets.
+- M5: image tips, scatter, jitter, texture, CashGear preset import/export, mirror
+  and radial symmetry; complete phase-wide validation before `p9-retouch`.
+- Every tool respects selection and exact undo; cancellation/refusal is atomic.
+  Preserve straight samples/hidden RGB, locks, masks, retained crop pixels,
+  guides/DPI, legacy reading, paging, shared CPU/GPU budgets and file/size limits.
+- Each milestone runs applicable full verification, browser hardware APIs,
+  WebView2, size/licenses, exact-head remote CI/deployment and artifact inspection.
+  Detailed M1 criteria are recorded before implementation in P9-DESIGN.md.
+- Tag/push `p9-retouch` only after all milestones and acceptance gates pass.
+  Report shipped/deferred work, hardware measurements and proposed P10, then stop.
+  Existing P5/Ink/P6/P7 and accepted P8/P12 limits retain their status.
