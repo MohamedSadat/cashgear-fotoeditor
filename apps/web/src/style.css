@@ -1421,7 +1421,20 @@ select {
   font-size: 12px;
 }
 .clone-controls label {
-  display: flex;
+  display: grid;
   gap: 6px;
+  margin-top: 0;
+}
+.clone-controls label:has(input[type='checkbox']) {
+  display: flex;
+  gap: 8px;
   align-items: center;
+}
+.clone-controls input[type='checkbox'] {
+  width: 14px;
+  margin: 0;
+  flex: 0 0 auto;
+}
+.clone-controls select {
+  margin-top: 0;
 }
