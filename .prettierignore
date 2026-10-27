@@ -9,3 +9,4 @@ test-results/
 playwright-report/
 docs/LICENSES.md
 apps/desktop/src-tauri/gen/
+tests/fixtures/psd/

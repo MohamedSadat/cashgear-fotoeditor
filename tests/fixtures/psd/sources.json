@@ -1,0 +1,132 @@
+[
+  {
+    "file": "ag-psd__test__layer-mask__src.psd",
+    "repo": "Agamnentzar/ag-psd",
+    "revision": "c82ba4e44d00d9ad48236ec183c7e3a1a5c7fd04",
+    "path": "test/layer-mask/src.psd",
+    "bytes": 27349,
+    "sha256": "bb9d161b20b1f5f24fb8db6b24bf4034e76e29205f38ca2641890226a892f6d0",
+    "source": "https://github.com/Agamnentzar/ag-psd/blob/c82ba4e44d00d9ad48236ec183c7e3a1a5c7fd04/test/layer-mask/src.psd",
+    "status": "unmodified public fixture; oracle.json records independently decoded channels and stored composite"
+  },
+  {
+    "file": "ag-psd__test__read-write__group-blend__src.psd",
+    "repo": "Agamnentzar/ag-psd",
+    "revision": "c82ba4e44d00d9ad48236ec183c7e3a1a5c7fd04",
+    "path": "test/read-write/group-blend/src.psd",
+    "bytes": 45531,
+    "sha256": "fa6dda1e79536531539272454b8dc35fffcf03b5c0f67e01ea330fb1171546f1",
+    "source": "https://github.com/Agamnentzar/ag-psd/blob/c82ba4e44d00d9ad48236ec183c7e3a1a5c7fd04/test/read-write/group-blend/src.psd",
+    "status": "unmodified public fixture; oracle.json records independently decoded channels and stored composite"
+  },
+  {
+    "file": "ag-psd__test__read__groups__src.psd",
+    "repo": "Agamnentzar/ag-psd",
+    "revision": "c82ba4e44d00d9ad48236ec183c7e3a1a5c7fd04",
+    "path": "test/read/groups/src.psd",
+    "bytes": 226613,
+    "sha256": "da9d52eb04b46214eb478d788ade06c332320cac067e42254ba8e2f80cb7d8a7",
+    "source": "https://github.com/Agamnentzar/ag-psd/blob/c82ba4e44d00d9ad48236ec183c7e3a1a5c7fd04/test/read/groups/src.psd",
+    "status": "unmodified public fixture; oracle.json records independently decoded channels and stored composite"
+  },
+  {
+    "file": "ag-psd__test__read__layer-mask__src.psd",
+    "repo": "Agamnentzar/ag-psd",
+    "revision": "c82ba4e44d00d9ad48236ec183c7e3a1a5c7fd04",
+    "path": "test/read/layer-mask/src.psd",
+    "bytes": 50156,
+    "sha256": "0995a612edd4f9a316775a973d8429f1615533933b393d4df424f8ef8baf96a9",
+    "source": "https://github.com/Agamnentzar/ag-psd/blob/c82ba4e44d00d9ad48236ec183c7e3a1a5c7fd04/test/read/layer-mask/src.psd",
+    "status": "unmodified public fixture; oracle.json records independently decoded channels and stored composite"
+  },
+  {
+    "file": "ag-psd__test__read__layers__src.psd",
+    "repo": "Agamnentzar/ag-psd",
+    "revision": "c82ba4e44d00d9ad48236ec183c7e3a1a5c7fd04",
+    "path": "test/read/layers/src.psd",
+    "bytes": 194443,
+    "sha256": "e1763b0c94dbfa2a3e0fe089866232831d6ec410ab3db09a207f285bec51dd2c",
+    "source": "https://github.com/Agamnentzar/ag-psd/blob/c82ba4e44d00d9ad48236ec183c7e3a1a5c7fd04/test/read/layers/src.psd",
+    "status": "unmodified public fixture; oracle.json records independently decoded channels and stored composite"
+  },
+  {
+    "file": "chinedufn__16x16-rle-partially-opaque.psd",
+    "repo": "chinedufn/psd",
+    "revision": "28357a29414f940b6272b71831b3273f57f267bd",
+    "path": "tests/fixtures/16x16-rle-partially-opaque.psd",
+    "bytes": 23160,
+    "sha256": "89f70fe49212dddc6303b75aa992a64938981f59345738f4b6f0f535c4ee01b3",
+    "source": "https://github.com/chinedufn/psd/blob/28357a29414f940b6272b71831b3273f57f267bd/tests/fixtures/16x16-rle-partially-opaque.psd",
+    "status": "unmodified public fixture; oracle.json records independently decoded channels and stored composite"
+  },
+  {
+    "file": "chinedufn__green-1x1.psd",
+    "repo": "chinedufn/psd",
+    "revision": "28357a29414f940b6272b71831b3273f57f267bd",
+    "path": "tests/fixtures/green-1x1.psd",
+    "bytes": 22483,
+    "sha256": "7789f045e41991b8834704bd81e630cd3624f60684213fe9c07284b336dfa7ce",
+    "source": "https://github.com/chinedufn/psd/blob/28357a29414f940b6272b71831b3273f57f267bd/tests/fixtures/green-1x1.psd",
+    "status": "unmodified public fixture; oracle.json records independently decoded channels and stored composite"
+  },
+  {
+    "file": "chinedufn__green-chinese-layer-name-1x1.psd",
+    "repo": "chinedufn/psd",
+    "revision": "28357a29414f940b6272b71831b3273f57f267bd",
+    "path": "tests/fixtures/green-chinese-layer-name-1x1.psd",
+    "bytes": 22527,
+    "sha256": "097eda3d7e9f7efaf27aae7d83bc0f8618db2c576857e6e02ccd8526955ac218",
+    "source": "https://github.com/chinedufn/psd/blob/28357a29414f940b6272b71831b3273f57f267bd/tests/fixtures/green-chinese-layer-name-1x1.psd",
+    "status": "unmodified public fixture; oracle.json records independently decoded channels and stored composite"
+  },
+  {
+    "file": "chinedufn__negative-top-left-layer.psd",
+    "repo": "chinedufn/psd",
+    "revision": "28357a29414f940b6272b71831b3273f57f267bd",
+    "path": "tests/fixtures/negative-top-left-layer.psd",
+    "bytes": 22595,
+    "sha256": "4df2132f1b099986629dcfbf26cf536319c897af6319a09dbe3cee9ce649b568",
+    "source": "https://github.com/chinedufn/psd/blob/28357a29414f940b6272b71831b3273f57f267bd/tests/fixtures/negative-top-left-layer.psd",
+    "status": "unmodified public fixture; oracle.json records independently decoded channels and stored composite"
+  },
+  {
+    "file": "chinedufn__rle-3-layer-8x8.psd",
+    "repo": "chinedufn/psd",
+    "revision": "28357a29414f940b6272b71831b3273f57f267bd",
+    "path": "tests/fixtures/rle-3-layer-8x8.psd",
+    "bytes": 23740,
+    "sha256": "c6eec3f2514416b332c28e64069b39138cda280df4eb6a21f9f1ecbcfb5efea2",
+    "source": "https://github.com/chinedufn/psd/blob/28357a29414f940b6272b71831b3273f57f267bd/tests/fixtures/rle-3-layer-8x8.psd",
+    "status": "unmodified public fixture; oracle.json records independently decoded channels and stored composite"
+  },
+  {
+    "file": "chinedufn__transparent-top-layer-2x1.psd",
+    "repo": "chinedufn/psd",
+    "revision": "28357a29414f940b6272b71831b3273f57f267bd",
+    "path": "tests/fixtures/transparent-top-layer-2x1.psd",
+    "bytes": 22370,
+    "sha256": "fc525cabd493b930929509cd2977d0356db2fbac40da6e4a33c365bb1c4574e2",
+    "source": "https://github.com/chinedufn/psd/blob/28357a29414f940b6272b71831b3273f57f267bd/tests/fixtures/transparent-top-layer-2x1.psd",
+    "status": "unmodified public fixture; oracle.json records independently decoded channels and stored composite"
+  },
+  {
+    "file": "chinedufn__visibility.psd",
+    "repo": "chinedufn/psd",
+    "revision": "28357a29414f940b6272b71831b3273f57f267bd",
+    "path": "tests/fixtures/visibility.psd",
+    "bytes": 1080,
+    "sha256": "9b026e0af795f0a999ac646219fb6cf1e720a1d41d87cc253dcec01ce75e1307",
+    "source": "https://github.com/chinedufn/psd/blob/28357a29414f940b6272b71831b3273f57f267bd/tests/fixtures/visibility.psd",
+    "status": "unmodified public fixture; oracle.json records independently decoded channels and stored composite"
+  },
+  {
+    "file": "psd-tools__semi-transparent-layers.psd",
+    "repo": "psd-tools/psd-tools",
+    "revision": "0385aac27d6e28921516c7a045e2fe460d15f0ad",
+    "path": "tests/psd_files/semi-transparent-layers.psd",
+    "bytes": 37746,
+    "sha256": "2d190efddf648408ad0115852f8a029eec44de10bd29f6ff222aaa574cc31bc1",
+    "source": "https://github.com/psd-tools/psd-tools/blob/0385aac27d6e28921516c7a045e2fe460d15f0ad/tests/psd_files/semi-transparent-layers.psd",
+    "status": "unmodified public fixture; oracle.json records independently decoded channels and stored composite"
+  }
+]

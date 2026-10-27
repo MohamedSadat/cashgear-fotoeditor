@@ -143,6 +143,8 @@ const output = [
   'Optional P8 native QA references installed under ignored .tools/p8-reference:',
   'psd-tools 1.26.0 (MIT), attrs 25.4.0 (MIT), python-lz4 4.4.5 (BSD-3-Clause).',
   'These are validation tools only, not web or desktop runtime dependencies.',
+  'Unmodified public PSD regression fixtures use MIT licenses. Source revisions,',
+  'SHA-256 hashes and preserved upstream notices are in tests/fixtures/psd/.',
   '',
   'The downloaded wasm-bindgen CLI uses MIT OR Apache-2.0. Binaryen uses Apache-2.0.',
   'Rust uses MIT OR Apache-2.0; Node.js and pnpm use MIT. Windows toolchains and',

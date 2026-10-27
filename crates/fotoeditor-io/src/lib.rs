@@ -12,7 +12,11 @@ mod project_zip;
 mod project_zip_read;
 #[cfg(test)]
 mod project_zip_tests;
+mod psd_import;
 mod psd_preflight;
+mod psd_records;
+#[cfg(test)]
+mod psd_tests;
 #[cfg(test)]
 mod resample_reference;
 mod zip_stream;
@@ -24,6 +28,7 @@ pub use project_layers::*;
 pub use project_stream::*;
 pub use project_zip::*;
 pub use project_zip_read::*;
+pub use psd_import::*;
 pub use psd_preflight::*;
 use std::{
     cell::RefCell,

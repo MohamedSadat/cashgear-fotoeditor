@@ -1014,6 +1014,7 @@ name = "fotoeditor-io"
 version = "0.1.0"
 dependencies = [
  "crc32fast",
+ "flate2",
  "fotoeditor-core",
  "fotoeditor-select",
  "image",

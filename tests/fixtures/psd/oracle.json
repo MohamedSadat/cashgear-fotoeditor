@@ -1,0 +1,832 @@
+{
+  "psdToolsVersion": "1.26.0",
+  "littleCmsVersion": "2.19",
+  "method": "Raw layer channels/masks and Photoshop-stored white-matte composite; no recompositing oracle.",
+  "fixtures": [
+    {
+      "file": "ag-psd__test__layer-mask__src.psd",
+      "sha256": "bb9d161b20b1f5f24fb8db6b24bf4034e76e29205f38ca2641890226a892f6d0",
+      "photoshop": "Adobe Photoshop CC 2019",
+      "writer": "Adobe Photoshop",
+      "hasStoredComposite": true,
+      "width": 28,
+      "height": 19,
+      "canvas": {
+        "x": 0,
+        "y": 0,
+        "width": 28,
+        "height": 19
+      },
+      "layers": [
+        {
+          "name": "frame 17",
+          "kind": "pixel",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "norm",
+          "clipped": false,
+          "sourceBounds": [
+            2,
+            3,
+            22,
+            19
+          ],
+          "parentIndex": null,
+          "rgbaCrc32": 624105890,
+          "rgbaReference": "ag-psd__test__layer-mask__src.layer-0.png",
+          "mask": {
+            "enabled": true,
+            "default": 255,
+            "crc32": 175079186,
+            "sourceBounds": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "compositeReference": "ag-psd__test__layer-mask__src.reference.png",
+      "channelRgbTolerance": 0,
+      "whiteMatteRgbTolerance": 2,
+      "alphaTolerance": 1
+    },
+    {
+      "file": "ag-psd__test__read-write__group-blend__src.psd",
+      "sha256": "fa6dda1e79536531539272454b8dc35fffcf03b5c0f67e01ea330fb1171546f1",
+      "photoshop": "Adobe Photoshop CS6",
+      "writer": "Adobe Photoshop",
+      "hasStoredComposite": true,
+      "width": 200,
+      "height": 200,
+      "canvas": {
+        "x": 0,
+        "y": 0,
+        "width": 200,
+        "height": 200
+      },
+      "layers": [
+        {
+          "name": "Group 1",
+          "kind": "group",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "pass",
+          "clipped": false,
+          "sourceBounds": [
+            34,
+            27,
+            117,
+            112
+          ],
+          "parentIndex": null
+        },
+        {
+          "name": "Layer 1",
+          "kind": "pixel",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "norm",
+          "clipped": false,
+          "sourceBounds": [
+            34,
+            27,
+            117,
+            112
+          ],
+          "parentIndex": 0,
+          "rgbaCrc32": 5587392,
+          "rgbaReference": "ag-psd__test__read-write__group-blend__src.layer-1.png"
+        },
+        {
+          "name": "Group 2",
+          "kind": "group",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "mul ",
+          "clipped": false,
+          "sourceBounds": [
+            71,
+            69,
+            173,
+            158
+          ],
+          "parentIndex": null
+        },
+        {
+          "name": "Layer 2",
+          "kind": "pixel",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "norm",
+          "clipped": false,
+          "sourceBounds": [
+            71,
+            69,
+            173,
+            158
+          ],
+          "parentIndex": 2,
+          "rgbaCrc32": 4121994539,
+          "rgbaReference": "ag-psd__test__read-write__group-blend__src.layer-3.png"
+        }
+      ],
+      "compositeReference": "ag-psd__test__read-write__group-blend__src.reference.png",
+      "channelRgbTolerance": 2,
+      "whiteMatteRgbTolerance": 2,
+      "alphaTolerance": 1
+    },
+    {
+      "file": "ag-psd__test__read__groups__src.psd",
+      "sha256": "da9d52eb04b46214eb478d788ade06c332320cac067e42254ba8e2f80cb7d8a7",
+      "photoshop": "Adobe Photoshop CS6",
+      "writer": "Adobe Photoshop",
+      "hasStoredComposite": true,
+      "width": 300,
+      "height": 200,
+      "canvas": {
+        "x": 0,
+        "y": 0,
+        "width": 300,
+        "height": 200
+      },
+      "layers": [
+        {
+          "name": "Layer 0",
+          "kind": "pixel",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "norm",
+          "clipped": false,
+          "sourceBounds": [
+            36,
+            0,
+            279,
+            200
+          ],
+          "parentIndex": null,
+          "rgbaCrc32": 2107882346,
+          "rgbaReference": "ag-psd__test__read__groups__src.layer-0.png"
+        },
+        {
+          "name": "Group 1",
+          "kind": "group",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "pass",
+          "clipped": false,
+          "sourceBounds": [
+            0,
+            11,
+            273,
+            200
+          ],
+          "parentIndex": null
+        },
+        {
+          "name": "Group 2",
+          "kind": "group",
+          "visible": false,
+          "opacity": 128,
+          "fill": 255,
+          "blend": "pass",
+          "clipped": false,
+          "sourceBounds": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "parentIndex": 1
+        },
+        {
+          "name": "Layer 3",
+          "kind": "pixel",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "norm",
+          "clipped": false,
+          "sourceBounds": [
+            0,
+            15,
+            273,
+            200
+          ],
+          "parentIndex": 1,
+          "rgbaCrc32": 1908726786,
+          "rgbaReference": "ag-psd__test__read__groups__src.layer-3.png"
+        },
+        {
+          "name": "Layer 1",
+          "kind": "pixel",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "norm",
+          "clipped": false,
+          "sourceBounds": [
+            24,
+            11,
+            268,
+            168
+          ],
+          "parentIndex": 1,
+          "rgbaCrc32": 4186199830,
+          "rgbaReference": "ag-psd__test__read__groups__src.layer-4.png"
+        }
+      ],
+      "compositeReference": "ag-psd__test__read__groups__src.reference.png",
+      "channelRgbTolerance": 2,
+      "whiteMatteRgbTolerance": 2,
+      "alphaTolerance": 1
+    },
+    {
+      "file": "ag-psd__test__read__layer-mask__src.psd",
+      "sha256": "0995a612edd4f9a316775a973d8429f1615533933b393d4df424f8ef8baf96a9",
+      "photoshop": "Adobe Photoshop CS6",
+      "writer": "Adobe Photoshop",
+      "hasStoredComposite": true,
+      "width": 200,
+      "height": 200,
+      "canvas": {
+        "x": 0,
+        "y": 0,
+        "width": 200,
+        "height": 200
+      },
+      "layers": [
+        {
+          "name": "Layer 1",
+          "kind": "pixel",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "norm",
+          "clipped": false,
+          "sourceBounds": [
+            0,
+            0,
+            200,
+            200
+          ],
+          "parentIndex": null,
+          "rgbaCrc32": 661809408,
+          "rgbaReference": "ag-psd__test__read__layer-mask__src.layer-0.png",
+          "mask": {
+            "enabled": true,
+            "default": 0,
+            "crc32": 1708844458,
+            "sourceBounds": [
+              12,
+              7,
+              189,
+              172
+            ]
+          }
+        }
+      ],
+      "compositeReference": "ag-psd__test__read__layer-mask__src.reference.png",
+      "channelRgbTolerance": 2,
+      "whiteMatteRgbTolerance": 2,
+      "alphaTolerance": 1
+    },
+    {
+      "file": "ag-psd__test__read__layers__src.psd",
+      "sha256": "e1763b0c94dbfa2a3e0fe089866232831d6ec410ab3db09a207f285bec51dd2c",
+      "photoshop": "Adobe Photoshop CS6",
+      "writer": "Adobe Photoshop",
+      "hasStoredComposite": true,
+      "width": 300,
+      "height": 200,
+      "canvas": {
+        "x": 0,
+        "y": 0,
+        "width": 300,
+        "height": 200
+      },
+      "layers": [
+        {
+          "name": "Layer 0",
+          "kind": "pixel",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "norm",
+          "clipped": false,
+          "sourceBounds": [
+            0,
+            0,
+            300,
+            200
+          ],
+          "parentIndex": null,
+          "rgbaCrc32": 1475270119,
+          "rgbaReference": "ag-psd__test__read__layers__src.layer-0.png"
+        },
+        {
+          "name": "Layer 3",
+          "kind": "pixel",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "norm",
+          "clipped": false,
+          "sourceBounds": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "parentIndex": null,
+          "rgbaCrc32": 1950272873,
+          "rgbaReference": "ag-psd__test__read__layers__src.layer-1.png"
+        },
+        {
+          "name": "Layer 1",
+          "kind": "pixel",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "norm",
+          "clipped": false,
+          "sourceBounds": [
+            0,
+            0,
+            300,
+            200
+          ],
+          "parentIndex": null,
+          "rgbaCrc32": 690443086,
+          "rgbaReference": "ag-psd__test__read__layers__src.layer-2.png"
+        }
+      ],
+      "compositeReference": "ag-psd__test__read__layers__src.reference.png",
+      "channelRgbTolerance": 2,
+      "whiteMatteRgbTolerance": 2,
+      "alphaTolerance": 1
+    },
+    {
+      "file": "chinedufn__16x16-rle-partially-opaque.psd",
+      "sha256": "89f70fe49212dddc6303b75aa992a64938981f59345738f4b6f0f535c4ee01b3",
+      "photoshop": "Adobe Photoshop CC 2018",
+      "writer": "Adobe Photoshop",
+      "hasStoredComposite": true,
+      "width": 16,
+      "height": 16,
+      "canvas": {
+        "x": 0,
+        "y": 0,
+        "width": 16,
+        "height": 16
+      },
+      "layers": [
+        {
+          "name": "OpaqueCenter",
+          "kind": "pixel",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "norm",
+          "clipped": false,
+          "sourceBounds": [
+            1,
+            1,
+            10,
+            10
+          ],
+          "parentIndex": null,
+          "rgbaCrc32": 1399873300,
+          "rgbaReference": "chinedufn__16x16-rle-partially-opaque.layer-0.png"
+        }
+      ],
+      "compositeReference": "chinedufn__16x16-rle-partially-opaque.reference.png",
+      "channelRgbTolerance": 2,
+      "whiteMatteRgbTolerance": 2,
+      "alphaTolerance": 1
+    },
+    {
+      "file": "chinedufn__green-1x1.psd",
+      "sha256": "7789f045e41991b8834704bd81e630cd3624f60684213fe9c07284b336dfa7ce",
+      "photoshop": "Adobe Photoshop CC 2018",
+      "writer": "Adobe Photoshop",
+      "hasStoredComposite": true,
+      "width": 1,
+      "height": 1,
+      "canvas": {
+        "x": 0,
+        "y": 0,
+        "width": 1,
+        "height": 1
+      },
+      "layers": [
+        {
+          "name": "First Layer",
+          "kind": "pixel",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "norm",
+          "clipped": false,
+          "sourceBounds": [
+            0,
+            0,
+            1,
+            1
+          ],
+          "parentIndex": null,
+          "rgbaCrc32": 3000894588,
+          "rgbaReference": "chinedufn__green-1x1.layer-0.png"
+        }
+      ],
+      "compositeReference": "chinedufn__green-1x1.reference.png",
+      "channelRgbTolerance": 2,
+      "whiteMatteRgbTolerance": 2,
+      "alphaTolerance": 1
+    },
+    {
+      "file": "chinedufn__green-chinese-layer-name-1x1.psd",
+      "sha256": "097eda3d7e9f7efaf27aae7d83bc0f8618db2c576857e6e02ccd8526955ac218",
+      "photoshop": "Adobe Photoshop CC 2017",
+      "writer": "Adobe Photoshop",
+      "hasStoredComposite": true,
+      "width": 1,
+      "height": 1,
+      "canvas": {
+        "x": 0,
+        "y": 0,
+        "width": 1,
+        "height": 1
+      },
+      "layers": [
+        {
+          "name": "圆角矩形",
+          "kind": "pixel",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "norm",
+          "clipped": false,
+          "sourceBounds": [
+            0,
+            0,
+            1,
+            1
+          ],
+          "parentIndex": null,
+          "rgbaCrc32": 3000894588,
+          "rgbaReference": "chinedufn__green-chinese-layer-name-1x1.layer-0.png"
+        }
+      ],
+      "compositeReference": "chinedufn__green-chinese-layer-name-1x1.reference.png",
+      "channelRgbTolerance": 2,
+      "whiteMatteRgbTolerance": 2,
+      "alphaTolerance": 1
+    },
+    {
+      "file": "chinedufn__negative-top-left-layer.psd",
+      "sha256": "4df2132f1b099986629dcfbf26cf536319c897af6319a09dbe3cee9ce649b568",
+      "photoshop": "Adobe Photoshop CC 2019",
+      "writer": "Adobe Photoshop",
+      "hasStoredComposite": true,
+      "width": 9,
+      "height": 9,
+      "canvas": {
+        "x": 4,
+        "y": 4,
+        "width": 1,
+        "height": 1
+      },
+      "layers": [
+        {
+          "name": "red",
+          "kind": "pixel",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "norm",
+          "clipped": false,
+          "sourceBounds": [
+            -4,
+            -4,
+            5,
+            5
+          ],
+          "parentIndex": null,
+          "rgbaCrc32": 646831693,
+          "rgbaReference": "chinedufn__negative-top-left-layer.layer-0.png"
+        }
+      ],
+      "compositeReference": "chinedufn__negative-top-left-layer.reference.png",
+      "channelRgbTolerance": 2,
+      "whiteMatteRgbTolerance": 2,
+      "alphaTolerance": 1
+    },
+    {
+      "file": "chinedufn__rle-3-layer-8x8.psd",
+      "sha256": "c6eec3f2514416b332c28e64069b39138cda280df4eb6a21f9f1ecbcfb5efea2",
+      "photoshop": "Adobe Photoshop CC 2018",
+      "writer": "Adobe Photoshop",
+      "hasStoredComposite": true,
+      "width": 8,
+      "height": 8,
+      "canvas": {
+        "x": 0,
+        "y": 0,
+        "width": 8,
+        "height": 8
+      },
+      "layers": [
+        {
+          "name": "Red Layer",
+          "kind": "pixel",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "norm",
+          "clipped": false,
+          "sourceBounds": [
+            0,
+            0,
+            8,
+            8
+          ],
+          "parentIndex": null,
+          "rgbaCrc32": 2316063598,
+          "rgbaReference": "chinedufn__rle-3-layer-8x8.layer-0.png"
+        },
+        {
+          "name": "Green Layer",
+          "kind": "pixel",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "norm",
+          "clipped": false,
+          "sourceBounds": [
+            0,
+            0,
+            8,
+            8
+          ],
+          "parentIndex": null,
+          "rgbaCrc32": 1813752724,
+          "rgbaReference": "chinedufn__rle-3-layer-8x8.layer-1.png"
+        },
+        {
+          "name": "Blue Layer",
+          "kind": "pixel",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "norm",
+          "clipped": false,
+          "sourceBounds": [
+            0,
+            0,
+            8,
+            8
+          ],
+          "parentIndex": null,
+          "rgbaCrc32": 4105819889,
+          "rgbaReference": "chinedufn__rle-3-layer-8x8.layer-2.png"
+        }
+      ],
+      "compositeReference": "chinedufn__rle-3-layer-8x8.reference.png",
+      "channelRgbTolerance": 2,
+      "whiteMatteRgbTolerance": 2,
+      "alphaTolerance": 1
+    },
+    {
+      "file": "chinedufn__transparent-top-layer-2x1.psd",
+      "sha256": "fc525cabd493b930929509cd2977d0356db2fbac40da6e4a33c365bb1c4574e2",
+      "photoshop": "Adobe Photoshop CC 2018",
+      "writer": "Adobe Photoshop",
+      "hasStoredComposite": true,
+      "width": 2,
+      "height": 1,
+      "canvas": {
+        "x": 0,
+        "y": 0,
+        "width": 2,
+        "height": 1
+      },
+      "layers": [
+        {
+          "name": "Red Layer",
+          "kind": "pixel",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "norm",
+          "clipped": false,
+          "sourceBounds": [
+            0,
+            0,
+            2,
+            1
+          ],
+          "parentIndex": null,
+          "rgbaCrc32": 2047539071,
+          "rgbaReference": "chinedufn__transparent-top-layer-2x1.layer-0.png"
+        },
+        {
+          "name": "Green Layer",
+          "kind": "pixel",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "norm",
+          "clipped": false,
+          "sourceBounds": [
+            0,
+            0,
+            2,
+            1
+          ],
+          "parentIndex": null,
+          "rgbaCrc32": 2934606261,
+          "rgbaReference": "chinedufn__transparent-top-layer-2x1.layer-1.png"
+        },
+        {
+          "name": "Blue Layer",
+          "kind": "pixel",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "norm",
+          "clipped": false,
+          "sourceBounds": [
+            1,
+            0,
+            2,
+            1
+          ],
+          "parentIndex": null,
+          "rgbaCrc32": 2067161768,
+          "rgbaReference": "chinedufn__transparent-top-layer-2x1.layer-2.png"
+        }
+      ],
+      "compositeReference": "chinedufn__transparent-top-layer-2x1.reference.png",
+      "channelRgbTolerance": 2,
+      "whiteMatteRgbTolerance": 2,
+      "alphaTolerance": 1
+    },
+    {
+      "file": "chinedufn__visibility.psd",
+      "sha256": "9b026e0af795f0a999ac646219fb6cf1e720a1d41d87cc253dcec01ce75e1307",
+      "photoshop": null,
+      "writer": null,
+      "hasStoredComposite": true,
+      "width": 1,
+      "height": 1,
+      "canvas": {
+        "x": 0,
+        "y": 0,
+        "width": 1,
+        "height": 1
+      },
+      "layers": [
+        {
+          "name": "invisible",
+          "kind": "pixel",
+          "visible": false,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "norm",
+          "clipped": false,
+          "sourceBounds": [
+            0,
+            0,
+            1,
+            1
+          ],
+          "parentIndex": null,
+          "rgbaCrc32": 4294967295,
+          "rgbaReference": "chinedufn__visibility.layer-0.png"
+        },
+        {
+          "name": "visible",
+          "kind": "pixel",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "norm",
+          "clipped": false,
+          "sourceBounds": [
+            0,
+            0,
+            1,
+            1
+          ],
+          "parentIndex": null,
+          "rgbaCrc32": 205926545,
+          "rgbaReference": "chinedufn__visibility.layer-1.png"
+        }
+      ],
+      "compositeReference": "chinedufn__visibility.reference.png",
+      "channelRgbTolerance": 2,
+      "whiteMatteRgbTolerance": 2,
+      "alphaTolerance": 1
+    },
+    {
+      "file": "psd-tools__semi-transparent-layers.psd",
+      "sha256": "2d190efddf648408ad0115852f8a029eec44de10bd29f6ff222aaa574cc31bc1",
+      "photoshop": "Adobe Photoshop CC",
+      "writer": "Adobe Photoshop",
+      "hasStoredComposite": true,
+      "width": 115,
+      "height": 102,
+      "canvas": {
+        "x": 7,
+        "y": 0,
+        "width": 100,
+        "height": 100
+      },
+      "layers": [
+        {
+          "name": "Background",
+          "kind": "pixel",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "norm",
+          "clipped": false,
+          "sourceBounds": [
+            0,
+            0,
+            100,
+            100
+          ],
+          "parentIndex": null,
+          "rgbaCrc32": 1099047874,
+          "rgbaReference": "psd-tools__semi-transparent-layers.layer-0.png"
+        },
+        {
+          "name": "grp1",
+          "kind": "group",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "pass",
+          "clipped": false,
+          "sourceBounds": [
+            -7,
+            15,
+            108,
+            102
+          ],
+          "parentIndex": null
+        },
+        {
+          "name": "Rectangle 1",
+          "kind": "pixel",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "norm",
+          "clipped": false,
+          "sourceBounds": [
+            -7,
+            50,
+            108,
+            102
+          ],
+          "parentIndex": 1,
+          "rgbaCrc32": 3491063373,
+          "rgbaReference": "psd-tools__semi-transparent-layers.layer-2.png"
+        },
+        {
+          "name": "Layer 1",
+          "kind": "pixel",
+          "visible": true,
+          "opacity": 255,
+          "fill": 255,
+          "blend": "norm",
+          "clipped": false,
+          "sourceBounds": [
+            14,
+            15,
+            84,
+            85
+          ],
+          "parentIndex": 1,
+          "rgbaCrc32": 1090509373,
+          "rgbaReference": "psd-tools__semi-transparent-layers.layer-3.png"
+        }
+      ],
+      "compositeReference": "psd-tools__semi-transparent-layers.reference.png",
+      "channelRgbTolerance": 2,
+      "whiteMatteRgbTolerance": 2,
+      "alphaTolerance": 1
+    }
+  ]
+}
