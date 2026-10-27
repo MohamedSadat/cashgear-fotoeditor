@@ -358,7 +358,7 @@ try {
           viewport: { width: 1280, height: 850, dpr: 1 },
           dataset: `Deterministic 6000x4000 RGBA8 image fixture; normal document view, 100%; ${clone ? '200px soft Clone Stamp, aligned, source offset [0,-180], ' + (cloneAll ? 'all visible layers into a new raster' : 'current raster') : '300px soft round'}; 100% opacity/flow, 10% spacing, native protocol mouse input at 120Hz and 1800px/s; two 4s warm trials after one priming dab`,
           latencyDefinition:
-            'Timestamp of the pointer sample first changing a rendered document pixel, to main-thread observation of the worker presentation acknowledgement. Full-dab completion is reported separately. Includes queueing/CPU/upload/submission, excluding compositor/scanout and physical pen latency.',
+            'Timestamp of the pointer sample first changing a rendered document pixel, to main-thread observation of the worker presentation acknowledgement after GPU completion. Full-dab completion is reported separately. Includes queueing/CPU/upload/submission/GPU completion, excluding compositor/scanout and physical pen latency.',
           trials,
         };
         results.push(result);

@@ -1,6 +1,6 @@
 # Progress
 
-## P9 - M1 Clone Stamp in progress
+## P9 - M1 Clone Stamp locally verified
 
 Started 2026-10-27 directly on clean main at `af66e10` / remotely certified
 `p8-files`, without worktrees or agents. Read AGENTS.md, PLAN.md, PROGRESS.md,
@@ -10,9 +10,35 @@ page 17 as text and a rendered page. The PDF hash matches the handoff.
 All four P9 choices are answered: clone first, CashGear presets only, both
 symmetry modes and editable multi-stop gradients. P9-DESIGN.md records full
 scope, independently accepted milestone boundaries and M1 acceptance before
-implementation. M1 implements Clone Stamp; healing and later tools are not yet
-started. No P9 completion or performance result is claimed at this checkpoint.
-Inherited P5/Ink/performance boundaries remain; no `p9-retouch` tag.
+implementation. M1 delivers immutable Clone Stamp sampling, source picking and
+indicator, aligned/non-aligned current/all-layer modes, bounded source hydration,
+selection clipping and exact command undo. Healing and later tools remain pending.
+
+All 185 Rust tests, native/WASM clippy, TypeScript, ESLint, 16 Vitest tests,
+formatting, 459 license expressions and release builds pass. WASM is 4,460,038
+bytes / gzip9 1,647,803 within the unchanged 2,000,000-byte gate. All 580 installed
+Chrome/Edge WebGPU/WebGL2 hardware cases pass in 27.4 minutes, one attempt each,
+with zero skips, retries, flaky cases or global errors. After a CSS-only compact-
+control correction, sixteen Clone Stamp cases pass again and the controls fit
+900 px and 1280 px viewports. WASM/worker processing hashes remain identical.
+Rebuilt final WebView2 passes both NVIDIA APIs, Clone Stamp source/pixel/one-
+command/exact-undo checks, six extended imports, thirteen PSDs, four exports
+and the expanded recovery/geometry smoke.
+
+The complete 16-trial hardware matrix measures current-layer presentation at
+59.79-60.02 fps and all-layer sampling into a separate retouch raster at
+25.89-32.61 fps. On 2026-10-27 the user explicitly accepted these M1 limits and
+deferred the all-layer 60 fps target to P12. That target fails; other gates stay
+mandatory. [P9-M1-REPORT.md](P9-M1-REPORT.md) records shipped/deferred work,
+per-API cadence/latency percentiles, first-use/start response, source modes,
+input delivery, memory and asset hashes. Superseded probes are retained and
+separated from the final measurements.
+
+Exact-final-head remote CI/deployment and downloaded artifact inspection remain
+required before M1 acceptance; immutable results are recorded in the milestone
+completion message. No software result establishes hardware performance.
+Inherited P5/Ink/performance boundaries remain. P9 is still in progress, without
+`p9-retouch`. Stop before M2 healing/spot healing after M1 certification.
 
 ## P8 - Files, color and raster PSD delivery
 

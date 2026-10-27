@@ -361,6 +361,9 @@ and radial symmetry, editable multi-stop gradients. See DECISIONS.md.
 
 - M1: aligned/non-aligned Clone Stamp, current/all-layer sampling, 200 px brush
   at 60 fps on measured hardware, selection clipping and exact command undo.
+  The user explicitly accepted the measured M1 speeds on 2026-10-27: current
+  layer 59.79-60.02 presentation fps; all layers 25.89-32.61 fps. The all-layer
+  60 fps miss is deferred to P12, not reported as passed. Other gates remain.
 - M2: Poisson healing brush and nearby patch-search spot healing. Healing a
   blemish on an identifiable reference portrait must leave no visible seam.
 - M3: own PatchMatch content-aware fill without GPL code.

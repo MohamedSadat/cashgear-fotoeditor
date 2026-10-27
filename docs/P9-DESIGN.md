@@ -61,6 +61,9 @@ before starting the next milestone. M1 does not complete P9. No ABR import.
   p50/p95/p99 cadence/latency and logical CPU/GPU peaks. The source requires 60 fps;
   software CI never establishes that target. Disclose misses rather than silently
   relaxing it or substituting unchanged preview frames for changed-pixel throughput.
+  On 2026-10-27 the user explicitly accepted the complete measured M1 limits and
+  deferred the all-layer speed target to P12; see DECISIONS.md. The original
+  all-layer 60 fps target fails. This exception changes no other gate.
 - Run Rust formatting, native/WASM clippy, Cargo tests, TypeScript, ESLint,
   Vitest, production size/licenses/formatting, applicable Chrome/Edge regression
   on both APIs and rebuilt Windows/WebView2 on both APIs. Inspect exact-head

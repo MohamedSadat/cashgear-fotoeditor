@@ -1,5 +1,20 @@
 # Decisions
 
+## 2026-10-27 - P9 M1 measured clone-speed exception
+
+- After reviewing the complete 6000x4000 hardware matrix, the user explicitly
+  selected: "Accept the measured limits for M1; defer all-layer speed to P12".
+- A 200 px soft Clone Stamp measures 59.79-60.02 presentation fps with current-
+  layer sampling and 25.89-32.61 fps sampling all layers into a separate raster.
+  Changed-pixel acknowledgements are measured separately; unchanged active
+  previews are not evidence of 60 distinct document updates per second.
+- The original 60 fps target is not met by all-layer sampling. Its speed target
+  is deferred to P12, not declared passed. The user accepts these measured limits
+  for M1; this does not waive pixel/undo/selection, budgets, regression, desktop,
+  exact-head remote CI/deployment or any other milestone/phase requirement.
+- Raw source-mode/browser/API matrices, input delivery, latency, logical memory
+  and asset fingerprints are in `bench/results/p9-m1-final-*-performance.json`.
+
 ## 2026-10-27 - P9 product choices and first milestone
 
 - The user explicitly requested P9 in a fresh session, directly on main without
