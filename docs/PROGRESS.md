@@ -44,6 +44,11 @@ history assertions remain unchanged. All 36 local software cases (three complete
 repetitions) and sixteen hardware cases then pass once each without skips,
 retries, flaky cases or global errors. Runtime code is unchanged. A clean
 final-head run remains mandatory.
+The extended setup guard also awaits the first published frame snapshot, since
+"Engine ready" can precede that attribute. Twelve software and sixteen hardware
+clone cases pass with this wait, followed by all forty hosted clone/GPU cases
+without skips, retries, flaky cases or global errors. Earlier failure evidence
+is retained.
 No software result establishes hardware performance.
 Inherited P5/Ink/performance boundaries remain. P9 is still in progress, without
 `p9-retouch`. Stop before M2 healing/spot healing after M1 certification.

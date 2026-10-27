@@ -212,6 +212,16 @@ The remaining setup/selection preparation paths use the same revision/idle
 barrier; the complete twelve-case software clone matrix also passes after that
 extension, without retries, skips, flaky cases or global errors.
 
+The first hosted run with the extended setup guard has 38 passes and two Edge
+failures: "Engine ready" can precede the first published frame snapshot. The
+fixture now explicitly awaits the snapshot attribute before polling its prepared
+revision. Local twelve-case software and sixteen-case hardware matrices pass
+with that wait, followed by all forty hosted Chrome/Edge clone/GPU cases on one
+attempt each, without skips, retries, flaky cases or global errors.
+Traces/screenshots are retained in
+`bench/results/p9-m1-hosted-first-snapshot-failure`; none of these failed or
+superseded runs is acceptance evidence.
+
 Earlier serial-native input delivered only 170-197 requested moves per four
 seconds. Later probes corrected bounded input delivery, pressed-button state and
 first-frame preparation accounting; zero-change runs are rejected. GPU readback

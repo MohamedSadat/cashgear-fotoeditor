@@ -45,6 +45,7 @@ async function setup(page: Page, backend: string) {
       return s;
     }),
   );
+  await expect(page.getByTestId('gpu-canvas')).toHaveAttribute('data-snapshot', /"revision":/);
   await expect.poll(async () => (await state(page)).revision).toBe(prepared.revision);
   await idle(page);
   await expect(page.getByTestId('zoom')).toHaveText('100.0%');
