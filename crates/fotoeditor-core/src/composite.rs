@@ -31,6 +31,43 @@ impl CompositeMask {
     }
 }
 
+// Small row kernels tier promptly in browser WASM. Avoid routing every simple
+// source-over pixel through the general sixteen-mode blend function.
+#[inline(never)]
+fn opaque_row(output: &mut [Composite], source: &[Rgba8]) {
+    for (out, p) in output.iter_mut().zip(source) {
+        *out = Composite([
+            f64::from(p.0[0]) / 255.0,
+            f64::from(p.0[1]) / 255.0,
+            f64::from(p.0[2]) / 255.0,
+            1.0,
+        ]);
+    }
+}
+#[inline(never)]
+fn normal_row(
+    output: &mut [Composite],
+    source: &[Rgba8],
+    mask: Option<&[Gray8]>,
+    factor: f64,
+    default_factor: f64,
+) {
+    for (i, (out, p)) in output.iter_mut().zip(source).enumerate() {
+        if p.0[3] == 0 {
+            continue;
+        }
+        let coverage = mask.map_or(default_factor, |m| factor * f64::from(m[i].0) / 255.0);
+        let a = f64::from(p.0[3]) / 255.0 * coverage;
+        let keep = 1.0 - a;
+        out.0 = [
+            f64::from(p.0[0]) / 255.0 * a + out.0[0] * keep,
+            f64::from(p.0[1]) / 255.0 * a + out.0[1] * keep,
+            f64::from(p.0[2]) / 255.0 * a + out.0[2] * keep,
+            a + out.0[3] * keep,
+        ];
+    }
+}
+
 #[derive(Clone)]
 pub enum CompositeStep {
     Begin {
@@ -318,6 +355,29 @@ impl CompositePlan {
                         .transpose()?
                         .flatten();
                     let factor = properties.opacity * properties.fill;
+                    if properties.blend == BlendMode::Normal && !clipped && adjustment.is_none() {
+                        for (row, (out, pixels)) in current
+                            .chunks_mut(TILE_SIZE as usize)
+                            .zip(source.pixels.chunks(TILE_SIZE as usize))
+                            .enumerate()
+                        {
+                            if mask.is_none() && mask_default * factor == 1.0 && source.known_opaque
+                            {
+                                opaque_row(out, pixels);
+                            } else {
+                                normal_row(
+                                    out,
+                                    pixels,
+                                    mask.as_ref().map(|m| {
+                                        &m.pixels[row * TILE_SIZE as usize..][..out.len()]
+                                    }),
+                                    factor,
+                                    mask_default * factor,
+                                );
+                            }
+                        }
+                        continue;
+                    }
                     for (i, pixel) in current.iter_mut().enumerate() {
                         let m = mask
                             .as_ref()
@@ -390,6 +450,59 @@ mod tests {
     use super::*;
     use crate::{LayerMask, TileSurface};
     use std::sync::Arc;
+    #[test]
+    fn normal_row_kernels_match_the_per_sample_reference_with_alpha_masks_and_opacity() {
+        for opaque in [false, true] {
+            for masked in [false, true] {
+                for opacity in [0.0, 0.5, 1.0] {
+                    let mut d = Document::blank(256, 256, 72.0).unwrap();
+                    d.raster_mut()
+                        .insert((0, 0), vec![Rgba8([217, 33, 97, 128]); TILE_PIXELS]);
+                    let mut samples = TileSurface::new(256, 256);
+                    samples.insert(
+                        (0, 0),
+                        (0..TILE_PIXELS)
+                            .map(|i| {
+                                Rgba8([
+                                    53,
+                                    (i % 256) as u8,
+                                    251,
+                                    if opaque { 255 } else { (i % 256) as u8 },
+                                ])
+                            })
+                            .collect(),
+                    );
+                    let mut top = Layer::raster("Row reference".into(), samples);
+                    top.properties.opacity = opacity;
+                    if masked {
+                        let mut mask = TileSurface::new(256, 256);
+                        mask.insert(
+                            (0, 0),
+                            (0..TILE_PIXELS).map(|i| Gray8((i % 251) as u8)).collect(),
+                        );
+                        top.mask = Some(LayerMask {
+                            enabled: true,
+                            samples: Arc::new(mask),
+                        });
+                    }
+                    d.layers.push(top);
+                    let plan = CompositePlan::tile(&d, (0, 0), None).unwrap();
+                    let result = plan.reference(Residency::default()).unwrap();
+                    for i in 0..256 {
+                        let at = 128 * 256 + i;
+                        let expected = plan.sample(at).unwrap().straight();
+                        let actual = result[at].straight();
+                        for c in 0..4 {
+                            assert!(
+                                actual.0[c].abs_diff(expected.0[c]) <= 1,
+                                "{opaque} {masked} {opacity}: {actual:?} {expected:?}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
     fn raster(name: &str, pixel: Rgba8, blend: BlendMode) -> Layer {
         let mut samples = TileSurface::new(1, 1);
         samples.write(0, 0, pixel);

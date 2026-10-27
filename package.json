@@ -21,6 +21,7 @@
     "test:e2e": "pnpm test:fixtures && playwright test",
     "bench:viewport": "pnpm test:fixtures && node scripts/viewport-bench.mjs",
     "bench:brush": "pnpm test:fixtures && node scripts/brush-bench.mjs",
+    "bench:clone": "node scripts/clone-bench.mjs",
     "bench:history": "pnpm test:fixtures && node scripts/history-bench.mjs",
     "bench:selection": "node scripts/selection-bench.mjs",
     "bench:filters": "node scripts/filter-bench.mjs",

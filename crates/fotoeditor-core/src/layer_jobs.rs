@@ -4,6 +4,13 @@ use crate::*;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
+#[inline(never)]
+fn straight_row(output: &mut [Rgba8], source: &[Composite]) {
+    for (out, pixel) in output.iter_mut().zip(source) {
+        *out = pixel.straight();
+    }
+}
+
 pub struct ThumbnailJob {
     pub source: Document,
     pub width: u32,
@@ -299,11 +306,16 @@ impl LayerRenderJob {
     }
     pub fn step(&mut self, residency: Residency) -> Result<bool, String> {
         if let Some((coord, plan)) = self.plan()? {
-            let pixels = plan
-                .reference(residency)?
-                .into_iter()
-                .map(|p| p.straight())
-                .collect();
+            // The floating reference and straight output coexist while collecting.
+            residency.check_cpu(plan.scratch_bytes() + (TILE_PIXELS * 4) as u64)?;
+            let reference = plan.reference(residency)?;
+            let mut pixels = vec![Rgba8::default(); TILE_PIXELS];
+            for (out, source) in pixels
+                .chunks_mut(TILE_SIZE as usize)
+                .zip(reference.chunks(TILE_SIZE as usize))
+            {
+                straight_row(out, source);
+            }
             self.accept(coord, pixels, residency)?;
         }
         Ok(self.next == self.coordinates.len())
@@ -361,6 +373,22 @@ pub fn replace_raster(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cpu_composite_admits_reference_and_straight_output_together_before_processing() {
+        let mut doc = Document::blank(1, 1, 72.0).unwrap();
+        doc.raster_mut().write(0, 0, Rgba8([200, 40, 80, 128]));
+        let mut job = LayerRenderJob::new(doc).unwrap();
+        let plan = job.plan().unwrap().unwrap().1;
+        let r = Residency {
+            temporary: CPU_BUDGET - plan.scratch_bytes(),
+            ..Default::default()
+        };
+        assert!(job.step(r).is_err());
+        assert_eq!(job.remaining(), 1);
+        assert_eq!(job.output.tile_count(), 0);
+        assert!(job.step(Residency::default()).unwrap());
+        assert_eq!(job.output.raster().sample(0, 0), Rgba8([200, 40, 80, 128]));
+    }
     #[test]
     fn mask_bake_is_exactly_reversible_and_preserves_hidden_rgb() {
         let mut doc = Document::blank(2, 1, 72.0).unwrap();

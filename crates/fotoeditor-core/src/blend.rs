@@ -160,6 +160,9 @@ impl Composite {
         if a <= 0.0 {
             return Rgba8::default();
         }
+        if a == 1.0 {
+            return Rgba8(self.0.map(quantize));
+        }
         Rgba8([
             quantize(self.0[0] / a),
             quantize(self.0[1] / a),
@@ -177,6 +180,18 @@ impl Composite {
         let a = original_as * factor.clamp(0.0, 1.0);
         if a == 0.0 || (clip && ab == 0.0) {
             return self;
+        }
+        if mode == BlendMode::Normal && !clip {
+            // Normal source-over needs no unassociation/blend/reassociation.
+            // Keep temporary composites premultiplied; authoritative tiles stay straight.
+            let factor = factor.clamp(0.0, 1.0);
+            let keep = 1.0 - a;
+            return Self([
+                source.0[0] * factor + self.0[0] * keep,
+                source.0[1] * factor + self.0[1] * keep,
+                source.0[2] * factor + self.0[2] * keep,
+                a + ab * keep,
+            ]);
         }
         let b = std::array::from_fn(|i| if ab > 0.0 { self.0[i] / ab } else { 0.0 });
         let s = std::array::from_fn(|i| source.0[i] / original_as);
@@ -207,6 +222,44 @@ fn quantize(v: f64) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn premultiplied_normal_fast_path_matches_the_unassociated_equation() {
+        for ab in [0, 1, 2, 64, 127, 128, 254, 255] {
+            for alpha in [0, 1, 2, 64, 127, 128, 254, 255] {
+                for factor in [0.0, 0.01, 0.5, 0.99, 1.0] {
+                    let before = Rgba8([217, 33, 97, ab]);
+                    let source = Rgba8([53, 177, 251, alpha]);
+                    let actual = Composite::from_straight(before)
+                        .blend(
+                            Composite::from_straight(source),
+                            BlendMode::Normal,
+                            factor,
+                            false,
+                        )
+                        .straight();
+                    let sa = f64::from(alpha) / 255.0 * factor;
+                    let ba = f64::from(ab) / 255.0;
+                    let oa = sa + ba * (1.0 - sa);
+                    let expected = if oa == 0.0 {
+                        Rgba8::default()
+                    } else {
+                        Rgba8([
+                            ((53.0 * sa + 217.0 * ba * (1.0 - sa)) / oa + 0.5) as u8,
+                            ((177.0 * sa + 33.0 * ba * (1.0 - sa)) / oa + 0.5) as u8,
+                            ((251.0 * sa + 97.0 * ba * (1.0 - sa)) / oa + 0.5) as u8,
+                            (oa * 255.0 + 0.5) as u8,
+                        ])
+                    };
+                    for c in 0..4 {
+                        assert!(
+                            actual.0[c].abs_diff(expected.0[c]) <= 1,
+                            "{before:?} {source:?} {factor}: {actual:?} {expected:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
     #[test]
     fn independent_opaque_channel_goldens_cover_all_modes() {
         // Hand-calculated 8-bit expected values for b=.2,.4,.6; s=.8,.3,.1.
