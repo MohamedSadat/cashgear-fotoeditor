@@ -1,6 +1,7 @@
 //! Reproducible P8 format/ICC inputs and native output for browser regression.
 use fotoeditor_core::Residency;
 use fotoeditor_io::{srgb_icc, ExportJob, ImportJob};
+use image::ImageEncoder;
 use std::{io::Cursor, path::Path};
 
 fn tagged_png(profile: &[u8], pixels: &[u8], width: u32, height: u32) -> Vec<u8> {
@@ -46,6 +47,44 @@ fn tagged_bmp(profile: &[u8], pixels: &[u8], width: u32, height: u32) -> Vec<u8>
     let size = out.len() as u32;
     out[2..6].copy_from_slice(&size.to_le_bytes());
     out
+}
+fn associated_tiff(profile: &[u8], pixels: &[u8], width: u32, height: u32) -> Vec<u8> {
+    let mut samples = pixels.to_vec();
+    for pixel in samples.as_chunks_mut::<4>().0 {
+        let alpha = u32::from(pixel[3]);
+        for channel in &mut pixel[..3] {
+            *channel = ((u32::from(*channel) * alpha + 127) / 255) as u8;
+        }
+    }
+    let mut output = Cursor::new(Vec::new());
+    let mut encoder = image::codecs::tiff::TiffEncoder::new(&mut output);
+    encoder.set_icc_profile(profile.to_vec()).unwrap();
+    encoder
+        .write_image(&samples, width, height, image::ExtendedColorType::Rgba8)
+        .unwrap();
+    let mut bytes = output.into_inner();
+    let directory = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize;
+    let count = u16::from_le_bytes(bytes[directory..directory + 2].try_into().unwrap()) as usize;
+    let mut entries = bytes[directory + 2..directory + 2 + count * 12]
+        .as_chunks::<12>()
+        .0
+        .to_vec();
+    entries.retain(|entry| u16::from_le_bytes(entry[..2].try_into().unwrap()) != 338);
+    let mut alpha = [0u8; 12];
+    alpha[..2].copy_from_slice(&338u16.to_le_bytes());
+    alpha[2..4].copy_from_slice(&3u16.to_le_bytes());
+    alpha[4..8].copy_from_slice(&1u32.to_le_bytes());
+    alpha[8..10].copy_from_slice(&1u16.to_le_bytes());
+    entries.push(alpha);
+    entries.sort_by_key(|entry| u16::from_le_bytes(entry[..2].try_into().unwrap()));
+    let offset = bytes.len() as u32;
+    bytes[4..8].copy_from_slice(&offset.to_le_bytes());
+    bytes.extend((entries.len() as u16).to_le_bytes());
+    for entry in entries {
+        bytes.extend(entry);
+    }
+    bytes.extend([0u8; 4]);
+    bytes
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dir = std::env::args()
@@ -103,6 +142,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::write(dir.join("p8-srgb.icc"), srgb_icc())?;
     std::fs::write(dir.join("p8-linear.icc"), &linear)?;
     std::fs::write(
+        dir.join("p8-associated.tiff"),
+        associated_tiff(&linear, pixels.as_raw(), 257, 259),
+    )?;
+    std::fs::write(
         dir.join("p8-icc-linear.bmp"),
         tagged_bmp(&linear, pixels.as_raw(), 257, 259),
     )?;
@@ -130,6 +173,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "p8-input.gif",
         "p8-icc-linear.png",
         "p8-icc-linear.bmp",
+        "p8-associated.tiff",
     ] {
         let bytes = std::fs::read(dir.join(name))?;
         let mut import = ImportJob::decode(&bytes, Residency::default())?;

@@ -70,6 +70,7 @@ pub struct ImportJob {
     samples: Vec<u8>,
     next_y: u32,
     color: Option<color::IccTransform>,
+    associated_alpha: bool,
 }
 impl ImportJob {
     pub fn decode(bytes: &[u8], residency: Residency) -> Result<Self, String> {
@@ -103,6 +104,8 @@ impl ImportJob {
             .saturating_sub(residency.temporary)
             .saturating_sub(color::COLOR_SCRATCH + bytes.len() as u64);
         let tagged = import_metadata::preflight(bytes, format)?;
+        let associated_alpha =
+            format == image::ImageFormat::Tiff && import_metadata::tiff_associated_alpha(bytes)?;
         limits.max_alloc = Some(available.min(8 * 1024 * 1024));
         reader.limits(limits);
         let mut decoder = reader.into_decoder().map_err(|e| e.to_string())?;
@@ -119,6 +122,8 @@ impl ImportJob {
         )?;
         let profile = if format == image::ImageFormat::Bmp {
             import_metadata::bmp_profile(bytes)?.map(<[u8]>::to_vec)
+        } else if format == image::ImageFormat::Tiff {
+            import_metadata::tiff_profile(bytes)?.map(<[u8]>::to_vec)
         } else {
             decoder.icc_profile().map_err(|e| e.to_string())?
         };
@@ -154,6 +159,7 @@ impl ImportJob {
             samples: image.into_raw(),
             next_y: 0,
             color,
+            associated_alpha,
         })
     }
     pub fn temporary_bytes(&self) -> u64 {
@@ -175,6 +181,19 @@ impl ImportJob {
                 let x0 = tx * TILE_SIZE;
                 let n = TILE_SIZE.min(w - x0) as usize;
                 let src = ((y * w + x0) * 4) as usize;
+                if self.associated_alpha {
+                    // TIFF AssociatedAlpha stores premultiplied source-profile
+                    // samples. Recover straight RGB before applying its ICC.
+                    for pixel in self.samples[src..src + n * 4].as_chunks_mut::<4>().0 {
+                        let alpha = u32::from(pixel[3]);
+                        if alpha != 0 && alpha != 255 {
+                            for channel in &mut pixel[..3] {
+                                *channel = ((u32::from(*channel) * 255 + alpha / 2) / alpha)
+                                    .min(255) as u8;
+                            }
+                        }
+                    }
+                }
                 if let Some(color) = &self.color {
                     color.convert(&mut self.samples[src..src + n * 4]);
                 }

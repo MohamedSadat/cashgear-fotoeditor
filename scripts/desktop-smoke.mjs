@@ -919,6 +919,7 @@ try {
       'p8-input.tiff',
       'p8-icc-linear.png',
       'p8-icc-linear.bmp',
+      'p8-associated.tiff',
     ]) {
       // Direct diagnostic RPCs finish before the frame pump publishes its idle
       // snapshot to React. Wait for its actual Open control before dispatching a change.

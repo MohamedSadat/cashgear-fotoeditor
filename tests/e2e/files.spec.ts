@@ -17,6 +17,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
     'p8-input.tiff',
     'p8-icc-linear.png',
     'p8-icc-linear.bmp',
+    'p8-associated.tiff',
   ]) {
     test(
       backend + ' imports and exports exact supported samples from ' + name,

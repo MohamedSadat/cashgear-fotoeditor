@@ -182,3 +182,87 @@ fn bmp_v5_profiles_convert_straight_rgb_and_refuse_ambiguous_color_metadata() {
         .unwrap()
         .contains("ICC"));
 }
+
+#[test]
+fn associated_tiff_becomes_straight_before_color_conversion() {
+    // image's TIFF wrapper retains premultiplied samples. Append a new IFD
+    // specifying AssociatedAlpha; its existing strip/profile offsets stay valid.
+    let make = |profile: Option<Vec<u8>>| {
+        let mut out = Cursor::new(Vec::new());
+        let mut encoder = image::codecs::tiff::TiffEncoder::new(&mut out);
+        if let Some(profile) = profile {
+            encoder.set_icc_profile(profile).unwrap();
+        }
+        encoder
+            .write_image(
+                &[32, 16, 8, 128, 8, 4, 2, 64, 7, 9, 11, 0],
+                3,
+                1,
+                image::ExtendedColorType::Rgba8,
+            )
+            .unwrap();
+        let mut bytes = out.into_inner();
+        assert_eq!(&bytes[..4], b"II\x2a\0");
+        let at = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize;
+        let count = u16::from_le_bytes(bytes[at..at + 2].try_into().unwrap()) as usize;
+        let mut entries: Vec<[u8; 12]> = bytes[at + 2..at + 2 + count * 12]
+            .as_chunks::<12>()
+            .0
+            .to_vec();
+        entries.retain(|e| u16::from_le_bytes(e[..2].try_into().unwrap()) != 338);
+        let mut alpha = [0u8; 12];
+        alpha[..2].copy_from_slice(&338u16.to_le_bytes());
+        alpha[2..4].copy_from_slice(&3u16.to_le_bytes());
+        alpha[4..8].copy_from_slice(&1u32.to_le_bytes());
+        alpha[8..10].copy_from_slice(&1u16.to_le_bytes());
+        entries.push(alpha);
+        entries.sort_by_key(|e| u16::from_le_bytes(e[..2].try_into().unwrap()));
+        let directory = bytes.len() as u32;
+        bytes[4..8].copy_from_slice(&directory.to_le_bytes());
+        bytes.extend((entries.len() as u16).to_le_bytes());
+        for entry in entries {
+            bytes.extend(entry);
+        }
+        bytes.extend([0u8; 4]);
+        bytes
+    };
+    let doc = decode(&make(None)).unwrap();
+    assert_eq!(doc.raster().sample(0, 0), Rgba8([64, 32, 16, 128]));
+    assert_eq!(doc.raster().sample(1, 0), Rgba8([32, 16, 8, 64]));
+    assert_eq!(doc.raster().sample(2, 0), Rgba8([7, 9, 11, 0]));
+    let mut unassociated = make(None);
+    let directory = u32::from_le_bytes(unassociated[4..8].try_into().unwrap()) as usize;
+    let count =
+        u16::from_le_bytes(unassociated[directory..directory + 2].try_into().unwrap()) as usize;
+    let alpha = (0..count)
+        .map(|i| directory + 2 + i * 12)
+        .find(|at| u16::from_le_bytes(unassociated[*at..*at + 2].try_into().unwrap()) == 338)
+        .unwrap();
+    unassociated[alpha + 8..alpha + 10].copy_from_slice(&2u16.to_le_bytes());
+    assert_eq!(
+        decode(&unassociated).unwrap().raster().sample(0, 0),
+        Rgba8([32, 16, 8, 128])
+    );
+    unassociated[alpha + 8..alpha + 10].copy_from_slice(&3u16.to_le_bytes());
+    assert!(decode(&unassociated)
+        .err()
+        .unwrap()
+        .contains("extra sample"));
+    let mut profile = srgb_icc().to_vec();
+    let tag = (132..profile.len())
+        .step_by(12)
+        .find(|at| &profile[*at..*at + 4] == b"rTRC")
+        .unwrap();
+    let curve = u32::from_be_bytes(profile[tag + 4..tag + 8].try_into().unwrap()) as usize;
+    for i in 0..4096 {
+        profile[curve + 12 + i * 2..curve + 14 + i * 2]
+            .copy_from_slice(&((i as f64 / 4095.0 * 65535.0).round() as u16).to_be_bytes());
+    }
+    let encoded = make(Some(profile));
+    let converted = decode(&encoded).unwrap();
+    let pixel = converted.raster().sample(0, 0).0;
+    assert_eq!(pixel[3], 128);
+    for (actual, expected) in pixel[..3].iter().zip([137u8, 99, 71]) {
+        assert!(actual.abs_diff(expected) <= 2, "{pixel:?}");
+    }
+}

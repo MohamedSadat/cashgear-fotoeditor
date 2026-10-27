@@ -6,7 +6,7 @@ const MAX_METADATA: usize = 8 * 1024 * 1024;
 
 pub fn preflight(bytes: &[u8], format: ImageFormat) -> Result<bool, String> {
     match format {
-        ImageFormat::Tiff => tiff(bytes),
+        ImageFormat::Tiff => tiff(bytes).map(|m| m.0.is_some()),
         ImageFormat::Jpeg => jpeg(bytes),
         ImageFormat::WebP => webp(bytes),
         ImageFormat::Png => png(bytes),
@@ -95,7 +95,13 @@ pub fn bmp_profile(bytes: &[u8]) -> Result<Option<&[u8]>, String> {
     }
 }
 
-fn tiff(bytes: &[u8]) -> Result<bool, String> {
+pub fn tiff_associated_alpha(bytes: &[u8]) -> Result<bool, String> {
+    Ok(tiff(bytes)?.1)
+}
+pub fn tiff_profile(bytes: &[u8]) -> Result<Option<&[u8]>, String> {
+    Ok(tiff(bytes)?.0)
+}
+fn tiff(bytes: &[u8]) -> Result<(Option<&[u8]>, bool), String> {
     let little = match bytes.get(..4) {
         Some(b"II\x2a\0") => true,
         Some(b"MM\0\x2a") => false,
@@ -136,12 +142,12 @@ fn tiff(bytes: &[u8]) -> Result<bool, String> {
         return Err("Invalid or excessive TIFF directory".into());
     }
     let mut total = 0usize;
-    let mut profile = false;
+    let mut profile = None;
+    let mut associated_alpha = false;
     let mut tags = std::collections::HashSet::new();
     for i in 0..count {
         let at = offset + 2 + i * 12;
         let tag = read16(at)?;
-        profile |= tag == 34675;
         if !tags.insert(tag) {
             return Err("Duplicate TIFF directory tag".into());
         }
@@ -170,8 +176,35 @@ fn tiff(bytes: &[u8]) -> Result<bool, String> {
                 return Err("Truncated TIFF field data".into());
             }
         }
+        if tag == 34675 {
+            if !matches!(read16(at + 2)?, 1 | 7) {
+                return Err("TIFF ICC profile must contain byte data".into());
+            }
+            let start = if length <= 4 {
+                at + 8
+            } else {
+                read32(at + 8)? as usize
+            };
+            profile = Some(
+                bytes
+                    .get(start..start + length)
+                    .ok_or("Truncated TIFF ICC profile")?,
+            );
+        }
+        if tag == 338 {
+            if read16(at + 2)? != 3 || read32(at + 4)? != 1 {
+                return Err(
+                    "TIFF supports one associated or unassociated alpha extra sample".into(),
+                );
+            }
+            associated_alpha = match read16(at + 8)? {
+                1 => true,
+                2 => false,
+                _ => return Err("Unsupported TIFF extra sample definition".into()),
+            };
+        }
     }
-    Ok(profile)
+    Ok((profile, associated_alpha))
 }
 
 fn jpeg(bytes: &[u8]) -> Result<bool, String> {

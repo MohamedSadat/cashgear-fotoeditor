@@ -2,6 +2,20 @@
 
 ## P8 - In progress; product choices recorded
 
+The final TIFF audit corrects associated-alpha samples before ICC conversion and
+extracts bounded ICC metadata even when it exceeds a tiny image's pixel buffer.
+All 175 Rust tests, native/WASM clippy, formatting, TypeScript, ESLint and license
+checks pass. The production WASM is 4,444,995 raw / gzip9 1,640,646 bytes. All 44
+focused hardware browser cases pass once; rebuilt WebView2 passes both NVIDIA
+APIs, six extended inputs, thirteen PSDs and four export modes per backend.
+Independent PNG/BMP/associated-TIFF color checks have maximum RGBA error
+`[1, 1, 0, 0]`. Evidence: `bench/results/p8-tiff-*`.
+
+Remote CI 40507577141 and deployment 40507580612 pass at `7d62539`.
+The downloaded artifact confirms all 413 software browser cases pass with no
+skips, retries, flaky cases or global errors; desktop passes both software APIs.
+This confirms the preview-grid correction. Final-source CI remains required.
+
 The final import audit adds bounded BMP V5 ICC extraction; the base decoder
 ignored V4/V5 color definitions. All 174 Rust tests, native/WASM clippy and the
 standard build pass at 4,443,265 raw / gzip9 1,639,949 bytes. Independent

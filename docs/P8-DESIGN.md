@@ -366,3 +366,17 @@ document hash. Their sole ZIP entry difference is `composite.png`: maximum RGB
 backend error is one, alpha is exact, and its encoded length differs by one byte.
 Manifest, thumbnail and all authoritative tile payloads agree. This does not
 substitute preview comparisons for document sample validation.
+
+The final TIFF audit found that the decoder retains AssociatedAlpha RGB samples.
+Import now reverses 8-bit association with nearest-integer rounding before ICC
+conversion, preserving encoded RGB at alpha zero. ExtraSamples must describe one
+associated or unassociated alpha channel; unsupported definitions are refused.
+A bounded TIFF ICC adapter also avoids the decoder's silently omitted profile
+when a valid profile exceeds a tiny image's pixel-buffer limit. Native regression
+first reproduced the wrong samples and now verifies association, unassociated
+samples, zero alpha, invalid definitions and conversion order. Independent
+Pillow/LittleCMS comparisons of PNG, BMP and associated TIFF have maximum RGBA
+error `[1, 1, 0, 0]`. All 175 Rust tests and 44 focused hardware browser cases pass;
+rebuilt WebView2 passes both NVIDIA APIs with six extended inputs, thirteen PSDs
+and four export modes each. Release WASM is 4,444,995 bytes / gzip9 1,640,646.
+Evidence: `bench/results/p8-tiff-*`.
