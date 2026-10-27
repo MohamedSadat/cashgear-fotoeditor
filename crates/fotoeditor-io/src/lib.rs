@@ -1,4 +1,8 @@
 //! Bounded CPU codecs; construction/export jobs yield between tile rows/scanlines.
+mod color;
+#[cfg(test)]
+mod extended_tests;
+mod import_metadata;
 mod project;
 #[cfg(test)]
 mod project_adversarial;
@@ -7,6 +11,7 @@ mod project_stream;
 mod psd_preflight;
 #[cfg(test)]
 mod resample_reference;
+pub use color::srgb_icc;
 use fotoeditor_core::{Document, Residency, Rgba8, MAX_SIDE, TILE_PIXELS, TILE_SIZE};
 use image::{ImageDecoder, ImageReader};
 pub use project::*;
@@ -43,6 +48,7 @@ pub struct ImportJob {
     pub document: Document,
     samples: Vec<u8>,
     next_y: u32,
+    color: Option<color::IccTransform>,
 }
 impl ImportJob {
     pub fn decode(bytes: &[u8], residency: Residency) -> Result<Self, String> {
@@ -54,19 +60,31 @@ impl ImportJob {
             .map_err(|e| e.to_string())?;
         let format = reader
             .format()
-            .ok_or("Unrecognized image. Open PNG, JPEG or WebP.")?;
+            .ok_or("Unrecognized image. Open PNG, JPEG, WebP, BMP, GIF or TIFF.")?;
         if !matches!(
             format,
-            image::ImageFormat::Png | image::ImageFormat::Jpeg | image::ImageFormat::WebP
+            image::ImageFormat::Png
+                | image::ImageFormat::Jpeg
+                | image::ImageFormat::WebP
+                | image::ImageFormat::Bmp
+                | image::ImageFormat::Gif
+                | image::ImageFormat::Tiff
         ) {
-            return Err("Open PNG, JPEG or WebP images".into());
+            return Err("Open PNG, JPEG, WebP, BMP, GIF or 8-bit TIFF images".into());
         }
         let mut limits = image::Limits::default();
         limits.max_image_width = Some(MAX_SIDE);
         limits.max_image_height = Some(MAX_SIDE);
-        limits.max_alloc = Some(384 * 1024 * 1024);
+        residency.check_cpu(color::COLOR_SCRATCH + bytes.len() as u64)?;
+        let available = fotoeditor_core::CPU_BUDGET
+            .saturating_sub(residency.document)
+            .saturating_sub(residency.history)
+            .saturating_sub(residency.temporary)
+            .saturating_sub(color::COLOR_SCRATCH + bytes.len() as u64);
+        let tagged = import_metadata::preflight(bytes, format)?;
+        limits.max_alloc = Some(available.min(8 * 1024 * 1024));
         reader.limits(limits);
-        let decoder = reader.into_decoder().map_err(|e| e.to_string())?;
+        let mut decoder = reader.into_decoder().map_err(|e| e.to_string())?;
         let (w, h) = decoder.dimensions();
         fotoeditor_core::validate_size(w, h, 72.0)?;
         if decoder.color_type().bits_per_pixel() / decoder.color_type().channel_count() as u16 > 8 {
@@ -75,8 +93,24 @@ impl ImportJob {
         let padded =
             w.div_ceil(TILE_SIZE) as u64 * h.div_ceil(TILE_SIZE) as u64 * TILE_PIXELS as u64 * 4;
         // Decoder input/output/conversion, pending tiles and current document coexist.
-        residency
-            .check_cpu(padded + w as u64 * h as u64 * 12 + bytes.len() as u64 + 4 * 1024 * 1024)?;
+        residency.check_cpu(
+            padded + w as u64 * h as u64 * 12 + bytes.len() as u64 + color::COLOR_SCRATCH,
+        )?;
+        let profile = decoder.icc_profile().map_err(|e| e.to_string())?;
+        if tagged && profile.is_none() {
+            return Err("Embedded ICC profile is corrupt or unavailable".into());
+        }
+        let color = profile
+            .map(|profile| color::IccTransform::new(&profile, decoder.color_type()))
+            .transpose()?
+            .flatten();
+        let mut decode_limits = image::Limits::default();
+        decode_limits.max_image_width = Some(MAX_SIDE);
+        decode_limits.max_image_height = Some(MAX_SIDE);
+        decode_limits.max_alloc = Some(available.min(384 * 1024 * 1024));
+        decoder
+            .set_limits(decode_limits)
+            .map_err(|e| e.to_string())?;
         let mut dpi = 72.0;
         if format == image::ImageFormat::Png {
             if let Ok(p) = png::Decoder::new(Cursor::new(bytes)).read_info() {
@@ -94,10 +128,17 @@ impl ImportJob {
             document: Document::blank(w, h, dpi)?,
             samples: image.into_raw(),
             next_y: 0,
+            color,
         })
     }
     pub fn temporary_bytes(&self) -> u64 {
-        self.samples.capacity() as u64 + self.document.raster().bytes()
+        self.samples.capacity() as u64
+            + self.document.raster().bytes()
+            + if self.color.is_some() {
+                color::COLOR_SCRATCH
+            } else {
+                0
+            }
     }
     pub fn step(&mut self) -> bool {
         let w = self.document.width;
@@ -109,6 +150,9 @@ impl ImportJob {
                 let x0 = tx * TILE_SIZE;
                 let n = TILE_SIZE.min(w - x0) as usize;
                 let src = ((y * w + x0) * 4) as usize;
+                if let Some(color) = &self.color {
+                    color.convert(&mut self.samples[src..src + n * 4]);
+                }
                 let dst = ((y - self.next_y) * TILE_SIZE) as usize;
                 for (target, pixel) in tile[dst..dst + n]
                     .iter_mut()
@@ -129,10 +173,24 @@ struct Output(Rc<RefCell<Vec<u8>>>);
 impl Write for Output {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
         let mut out = self.0.borrow_mut();
-        if out.len() + bytes.len() > MAX_FILE_BYTES as usize {
+        let needed = out
+            .len()
+            .checked_add(bytes.len())
+            .ok_or_else(|| std::io::Error::other("PNG output length overflow"))?;
+        if needed > MAX_FILE_BYTES as usize {
             return Err(std::io::Error::other(
                 "PNG export exceeds the 128 MiB output budget",
             ));
+        }
+        if needed > out.capacity() {
+            // Bound capacity as well as length: geometric Vec growth must not
+            // exceed the admitted output/bridge reserve near the file limit.
+            let capacity = needed
+                .max(out.capacity().saturating_mul(2))
+                .min(MAX_FILE_BYTES as usize);
+            let additional = capacity - out.len();
+            out.try_reserve_exact(additional)
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
         }
         out.extend_from_slice(bytes);
         Ok(bytes.len())
@@ -170,7 +228,9 @@ impl ExportJob {
         // Conservative output capacity + JS bridge copy; shared tile Arcs add no pixel copies.
         residency.check_cpu(2 * MAX_FILE_BYTES + rect.width as u64 * 8 + 4 * 1024 * 1024)?;
         let out = Output(Rc::new(RefCell::new(Vec::new())));
-        let mut encoder = png::Encoder::new(out.clone(), rect.width, rect.height);
+        let mut info = png::Info::with_size(rect.width, rect.height);
+        info.icc_profile = Some(std::borrow::Cow::Borrowed(srgb_icc()));
+        let mut encoder = png::Encoder::with_info(out.clone(), info).map_err(|e| e.to_string())?;
         encoder.set_color(png::ColorType::Rgba);
         encoder.set_depth(png::BitDepth::Eight);
         encoder.set_compression(png::Compression::Fast);
@@ -194,7 +254,8 @@ impl ExportJob {
         })
     }
     pub fn temporary_bytes(&self) -> u64 {
-        self.out.0.borrow().capacity() as u64 + self.row.capacity() as u64 + 4 * 1024 * 1024
+        // Retain the admitted reserve while the pager hydrates the source.
+        2 * MAX_FILE_BYTES + self.row.capacity() as u64 + 4 * 1024 * 1024
     }
     pub fn step(&mut self) -> Result<bool, String> {
         let rect = self.document.canvas_rect();

@@ -17,6 +17,13 @@ No GPL/AGPL-only or paid dependencies are approved. Preserve upstream copyright
 and license notices when distributing dependencies. Package metadata is the
 inventory source; review actual license text before changing the policy.
 
+qcms uses MIT. Its upstream COPYING notice is preserved in
+third_party/qcms-COPYING.txt because the published crate omits that file.
+
+Optional P8 native QA references installed under ignored .tools/p8-reference:
+psd-tools 1.26.0 (MIT), attrs 25.4.0 (MIT), python-lz4 4.4.5 (BSD-3-Clause).
+These are validation tools only, not web or desktop runtime dependencies.
+
 The downloaded wasm-bindgen CLI uses MIT OR Apache-2.0. Binaryen uses Apache-2.0.
 Rust uses MIT OR Apache-2.0; Node.js and pnpm use MIT. Windows toolchains and
 WebView2 are platform prerequisites, not bundled application libraries.
@@ -58,6 +65,7 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | chacha20 | 0.10.2 | MIT OR Apache-2.0 |
 | Cargo | chrono | 0.4.45 | MIT OR Apache-2.0 |
 | Cargo | codespan-reporting | 0.13.1 | Apache-2.0 |
+| Cargo | color_quant | 1.1.0 | MIT |
 | Cargo | cookie | 0.18.2 | MIT OR Apache-2.0 |
 | Cargo | core_detect | 1.0.0 | MIT/Apache-2.0 |
 | Cargo | cpufeatures | 0.2.17 | MIT OR Apache-2.0 |
@@ -95,6 +103,7 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | euclid | 0.22.14 | MIT OR Apache-2.0 |
 | Cargo | fast_image_resize | 6.1.0 | MIT OR Apache-2.0 |
 | Cargo | fastrand | 2.5.0 | Apache-2.0 OR MIT |
+| Cargo | fax | 0.2.7 | MIT |
 | Cargo | fdeflate | 0.3.7 | MIT OR Apache-2.0 |
 | Cargo | find-msvc-tools | 0.1.15 | MIT OR Apache-2.0 |
 | Cargo | flate2 | 1.1.10 | MIT OR Apache-2.0 |
@@ -110,6 +119,7 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | generic-array | 0.14.7 | MIT |
 | Cargo | getrandom | 0.3.4 | MIT OR Apache-2.0 |
 | Cargo | getrandom | 0.4.3 | MIT OR Apache-2.0 |
+| Cargo | gif | 0.14.2 | MIT OR Apache-2.0 |
 | Cargo | glob | 0.3.4 | MIT OR Apache-2.0 |
 | Cargo | glow | 0.17.0 | MIT OR Apache-2.0 OR Zlib |
 | Cargo | half | 2.7.1 | MIT OR Apache-2.0 |
@@ -185,6 +195,7 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | profiling | 1.0.18 | MIT OR Apache-2.0 |
 | Cargo | proptest | 1.12.0 | MIT OR Apache-2.0 |
 | Cargo | pxfm | 0.1.30 | BSD-3-Clause OR Apache-2.0 |
+| Cargo | qcms | 0.3.0 | MIT |
 | Cargo | quick-error | 2.0.1 | MIT/Apache-2.0 |
 | Cargo | quick-xml | 0.42.0 | MIT |
 | Cargo | quote | 1.0.47 | MIT OR Apache-2.0 |
@@ -253,6 +264,7 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | termcolor | 1.4.1 | Unlicense OR MIT |
 | Cargo | thiserror-impl | 2.0.21 | MIT OR Apache-2.0 |
 | Cargo | thiserror | 2.0.21 | MIT OR Apache-2.0 |
+| Cargo | tiff | 0.11.3 | MIT |
 | Cargo | time-core | 0.1.9 | MIT OR Apache-2.0 |
 | Cargo | time-macros | 0.2.32 | MIT OR Apache-2.0 |
 | Cargo | time | 0.3.55 | MIT OR Apache-2.0 |
@@ -291,6 +303,7 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | webview2-com-macros | 0.8.1 | MIT |
 | Cargo | webview2-com-sys | 0.39.1 | MIT |
 | Cargo | webview2-com | 0.39.1 | MIT |
+| Cargo | weezl | 0.1.12 | MIT OR Apache-2.0 |
 | Cargo | wgpu-core-deps-wasm | 30.0.1 | MIT OR Apache-2.0 |
 | Cargo | wgpu-core | 30.0.1 | MIT OR Apache-2.0 |
 | Cargo | wgpu-hal | 30.0.1 | MIT OR Apache-2.0 |
