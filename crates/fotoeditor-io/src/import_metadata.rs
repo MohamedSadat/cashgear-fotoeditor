@@ -11,7 +11,87 @@ pub fn preflight(bytes: &[u8], format: ImageFormat) -> Result<bool, String> {
         ImageFormat::WebP => webp(bytes),
         ImageFormat::Png => png(bytes),
         ImageFormat::Gif => gif(bytes),
+        ImageFormat::Bmp => Ok(bmp_profile(bytes)?.is_some()),
         _ => Ok(false),
+    }
+}
+
+/// The image BMP decoder skips V4/V5 color metadata. Handle embedded profiles
+/// ourselves; never silently assign calibrated/linked color definitions to sRGB.
+/// Offsets follow Microsoft's BITMAPV5HEADER (relative to the DIB, not the file).
+pub fn bmp_profile(bytes: &[u8]) -> Result<Option<&[u8]>, String> {
+    let word = |at: usize| -> Result<u32, String> {
+        Ok(u32::from_le_bytes(
+            bytes
+                .get(at..at + 4)
+                .ok_or("Truncated BMP color header")?
+                .try_into()
+                .unwrap(),
+        ))
+    };
+    if bytes.get(..2) != Some(b"BM") {
+        return Err("Expected a BMP file header".into());
+    }
+    let header = word(14)?;
+    if !matches!(header, 108 | 124) {
+        return Ok(None);
+    }
+    bytes
+        .get(14..14 + header as usize)
+        .ok_or("Truncated BMP color header")?;
+    match word(70)? {
+        0x7352_4742 | 0x5769_6e20 => Ok(None), // Explicit sRGB / Windows sRGB.
+        0x4c49_4e4b => {
+            Err("Linked BMP color profiles are not supported; embed an RGB ICC profile".into())
+        }
+        0x4d42_4544 if header == 124 => {
+            let length = word(130)? as usize;
+            if length == 0 || length > MAX_ICC_BYTES {
+                return Err("BMP ICC profile must contain 1 byte to 4 MiB".into());
+            }
+            let offset = word(126)? as usize;
+            let start = 14usize
+                .checked_add(offset)
+                .ok_or("BMP ICC offset overflow")?;
+            let end = start.checked_add(length).ok_or("BMP ICC length overflow")?;
+            let width = word(18)? as i32;
+            let height = word(22)? as i32;
+            if width <= 0 {
+                return Err("Invalid BMP width".into());
+            }
+            fotoeditor_core::validate_size(width as u32, height.unsigned_abs(), 72.0)?;
+            let bits = usize::from(u16::from_le_bytes(bytes[28..30].try_into().unwrap()));
+            let pixel_bytes = match word(30)? {
+                0 | 3 => (width as usize)
+                    .checked_mul(bits)
+                    .and_then(|n| n.div_ceil(32).checked_mul(4))
+                    .and_then(|n| n.checked_mul(height.unsigned_abs() as usize))
+                    .ok_or("BMP pixel extent overflow")?,
+                1 | 2 => {
+                    let size = word(34)? as usize;
+                    if size == 0 {
+                        return Err("Tagged RLE BMP needs a bounded image extent".into());
+                    }
+                    size
+                }
+                _ => return Err("Unsupported tagged BMP compression".into()),
+            };
+            let pixels = word(10)? as usize;
+            let pixels_end = pixels
+                .checked_add(pixel_bytes)
+                .ok_or("BMP pixel extent overflow")?;
+            if pixels < 14 + header as usize
+                || start < pixels_end
+                || end > bytes.len()
+                || word(134)? != 0
+            {
+                return Err("Invalid or overlapping BMP ICC profile extent".into());
+            }
+            Ok(Some(&bytes[start..end]))
+        }
+        _ => {
+            Err("Unsupported BMP color definition; use sRGB or an embedded RGB ICC profile".into())
+        }
     }
 }
 

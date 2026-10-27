@@ -16,6 +16,37 @@ fn tagged_png(profile: &[u8], pixels: &[u8], width: u32, height: u32) -> Vec<u8>
         .unwrap();
     out
 }
+fn tagged_bmp(profile: &[u8], pixels: &[u8], width: u32, height: u32) -> Vec<u8> {
+    let mut out = vec![0u8; 138];
+    out[..2].copy_from_slice(b"BM");
+    for (at, value) in [
+        (10, 138),
+        (14, 124),
+        (18, width),
+        (22, (-(height as i32)) as u32),
+        (30, 3),
+        (34, pixels.len() as u32),
+        (54, 0x00ff0000),
+        (58, 0x0000ff00),
+        (62, 0x000000ff),
+        (66, 0xff000000),
+        (70, 0x4d424544),
+        (122, 2),
+        (126, 124 + pixels.len() as u32),
+        (130, profile.len() as u32),
+    ] {
+        out[at..at + 4].copy_from_slice(&value.to_le_bytes());
+    }
+    out[26..28].copy_from_slice(&1u16.to_le_bytes());
+    out[28..30].copy_from_slice(&32u16.to_le_bytes());
+    for pixel in pixels.as_chunks::<4>().0 {
+        out.extend([pixel[2], pixel[1], pixel[0], pixel[3]]);
+    }
+    out.extend(profile);
+    let size = out.len() as u32;
+    out[2..6].copy_from_slice(&size.to_le_bytes());
+    out
+}
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dir = std::env::args()
         .nth(1)
@@ -72,6 +103,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::write(dir.join("p8-srgb.icc"), srgb_icc())?;
     std::fs::write(dir.join("p8-linear.icc"), &linear)?;
     std::fs::write(
+        dir.join("p8-icc-linear.bmp"),
+        tagged_bmp(&linear, pixels.as_raw(), 257, 259),
+    )?;
+    std::fs::write(
+        dir.join("p8-invalid-icc.bmp"),
+        tagged_bmp(b"invalid ICC profile", &[79, 31, 3, 0], 1, 1),
+    )?;
+    std::fs::write(
         dir.join("p8-icc-linear.png"),
         tagged_png(&linear, pixels.as_raw(), 257, 259),
     )?;
@@ -90,6 +129,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "p8-input.tiff",
         "p8-input.gif",
         "p8-icc-linear.png",
+        "p8-icc-linear.bmp",
     ] {
         let bytes = std::fs::read(dir.join(name))?;
         let mut import = ImportJob::decode(&bytes, Residency::default())?;

@@ -11,7 +11,13 @@ const snapshot = async (page: import('@playwright/test').Page) =>
   ) as DocumentSnapshot;
 
 for (const backend of ['WebGPU', 'WebGL2']) {
-  for (const name of ['p8-input.bmp', 'p8-input.gif', 'p8-input.tiff', 'p8-icc-linear.png']) {
+  for (const name of [
+    'p8-input.bmp',
+    'p8-input.gif',
+    'p8-input.tiff',
+    'p8-icc-linear.png',
+    'p8-icc-linear.bmp',
+  ]) {
     test(
       backend + ' imports and exports exact supported samples from ' + name,
       async ({ page }) => {
@@ -57,6 +63,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       );
       for (const [file, error] of [
         ['p8-invalid-icc.png', /ICC/],
+        ['p8-invalid-icc.bmp', /ICC/],
         ['p8-16bit.png', /16-bit/],
       ] as const) {
         await page.getByTestId('open-image').setInputFiles(resolve('bench/results/fixtures', file));

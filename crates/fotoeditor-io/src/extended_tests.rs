@@ -102,3 +102,83 @@ fn tagged_png_is_exact_invalid_profile_is_not_silently_assigned_and_admission_is
     };
     assert!(ImportJob::decode(&bytes, full).is_err());
 }
+
+#[test]
+fn bmp_v5_profiles_convert_straight_rgb_and_refuse_ambiguous_color_metadata() {
+    let make = |profile: &[u8]| {
+        let mut bytes = vec![0u8; 138];
+        bytes[..2].copy_from_slice(b"BM");
+        for (at, word) in [
+            (10, 138u32),
+            (14, 124),
+            (18, 2),
+            (22, (-2i32) as u32),
+            (30, 3),
+            (34, 16),
+            (54, 0x00ff0000),
+            (58, 0x0000ff00),
+            (62, 0x000000ff),
+            (66, 0xff000000),
+            (70, 0x4d424544),
+            (122, 2),
+            (126, 140),
+            (130, profile.len() as u32),
+        ] {
+            bytes[at..at + 4].copy_from_slice(&word.to_le_bytes());
+        }
+        bytes[26..28].copy_from_slice(&1u16.to_le_bytes());
+        bytes[28..30].copy_from_slice(&32u16.to_le_bytes());
+        for alpha in [0, 51, 128, 255] {
+            bytes.extend([127, 51, 79, alpha]);
+        }
+        bytes.extend(profile);
+        let size = bytes.len() as u32;
+        bytes[2..6].copy_from_slice(&size.to_le_bytes());
+        bytes
+    };
+    let canonical = make(srgb_icc());
+    let document = decode(&canonical).unwrap();
+    for (at, alpha) in [0, 51, 128, 255].into_iter().enumerate() {
+        assert_eq!(
+            document.raster().sample(at as u32 % 2, at as u32 / 2),
+            Rgba8([79, 51, 127, alpha])
+        );
+    }
+    let mut linear = srgb_icc().to_vec();
+    let tag = (132..linear.len())
+        .step_by(12)
+        .find(|at| &linear[*at..*at + 4] == b"rTRC")
+        .unwrap();
+    let curve = u32::from_be_bytes(linear[tag + 4..tag + 8].try_into().unwrap()) as usize;
+    for i in 0..4096 {
+        linear[curve + 12 + i * 2..curve + 14 + i * 2]
+            .copy_from_slice(&((i as f64 / 4095.0 * 65535.0).round() as u16).to_be_bytes());
+    }
+    let converted = decode(&make(&linear)).unwrap();
+    for (at, alpha) in [0, 51, 128, 255].into_iter().enumerate() {
+        let pixel = converted.raster().sample(at as u32 % 2, at as u32 / 2).0;
+        assert_eq!(pixel[3], alpha);
+        for (actual, expected) in pixel[..3].iter().zip([151u8, 124, 187]) {
+            assert!(actual.abs_diff(expected) <= 2, "{pixel:?}");
+        }
+    }
+    for (at, value) in [
+        (126, u32::MAX),
+        (126, 124),
+        (130, 0),
+        (130, 4 * 1024 * 1024 + 1),
+        (70, 0),
+        (70, 0x4c494e4b),
+        (134, 1),
+    ] {
+        let mut invalid = canonical.clone();
+        invalid[at..at + 4].copy_from_slice(&value.to_le_bytes());
+        assert!(decode(&invalid).is_err(), "{at}/{value}");
+    }
+    assert!(decode(&canonical[..canonical.len() - 1]).is_err());
+    assert!(decode(&canonical[..137]).is_err());
+    assert!(decode(&make(b"invalid ICC profile"))
+        .err()
+        .unwrap()
+        .contains("ICC"));
+}

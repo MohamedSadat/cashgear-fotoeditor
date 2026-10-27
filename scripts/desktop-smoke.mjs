@@ -913,7 +913,13 @@ try {
           }
         }
       });
-    for (const name of ['p8-input.bmp', 'p8-input.gif', 'p8-input.tiff', 'p8-icc-linear.png']) {
+    for (const name of [
+      'p8-input.bmp',
+      'p8-input.gif',
+      'p8-input.tiff',
+      'p8-icc-linear.png',
+      'p8-icc-linear.bmp',
+    ]) {
       // Direct diagnostic RPCs finish before the frame pump publishes its idle
       // snapshot to React. Wait for its actual Open control before dispatching a change.
       await expect(page.getByRole('button', { name: 'Open image', exact: true })).toBeEnabled();
@@ -937,6 +943,7 @@ try {
     const beforeRefusal = Buffer.from(await exportedPng());
     for (const [name, error] of [
       ['p8-invalid-icc.png', /ICC/],
+      ['p8-invalid-icc.bmp', /ICC/],
       ['p8-16bit.png', /16-bit/],
     ]) {
       await expect(page.getByRole('button', { name: 'Open image', exact: true })).toBeEnabled();

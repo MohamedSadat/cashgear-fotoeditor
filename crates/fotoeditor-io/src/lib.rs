@@ -117,7 +117,11 @@ impl ImportJob {
         residency.check_cpu(
             padded + w as u64 * h as u64 * 12 + bytes.len() as u64 + color::COLOR_SCRATCH,
         )?;
-        let profile = decoder.icc_profile().map_err(|e| e.to_string())?;
+        let profile = if format == image::ImageFormat::Bmp {
+            import_metadata::bmp_profile(bytes)?.map(<[u8]>::to_vec)
+        } else {
+            decoder.icc_profile().map_err(|e| e.to_string())?
+        };
         if tagged && profile.is_none() {
             return Err("Embedded ICC profile is corrupt or unavailable".into());
         }
