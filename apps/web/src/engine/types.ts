@@ -25,6 +25,7 @@ export interface FrameResult extends PhysicalSize {
   snapshot?: DocumentSnapshot;
 }
 export interface DocumentSnapshot {
+  importPaused?: boolean;
   transform?: {
     target: number;
     selected: boolean;
@@ -126,6 +127,7 @@ export interface Interaction {
   sample?: [number, number, number, number, number, number];
 }
 export interface EngineApi {
+  diagnosticImportFault(): void | Promise<void>;
   geometryMetadata(action: GeometryMetadata): Promise<DocumentSnapshot>;
   geometryAction(action: GeometryAction): Promise<DocumentSnapshot>;
   beginTransform(target: number, selected: boolean): Promise<DocumentSnapshot>;
@@ -191,6 +193,7 @@ export interface EngineApi {
     dpi: number,
   ): DocumentSnapshot | Promise<DocumentSnapshot>;
   openImage(bytes: ArrayBuffer, name: string): Promise<DocumentSnapshot>;
+  openImageFile(file: File): Promise<DocumentSnapshot>;
   exportPng(): Promise<Uint8Array>;
   cancelJob(): boolean | Promise<boolean>;
 }

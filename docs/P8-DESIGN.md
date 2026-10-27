@@ -280,14 +280,40 @@ cases and 458 licenses. All 72 hardware Chrome/Edge format/project/history/crop
 cases pass once, zero failures/skips/retries/global errors. The rebuilt shell's
 expanded WebView2 smoke passes both NVIDIA APIs. Its initial attempt caught a
 test race: direct RPC completion precedes React's idle snapshot; file changes
-must wait for the disabled input to become enabled. The corrected smoke waits
+must wait for the Open control to become enabled. The corrected smoke waits
 for that actual state rather than adding a sleep. Evidence is
 `bench/results/p8-zip-integration-*`.
 Earlier functional web/desktop builds do not retrospectively turn the
 failed size checks into passes. Final phase acceptance still requires all remaining
 features, measurements and exact-head local/remote gates.
 
-Still required: export dialog/JPEG/WebP quality/size/source controls, File System
-Access open/reuse/recent-file controls, actual PSD decoding and suitable public
-Photoshop reference validation, 20-layer hardware save measurements, complete
-regression and final-head remote checks. PSD export and HEIC remain unselected.
+The subsequent PSD/file-access checkpoint passes 171 Rust tests and 146 focused
+single-attempt hardware browser cases, plus rebuilt WebView2 on both hardware
+APIs (13 public PSD imports per backend). Production WASM is 4,322,993 bytes /
+gzip9 1,588,906. P8-PSD.md records independent reference results and unsupported
+features. Worker FileReader admission/cancellation precedes document replacement.
+File System Access saves reuse granted project handles; recent handles persist
+in a ten-entry IndexedDB catalog, with permission requests only on explicit use.
+Fallback File inputs cannot provide reusable filesystem handles.
+
+Remote CI 40467804466 exposed the desktop race again: a hidden input being enabled
+does not prove React observed completion of a direct crop RPC. The updated smoke
+waits for the final revealed dimensions/idle snapshot and the visible Open control.
+Current hardware verification passes; new-head remote verification is pending.
+
+The first actual dense 20-layer 24 MP Chrome/WebGPU probe takes 65.407375,
+65.599475 and 66.280645 seconds per save, each 2,123,367,314 bytes. Logical CPU
+peaks at 611,624,942 bytes; GPU is 4,591,760 bytes. The D: device identifies as
+WDC WD1000DHTZ-60N21V0 through RAID. OS caches were not cleared. The source raw
+project is 2,013,676,863 bytes, SHA-256
+`2133a854f4ff2b605a44ebe28652d872d5188cdfc47ae43822cd20289917a542`;
+the measured ZIP SHA-256 is
+`9978218f56d7d25ba744bb603f118e9401eb8943b927a15c9b4643c75d9bb1c4`.
+These file hashes identify evidence, not equivalent canonical document hashes.
+See `bench/results/p8-save-performance-probe.json`. The under-three-second
+criterion fails; profiling/optimization, all four hardware combinations and
+large canonical validation remain. There is no approved exception.
+
+Still required: export dialog/JPEG/WebP quality/size/source controls, save
+optimization and complete regression/final-head remote checks. PSD export and
+HEIC remain unselected.

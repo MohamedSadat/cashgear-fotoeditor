@@ -311,6 +311,20 @@ fn psd_all_channel_compressions_preserve_hidden_samples_masks_and_negative_bound
 fn psd_truncations_mutations_and_budget_refusal_never_publish_partial_layers() {
     for compression in 0..4 {
         let source = fixture(compression);
+        let reserved = PsdImportJob::new(&source, Residency::default())
+            .unwrap()
+            .temporary_bytes();
+        assert!(
+            PsdImportJob::new(
+                &source,
+                Residency {
+                    document: CPU_BUDGET - reserved - source.len() as u64 / 2,
+                    ..Residency::default()
+                }
+            )
+            .is_err(),
+            "the caller input and owned input must coexist during construction"
+        );
         for end in 0..source.len() {
             let result = PsdImportJob::new(&source[..end], Residency::default());
             if let Ok(mut job) = result {

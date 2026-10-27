@@ -190,7 +190,7 @@ impl PsdImportJob {
             * 262144
             + 80 * 1024 * 1024;
         residency
-            .check_cpu(SCRATCH + bytes.len() as u64 + records.padded_bytes + display_reserve)?;
+            .check_cpu(SCRATCH + 2 * bytes.len() as u64 + records.padded_bytes + display_reserve)?;
         let color = preflight
             .icc_profile
             .map(|p| IccTransform::new(p, image::ColorType::Rgba8))

@@ -214,6 +214,43 @@ button {
   flex-direction: column;
   overflow: hidden;
 }
+.recent-files {
+  position: relative;
+  flex: none;
+  padding: 4px 24px;
+  font-size: 12px;
+  background: #191c22;
+}
+.recent-files summary {
+  cursor: pointer;
+  width: fit-content;
+}
+.recent-list {
+  position: absolute;
+  left: 24px;
+  top: 100%;
+  z-index: 40;
+  width: min(460px, calc(100vw - 48px));
+  max-height: 60vh;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid #444953;
+  border-radius: 6px;
+  background: #191c22;
+  box-shadow: 0 8px 28px #0008;
+}
+.recent-list > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.recent-list button {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .topbar {
   height: 86px;
   display: flex;

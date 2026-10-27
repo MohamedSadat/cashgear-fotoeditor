@@ -51,6 +51,10 @@ let geometryTiming: DocumentSnapshot['geometryTiming'];
 let adjustmentTiming: DocumentSnapshot['adjustmentTiming'];
 let adjustmentFault: 'pause-before-commit' | 'budget' | 'budget-after-step' | undefined;
 let releaseAdjustmentPause: (() => void) | undefined;
+let pauseNextImport = false;
+let importPaused = false;
+let releaseImportPause: (() => void) | undefined;
+let activeImageReader: FileReader | undefined;
 let histogramRunning = false;
 let previewRequest = 0;
 let previewKey: string | undefined;
@@ -78,6 +82,7 @@ function snapshot(): DocumentSnapshot {
     adjustmentTiming,
     filterTiming,
     geometryTiming,
+    importPaused,
     recovery,
     // A completed stroke can have the next stroke waiting behind it. Keep the
     // entire queued edit busy so open/export cannot interleave in that gap.
@@ -103,6 +108,83 @@ function requireIdle() {
 }
 function cancelled(token: number) {
   if (disposed || token !== job) throw new Error('Operation cancelled');
+}
+async function readImageFile(file: File): Promise<ArrayBuffer> {
+  const reader = new FileReader();
+  activeImageReader = reader;
+  try {
+    return await new Promise<ArrayBuffer>((resolve, reject) => {
+      reader.onload = () => resolve(reader.result as ArrayBuffer);
+      reader.onerror = () => reject(reader.error ?? new Error('Could not read this image file'));
+      reader.onabort = () => reject(new Error('Operation cancelled'));
+      reader.readAsArrayBuffer(file);
+    });
+  } finally {
+    if (activeImageReader === reader) activeImageReader = undefined;
+    reader.onload = reader.onerror = reader.onabort = null;
+    reader.abort();
+  }
+}
+async function importImage(input: File | ArrayBuffer, fileName: string): Promise<DocumentSnapshot> {
+  const e = requireIdle();
+  const fromFile = !(input instanceof ArrayBuffer);
+  const length = input instanceof ArrayBuffer ? input.byteLength : input.size;
+  if (!Number.isSafeInteger(length) || length < 0 || length > 128 * CHUNK)
+    throw new Error('Image files must be at most 128 MiB');
+  busy = true;
+  operation = 'Reading image…';
+  const token = beginJob();
+  const priorExternal = externalBytes;
+  const pauseBeforeCommit = pauseNextImport;
+  pauseNextImport = false;
+  try {
+    // Admission precedes file reading. Include an encoded File/Blob owner and
+    // its read buffer; Rust separately admits its argument and owned input copy.
+    external(priorExternal + 2 * length + 2 * CHUNK);
+    let bytes = input instanceof ArrayBuffer ? input : await readImageFile(input);
+    cancelled(token);
+    operation = 'Decoding image…';
+    e.begin_import(new Uint8Array(bytes));
+    bytes = new ArrayBuffer(0);
+    input = new ArrayBuffer(0);
+    external(priorExternal + (fromFile ? length : 0));
+    while (true) {
+      await yieldProjectTask();
+      cancelled(token);
+      if (e.import_step()) break;
+    }
+    if (pauseBeforeCommit) {
+      importPaused = true;
+      await new Promise<void>((resolve) => {
+        releaseImportPause = resolve;
+      });
+      importPaused = false;
+      releaseImportPause = undefined;
+    }
+    cancelled(token);
+    e.finish_import();
+    cancelAllowed = false;
+    name = fileName;
+    inputsWaiting = [];
+    dirty = true;
+    cursorScreen = undefined;
+    editError = undefined;
+    sampledColor = undefined;
+    operation = undefined;
+    // Only FramePump may present the newly committed candidate.
+    busy = false;
+    await new Promise<void>((resolve, reject) => {
+      presentation = { resolve, reject };
+    });
+    return snapshot();
+  } finally {
+    if (token === job) {
+      e.cancel_job();
+      external(priorExternal);
+      busy = false;
+      operation = undefined;
+    }
+  }
 }
 async function recompose(token = job) {
   const e = requireEngine();
@@ -1435,6 +1517,7 @@ const api: EngineApi = {
   },
   async saveProjectFile(handle) {
     const e = requireIdle();
+    if (!/\.cgfoto$/i.test(handle.name)) throw new Error('Choose a .cgfoto file for this project.');
     busy = true;
     operation = 'Saving project…';
     const token = beginJob();
@@ -1446,8 +1529,10 @@ const api: EngineApi = {
         await output.write(bytes as Uint8Array<ArrayBuffer>);
       }, token);
       cancelled(token);
+      cancelAllowed = false;
       await writable.close();
       writable = undefined;
+      name = handle.name;
       return size;
     } finally {
       await writable?.abort().catch(() => {});
@@ -1789,6 +1874,11 @@ const api: EngineApi = {
   },
   dispose() {
     ++job;
+    activeImageReader?.abort();
+    activeImageReader = undefined;
+    releaseImportPause?.();
+    releaseImportPause = undefined;
+    importPaused = false;
     releaseAdjustmentPause?.();
     releasePreviewPause?.();
     releaseAdjustmentPause = undefined;
@@ -1892,39 +1982,15 @@ const api: EngineApi = {
     inputsWaiting = [];
     return snapshot();
   },
-  async openImage(bytes, fileName) {
-    if (busy || snapshot().painting)
-      throw new Error('Finish or cancel the current operation first');
-    busy = true;
-    const token = beginJob();
-    const e = requireEngine();
-    try {
-      e.begin_import(new Uint8Array(bytes));
-      bytes = new ArrayBuffer(0);
-      while (true) {
-        await yieldTask();
-        if (token !== job || disposed) throw new Error('Operation cancelled');
-        if (e.import_step()) break;
-      }
-      name = fileName;
-      inputsWaiting = [];
-      dirty = true;
-      cursorScreen = undefined;
-      editError = undefined;
-      sampledColor = undefined;
-      // Only FramePump may present a surface. Presenting here as well could
-      // acquire the same browser canvas texture twice within one animation frame.
-      busy = false;
-      await new Promise<void>((resolve, reject) => {
-        presentation = { resolve, reject };
-      });
-      return snapshot();
-    } finally {
-      if (token === job) {
-        e.cancel_job();
-        busy = false;
-      }
-    }
+  openImage(bytes, fileName) {
+    return importImage(bytes, fileName);
+  },
+  openImageFile(file) {
+    return importImage(file, file.name);
+  },
+  diagnosticImportFault() {
+    if (!diagnostic) throw new Error('Import fault testing is disabled');
+    pauseNextImport = true;
   },
   async exportPng() {
     if (busy || snapshot().painting)
@@ -1969,12 +2035,17 @@ const api: EngineApi = {
     )
       return false;
     ++job;
+    activeImageReader?.abort();
+    activeImageReader = undefined;
     ++previewRequest;
     previewKey = undefined;
     requireEngine().preview_cancel();
     releasePreviewPause?.();
     releaseSelectionPause?.();
     releaseAdjustmentPause?.();
+    releaseImportPause?.();
+    releaseImportPause = undefined;
+    importPaused = false;
     releaseAdjustmentPause = undefined;
     releaseSelectionPause = undefined;
     requireEngine().cancel_job();

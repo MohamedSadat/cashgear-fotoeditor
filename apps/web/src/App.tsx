@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { transfer } from 'comlink';
 import { CanvasHost } from './CanvasHost';
 import { BrushPanel } from './BrushPanel';
 import { HistoryPanel } from './HistoryPanel';
@@ -16,6 +15,15 @@ import { useSelection } from './selection-state';
 import { useBrush } from './brush-state';
 import { updateWorkspace, useWorkspace } from './state';
 import type { EngineApi, Interaction } from './engine/types';
+import {
+  fileAccessError,
+  filePermission,
+  forgetRecent,
+  pickerCancelled,
+  recentFiles,
+  rememberFile,
+} from './file-access';
+import type { RecentFile } from './file-access';
 
 const presets = [
   { name: 'Full HD', width: 1920, height: 1080, dpi: 72 },
@@ -34,6 +42,9 @@ export function App() {
   const [dpi, setDpi] = useState(72);
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState('');
+  const [recents, setRecents] = useState<RecentFile[]>([]);
+  const [fileNotice, setFileNotice] = useState('');
+  const projectHandle = useRef<FileSystemFileHandle | undefined>(undefined);
   const diagnostic = new URLSearchParams(location.search).get('diagnostic') === '1';
   const fault = useRef<((kind: 'device-loss' | 'panic') => void) | undefined>(undefined);
   const api = useRef<EngineApi | undefined>(undefined);
@@ -52,6 +63,7 @@ export function App() {
     resetTransform();
     resetCrop();
     api.current = engine;
+    projectHandle.current = undefined;
     setEngineApi(() => engine);
     if (new URLSearchParams(location.search).get('diagnostic') === '1')
       Reflect.set(window, '__fotoeditor', engine);
@@ -73,6 +85,27 @@ export function App() {
   const working = !!busy || workerOperation || selectionBusy || transformBusy || cropBusy;
   const recovery = snapshot?.recovery;
   const recoverable = recovery?.candidates[0];
+  useEffect(() => {
+    let active = true;
+    void recentFiles()
+      .then((files) => {
+        if (active) setRecents(files);
+      })
+      .catch(() => {
+        if (active) setFileNotice('Recent files are unavailable in this browser.');
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+  const remember = async (handle: FileSystemFileHandle, kind: RecentFile['kind']) => {
+    try {
+      setRecents(await rememberFile(handle, kind));
+      setFileNotice('');
+    } catch {
+      setFileNotice('The file opened or saved, but could not be added to recent files.');
+    }
+  };
   useEffect(() => {
     if (recoverable && !recoveryDismissed && status === 'ready')
       recoveryDialog.current?.showModal();
@@ -103,9 +136,14 @@ export function App() {
       setNotice(String(e)),
     );
   };
-  const open = async (selected: File) => {
-    if (!api.current || working || useWorkspace.getState().snapshot?.painting) return;
-    const token = ++operation.current;
+  const open = async (selected: File, handle?: FileSystemFileHandle, pickedToken?: number) => {
+    if (
+      !api.current ||
+      (pickedToken === undefined && (working || useWorkspace.getState().snapshot?.painting))
+    )
+      return;
+    const token = pickedToken ?? ++operation.current;
+    if (token !== operation.current) return;
     workerJobStarted.current = false;
     setBusy('Opening ' + selected.name + '…');
     setNotice('');
@@ -116,15 +154,16 @@ export function App() {
         throw new Error(
           project ? 'Projects must be at most 4 GiB' : 'Image files must be at most 128 MiB',
         );
-      const bytes = project ? undefined : await selected.arrayBuffer();
       if (token !== operation.current) return;
       workerJobStarted.current = true;
       const next = project
         ? await api.current.openProjectFile(selected)
-        : await api.current.openImage(transfer(bytes!, [bytes!]), selected.name);
+        : await api.current.openImageFile(selected);
       if (token === operation.current) {
+        projectHandle.current = project ? handle : undefined;
         updateWorkspace({ snapshot: next });
         setNotice('Opened in ' + ((performance.now() - start) / 1000).toFixed(2) + ' s');
+        if (handle) await remember(handle, project ? 'project' : 'image');
       }
     } catch (e) {
       if (token === operation.current) setNotice(String(e));
@@ -132,7 +171,53 @@ export function App() {
       if (token === operation.current) setBusy('');
     }
   };
-  const saveProject = async () => {
+  const chooseFile = async (kind: RecentFile['kind'], recent?: RecentFile) => {
+    if (!api.current || working || painting) return;
+    const picker = Reflect.get(window, 'showOpenFilePicker') as
+      ((options: object) => Promise<FileSystemFileHandle[]>) | undefined;
+    if (!recent && !picker) {
+      (kind === 'project' ? projectFile : file).current?.click();
+      return;
+    }
+    const token = ++operation.current;
+    workerJobStarted.current = false;
+    setBusy(recent ? 'Opening ' + recent.name + '…' : 'Choose a file…');
+    setNotice('');
+    try {
+      let handle = recent?.handle;
+      if (handle) await filePermission(handle, 'read');
+      else
+        [handle] = await picker!({
+          multiple: false,
+          types: [
+            {
+              description: kind === 'project' ? 'FotoEditor project' : 'Images',
+              accept:
+                kind === 'project'
+                  ? { 'application/octet-stream': ['.cgfoto'] }
+                  : {
+                      'image/png': ['.png'],
+                      'image/jpeg': ['.jpg', '.jpeg'],
+                      'image/webp': ['.webp'],
+                      'image/bmp': ['.bmp'],
+                      'image/gif': ['.gif'],
+                      'image/tiff': ['.tif', '.tiff'],
+                      'image/vnd.adobe.photoshop': ['.psd'],
+                    },
+            },
+          ],
+        });
+      if (!handle || token !== operation.current) return;
+      const selected = await handle.getFile();
+      if (token !== operation.current) return;
+      await open(selected, handle, token);
+    } catch (e) {
+      if (token === operation.current && !pickerCancelled(e)) setNotice(fileAccessError(e));
+    } finally {
+      if (token === operation.current) setBusy('');
+    }
+  };
+  const saveProject = async (saveAs = false) => {
     if (!api.current || !doc || working) return;
     const token = ++operation.current;
     workerJobStarted.current = false;
@@ -141,8 +226,10 @@ export function App() {
     try {
       const picker = Reflect.get(window, 'showSaveFilePicker') as
         ((options: object) => Promise<FileSystemFileHandle>) | undefined;
-      if (picker) {
-        const handle = await picker({
+      let handle = saveAs ? undefined : projectHandle.current;
+      if (handle) await filePermission(handle, 'readwrite');
+      else if (picker)
+        handle = await picker({
           suggestedName: (snapshot?.name ?? 'Untitled').replace(/\.[^.]+$/, '') + '.cgfoto',
           types: [
             {
@@ -151,10 +238,14 @@ export function App() {
             },
           ],
         });
+      if (handle) {
         if (token !== operation.current) return;
         workerJobStarted.current = true;
         const size = await api.current.saveProjectFile(handle);
+        if (token !== operation.current) return;
+        projectHandle.current = handle;
         setNotice('Project saved · document only · ' + (size / 1048576).toFixed(1) + ' MiB');
+        await remember(handle, 'project');
         return;
       }
       workerJobStarted.current = true;
@@ -168,7 +259,7 @@ export function App() {
       setTimeout(() => URL.revokeObjectURL(url), 30000);
       setNotice('Project saved · document only · ' + (file.size / 1048576).toFixed(1) + ' MiB');
     } catch (e) {
-      if (token === operation.current) setNotice(String(e));
+      if (token === operation.current && !pickerCancelled(e)) setNotice(fileAccessError(e));
     } finally {
       if (token === operation.current) setBusy('');
     }
@@ -201,7 +292,10 @@ export function App() {
     if (useWorkspace.getState().snapshot?.painting || working) return;
     try {
       const next = await api.current?.newDocument(width, height, dpi);
-      if (next) updateWorkspace({ snapshot: next });
+      if (next) {
+        projectHandle.current = undefined;
+        updateWorkspace({ snapshot: next });
+      }
       setDialog(false);
       setNotice('');
     } catch (e) {
@@ -247,13 +341,13 @@ export function App() {
           </button>
           <button
             disabled={status !== 'ready' || working || painting}
-            onClick={() => file.current?.click()}
+            onClick={() => void chooseFile('image')}
           >
             Open image
           </button>
           <button
             disabled={status !== 'ready' || working || painting}
-            onClick={() => projectFile.current?.click()}
+            onClick={() => void chooseFile('project')}
           >
             Open project
           </button>
@@ -262,6 +356,12 @@ export function App() {
             onClick={() => void saveProject()}
           >
             Save project
+          </button>
+          <button
+            disabled={!doc || status !== 'ready' || working || painting}
+            onClick={() => void saveProject(true)}
+          >
+            Save project as
           </button>
           <button
             className="primary"
@@ -287,7 +387,7 @@ export function App() {
           ref={file}
           type="file"
           data-testid="open-image"
-          accept="image/png,image/jpeg,image/webp,image/bmp,image/gif,image/tiff,.png,.jpg,.jpeg,.webp,.bmp,.gif,.tif,.tiff"
+          accept="image/png,image/jpeg,image/webp,image/bmp,image/gif,image/tiff,image/vnd.adobe.photoshop,.png,.jpg,.jpeg,.webp,.bmp,.gif,.tif,.tiff,.psd"
           hidden
           onChange={(e) => {
             const selected = e.target.files?.[0];
@@ -296,6 +396,38 @@ export function App() {
           }}
         />
       </header>
+      <details className="recent-files">
+        <summary>Recent files</summary>
+        <div className="recent-list">
+          {recents.length === 0 && <p>No recent files. Open a file to add it here.</p>}
+          {recents.map((recent) => (
+            <div key={recent.id}>
+              <button
+                disabled={status !== 'ready' || working || painting}
+                onClick={(event) => {
+                  event.currentTarget.closest('details')?.removeAttribute('open');
+                  void chooseFile(recent.kind, recent);
+                }}
+              >
+                {recent.name}
+              </button>
+              <span>{recent.kind === 'project' ? 'Project' : 'Image'}</span>
+              <button
+                aria-label={'Remove ' + recent.name + ' from recent files'}
+                onClick={() => {
+                  void forgetRecent(recent.id)
+                    .then(() => setRecents((files) => files.filter((f) => f.id !== recent.id)))
+                    .catch(() => setFileNotice('Could not remove this recent file.'));
+                }}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+          {recents.length > 0 && <p>Opening a recent file may ask for access again.</p>}
+          {fileNotice && <p role="status">{fileNotice}</p>}
+        </div>
+      </details>
       <SelectionControls
         api={engineApi}
         disabled={!doc || status !== 'ready' || working || painting}
@@ -796,6 +928,7 @@ export function App() {
                 void api.current
                   ?.restoreRecovery(recoverable.file)
                   .then((next) => {
+                    projectHandle.current = undefined;
                     updateWorkspace({ snapshot: next });
                     setRecoveryDismissed(true);
                     setNotice('Session restored · fresh undo history');

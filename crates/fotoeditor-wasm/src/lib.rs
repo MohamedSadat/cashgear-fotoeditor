@@ -10,7 +10,7 @@ mod bridge {
     mod transforms;
     use fotoeditor_brush::{BrushSettings, Sample, StrokeCommand};
     use fotoeditor_core::{Document, History, HistoryLimits, Residency, ResolutionCommand, View};
-    use fotoeditor_io::{ExportJob, ImportJob, ProjectReader, ProjectWriter};
+    use fotoeditor_io::{ExportJob, ImportJob, ProjectReader, ProjectWriter, PsdImportJob};
     use std::cell::RefCell;
     use wasm_bindgen::prelude::*;
     const DISPLAY_SCRATCH: u64 = 1024 * 1024;
@@ -37,7 +37,8 @@ mod bridge {
         paint_complete_time: f64,
         view: View,
         dpr: f64,
-        import: Option<ImportJob>,
+        import: Option<ImageImport>,
+        import_ready: bool,
         export: Option<ExportJob>,
         project_read: Option<ProjectReader>,
         project_write: Option<ProjectWriter>,
@@ -53,6 +54,30 @@ mod bridge {
     // Lifecycle replacement starts a new editing session and releases its history.
     enum SessionCommand {
         ReplaceDocument(Document),
+    }
+    enum ImageImport {
+        Raster(ImportJob),
+        Psd(PsdImportJob),
+    }
+    impl ImageImport {
+        fn temporary_bytes(&self) -> u64 {
+            match self {
+                Self::Raster(job) => job.temporary_bytes(),
+                Self::Psd(job) => job.temporary_bytes(),
+            }
+        }
+        fn step(&mut self) -> Result<bool, String> {
+            match self {
+                Self::Raster(job) => Ok(job.step()),
+                Self::Psd(job) => job.step(),
+            }
+        }
+        fn finish(self) -> Result<Document, String> {
+            match self {
+                Self::Raster(job) => Ok(job.document),
+                Self::Psd(job) => job.finish(),
+            }
+        }
     }
     impl Engine {
         fn sync_view_geometry(&mut self) {
@@ -155,6 +180,7 @@ mod bridge {
                 view: View::default(),
                 dpr: 1.0,
                 import: None,
+                import_ready: false,
                 export: None,
                 project_read: None,
                 project_write: None,
@@ -551,9 +577,17 @@ mod bridge {
                 })
         }
         pub fn begin_import(&mut self, bytes: &[u8]) -> Result<(), JsValue> {
-            self.import = Some(
-                ImportJob::decode(bytes, self.residency()).map_err(|e| JsValue::from_str(&e))?,
-            );
+            self.import_ready = false;
+            let residency = self.residency();
+            self.import = Some(if bytes.starts_with(b"8BPS") {
+                ImageImport::Psd(
+                    PsdImportJob::new(bytes, residency).map_err(|e| JsValue::from_str(&e))?,
+                )
+            } else {
+                ImageImport::Raster(
+                    ImportJob::decode(bytes, residency).map_err(|e| JsValue::from_str(&e))?,
+                )
+            });
             Ok(())
         }
         pub fn import_step(&mut self) -> Result<bool, JsValue> {
@@ -561,12 +595,21 @@ mod bridge {
                 .import
                 .as_mut()
                 .ok_or_else(|| JsValue::from_str("No import in progress"))?
-                .step();
-            if done {
-                let job = self.import.take().unwrap();
-                self.execute(SessionCommand::ReplaceDocument(job.document));
-            }
+                .step()
+                .map_err(|e| JsValue::from_str(&e))?;
+            self.import_ready = done;
             Ok(done)
+        }
+        pub fn finish_import(&mut self) -> Result<(), JsValue> {
+            if !self.import_ready {
+                return Err(JsValue::from_str("Image import is incomplete"));
+            }
+            let job = self.import.take().ok_or("No import in progress")?;
+            self.import_ready = false;
+            self.execute(SessionCommand::ReplaceDocument(
+                job.finish().map_err(|e| JsValue::from_str(&e))?,
+            ));
+            Ok(())
         }
         pub fn begin_export(&mut self) -> Result<(), JsValue> {
             let source = if self.export_original() {
@@ -605,6 +648,7 @@ mod bridge {
             self.selected.cancel();
             self.layered.cancel();
             self.import = None;
+            self.import_ready = false;
             self.export = None;
             self.project_read = None;
             self.project_write = None;

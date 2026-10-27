@@ -120,7 +120,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       });
       await expect(page.getByTestId('operation-status')).toContainText('Unrecognized image');
       await expect(page.getByTestId('document-size')).toHaveText('513 × 259');
-      expect((await snap(page)).memory.temporary).toBe(0);
+      await expect.poll(async () => (await snap(page)).memory.temporary).toBe(0);
       // Cancel the visible opening operation; the old document must survive.
       await page.getByTestId('open-image').setInputFiles(resolve(fixtures, 'large.png'));
       await page.getByRole('button', { name: 'Cancel operation' }).click();

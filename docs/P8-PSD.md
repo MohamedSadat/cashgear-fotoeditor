@@ -53,6 +53,9 @@ poisoned failed jobs, invalid channel framing and full-budget admission refusal.
 regenerates the immutable oracles without changing them. Cargo tests do not need
 Python, internet access or Photoshop.
 
-Browser/worker/Desktop integration and the complete P8 acceptance checks remain
-separate gates. P5's Photoshop feather comparison remains pending: these mask
+Worker/browser integration passes the focused 146-case hardware checkpoint;
+WebView2 opens all 13 public files on both hardware APIs. Candidate cancellation,
+refusal, mask editing/undo/redo and ZIP preservation are covered. Complete P8
+acceptance and exact-head remote checks remain separate gates. P5's Photoshop
+feather comparison remains pending: these mask
 fixtures do not validate FotoEditor's feather operation.

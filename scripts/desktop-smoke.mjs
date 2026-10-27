@@ -883,6 +883,19 @@ try {
       expect(result.cropStraighten[key], key).toBe(true);
     expect(result.cropStraighten.revealed.width).toBeGreaterThan(32);
     expect(result.cropStraighten.revealed.height).toBeGreaterThan(24);
+    // The last direct RPC can finish before its final frame snapshot arrives.
+    // Observe that document first; an old idle snapshot can briefly leave Open enabled.
+    await page.waitForFunction((expected) => {
+      const snapshot = JSON.parse(
+        document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot,
+      );
+      return (
+        snapshot.document?.width === expected.width &&
+        snapshot.document?.height === expected.height &&
+        !snapshot.operation &&
+        !snapshot.painting
+      );
+    }, result.cropStraighten.revealed);
     result.extendedFormats = [];
     const exportedPng = () =>
       page.evaluate(async () => {
@@ -902,8 +915,8 @@ try {
       });
     for (const name of ['p8-input.bmp', 'p8-input.gif', 'p8-input.tiff', 'p8-icc-linear.png']) {
       // Direct diagnostic RPCs finish before the frame pump publishes its idle
-      // snapshot to React. A disabled input's change handler intentionally refuses work.
-      await expect(page.getByTestId('open-image')).toBeEnabled();
+      // snapshot to React. Wait for its actual Open control before dispatching a change.
+      await expect(page.getByRole('button', { name: 'Open image', exact: true })).toBeEnabled();
       await page
         .getByTestId('open-image')
         .setInputFiles(join(root, 'bench/results/fixtures', name));
@@ -926,14 +939,14 @@ try {
       ['p8-invalid-icc.png', /ICC/],
       ['p8-16bit.png', /16-bit/],
     ]) {
-      await expect(page.getByTestId('open-image')).toBeEnabled();
+      await expect(page.getByRole('button', { name: 'Open image', exact: true })).toBeEnabled();
       await page
         .getByTestId('open-image')
         .setInputFiles(join(root, 'bench/results/fixtures', name));
       await expect(page.getByTestId('operation-status')).toHaveText(error);
       expect(Buffer.from(await exportedPng()).equals(beforeRefusal)).toBe(true);
     }
-    await expect(page.getByTestId('open-project')).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Open project', exact: true })).toBeEnabled();
     await page
       .getByTestId('open-project')
       .setInputFiles(join(root, 'bench/results/fixtures/p8-native.cgfoto'));
@@ -950,6 +963,50 @@ try {
       retainedWidth: 257,
       retainedHeight: 259,
     });
+    result.psdImports = [];
+    const psdOracle = JSON.parse(
+      await readFile(join(root, 'tests/fixtures/psd/oracle.json'), 'utf8'),
+    );
+    for (const fixture of psdOracle.fixtures) {
+      await expect(page.getByRole('button', { name: 'Open image', exact: true })).toBeEnabled();
+      await page
+        .getByTestId('open-image')
+        .setInputFiles(join(root, 'tests/fixtures/psd', fixture.file));
+      await expect(page.getByTestId('operation-status')).toHaveText(/Opened in/);
+      await page.waitForFunction((file) => {
+        const s = JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot);
+        return s?.name === file && !s.operation && !s.painting;
+      }, fixture.file);
+      const actual = PNG.sync.read(Buffer.from(await exportedPng()));
+      const reference = PNG.sync.read(
+        await readFile(join(root, 'tests/fixtures/psd', fixture.compositeReference)),
+      );
+      expect([actual.width, actual.height]).toEqual([reference.width, reference.height]);
+      const maximum = [0, 0, 0, 0];
+      for (let at = 0; at < actual.data.length; at += 4) {
+        const alpha = actual.data[at + 3];
+        for (let channel = 0; channel < 3; channel++) {
+          const white = Math.floor(
+            (actual.data[at + channel] * alpha + 255 * (255 - alpha) + 127) / 255,
+          );
+          maximum[channel] = Math.max(
+            maximum[channel],
+            Math.abs(white - reference.data[at + channel]),
+          );
+        }
+        maximum[3] = Math.max(maximum[3], Math.abs(alpha - reference.data[at + 3]));
+      }
+      expect(
+        maximum.slice(0, 3).every((n) => n <= 2),
+        fixture.file + JSON.stringify(maximum),
+      ).toBe(true);
+      expect(maximum[3], fixture.file).toBeLessThanOrEqual(1);
+      result.psdImports.push({
+        file: fixture.file,
+        photoshop: fixture.photoshop,
+        maximumMatteRgbaError: maximum,
+      });
+    }
     result.software = process.env.GPU_TEST_SOFTWARE === '1';
     await mkdir(join(root, 'bench/results'), { recursive: true });
     await page.screenshot({ path: join(root, 'bench/results/desktop-p4-' + backend + '.png') });

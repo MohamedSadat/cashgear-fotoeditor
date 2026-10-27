@@ -408,11 +408,14 @@ impl Engine {
             .import
             .as_mut()
             .ok_or("No clipboard image import")?
-            .step();
+            .step()
+            .map_err(js)?;
         if done {
             let job = self.import.take().unwrap();
+            self.import_ready = false;
+            let document = job.finish().map_err(js)?;
             self.selected.clipboard = Some(ClipboardImage {
-                samples: Arc::new(job.document.raster().clone()),
+                samples: Arc::new(document.export_raster().map_err(js)?.clone()),
                 origin: [0, 0],
             });
             self.refresh_pages();

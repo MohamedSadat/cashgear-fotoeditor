@@ -2,19 +2,35 @@
 
 ## P8 - In progress; product choices recorded
 
-The user approved a 2,000,000-byte P8 gzip WASM limit on 2026-10-27. The standard
-ZIP-integrated release build passes at 4,280,109 bytes / gzip9 1,572,150. Earlier
-failures against the old gate remain recorded. Native import/ICC is committed at
-`d2ae624`; bounded ZIP/LZ4 serialization is committed at `7556b05`. Integration
-passes 168 Rust tests, native/WASM clippy, formatting, TypeScript, ESLint, 16
-Vitest cases, 458 license expressions and 72 focused hardware Chrome/Edge cases,
-each passing once with zero failures/skips/retries/global errors. The rebuilt
-Windows shell and expanded WebView2 smoke pass both NVIDIA APIs. The initial
-desktop attempt exposed a test race after direct diagnostic RPCs; the smoke now
-waits for the input's enabled state before dispatching a file change. Evidence is
-`bench/results/p8-zip-integration-*`. This is a checkpoint, not phase acceptance.
-Remote evidence still belongs to foundation `b881a1b`, whose CI/deployment pass
+The PSD/file-access checkpoint passes 171 Rust tests, native/WASM clippy,
+formatting, TypeScript, ESLint, 16 Vitest cases and 458 license expressions.
+The standard release is 4,322,993 bytes / gzip9 1,588,906, within the explicitly
+approved 2,000,000-byte P8 gate. All 146 focused installed Chrome/Edge cases pass
+once across both hardware APIs, without failures/skips/retries/global errors.
+The rebuilt WebView2 shell passes both NVIDIA APIs, including all 13 public PSDs
+on each backend. Evidence: `bench/results/p8-psd-ui-final-*`.
+
+Native PSD decoding is committed at `2cf5d5c`; worker/UI integration adds atomic
+and cancellable imports, bounded worker-side File reads, File System Access
+open/save/reuse and persistent recent handles with explicit permission handling.
+The pinned MIT corpus includes independent layer/mask references and identifiable
+Photoshop merged outputs; scoped results and refusal boundaries are in P8-PSD.md.
+This does not validate P5 feathering or every Photoshop rendering feature.
+
+Remote CI 40467804466 at `f589a0c` failed the desktop file-input test; deployment
+40467806895 passed. The earlier hidden-input enabled check did not observe the
+React race. The corrected smoke waits for the final crop snapshot and the visible
+Open control before dispatching imports; the current hardware runs pass. New-head
+remote verification remains required. Foundation `b881a1b` previously passed CI
 with 329 single-attempt software cases and both software WebView2 APIs.
+
+The real distinct dense 20-layer 6000x4000 save probe is substantially slower
+than the under-three-second criterion: Chrome/hardware WebGPU trials took
+65.407375, 65.599475 and 66.280645 seconds, producing 2,123,367,314-byte archives.
+Observed logical CPU residency peaked at 611,624,942 bytes. The OS cache was not
+cleared; these are first/warm trials, not disk-cold measurements. Evidence:
+`bench/results/p8-save-performance-probe.json`. Profiling/optimization and all
+four browser/API measurements remain. No performance exception is authorized.
 
 Started 2026-10-27 at the user's explicit fresh-session request, directly on clean
 main at `86043ed` / remotely verified `p7-transform`, without worktrees or agents.
@@ -45,8 +61,8 @@ fixture is generated and parsed as 7,680 cold tiles / 2,013,676,863 file bytes;
 this is fixture validation, not the outstanding under-three-second browser save
 measurement. See P8-DESIGN.md for source revision, hashes and exact limitations.
 
-Integrated formats/ICC/export/file controls, validated Photoshop interoperability,
-20-layer 24 MP save measurements and phase-wide local/remote gates remain. No
+The export dialog/JPEG/WebP controls, save optimization/canonical large-file
+validation, phase-wide regression and exact-head local/remote gates remain. No
 `p8-files` tag. P5/Ink deferrals and recorded P6/P7 limits retain their status.
 
 ## P7 - Delivered; release evidence is recorded by p7-transform
