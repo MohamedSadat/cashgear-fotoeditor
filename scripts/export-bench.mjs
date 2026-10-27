@@ -77,7 +77,9 @@ try {
         page.setDefaultTimeout(600000);
         const errors = [];
         page.on('pageerror', (error) => errors.push(String(error)));
-        await page.goto(base + '/?diagnostic=1' + (backend === 'WebGL2' ? '&gpu=webgl2' : ''));
+        await page.goto(
+          base + '/?diagnostic=1&document=1' + (backend === 'WebGL2' ? '&gpu=webgl2' : ''),
+        );
         await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');
         await expect(page.getByTestId('gpu-backend')).toHaveText(backend);
         const gpu = await page.evaluate(async () => {
@@ -105,7 +107,13 @@ try {
           const state = JSON.parse(
             document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot,
           );
-          return state?.document && !state.operation && !state.painting;
+          return (
+            state?.document &&
+            !state.operation &&
+            !state.painting &&
+            state.visibleTiles > 0 &&
+            state.refining === 0
+          );
         });
         const documentSize = await page.evaluate(
           () =>

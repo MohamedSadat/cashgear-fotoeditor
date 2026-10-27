@@ -88,7 +88,9 @@ try {
         page.setDefaultTimeout(600000);
         const errors = [];
         page.on('pageerror', (e) => errors.push(String(e)));
-        await page.goto(base + '/?diagnostic=1' + (backend === 'WebGL2' ? '&gpu=webgl2' : ''));
+        await page.goto(
+          base + '/?diagnostic=1&document=1' + (backend === 'WebGL2' ? '&gpu=webgl2' : ''),
+        );
         await expect(page.getByTestId('engine-status')).toHaveText('Engine ready', {
           timeout: 60000,
         });
@@ -137,7 +139,9 @@ try {
             state.layers.nodes.length === 20 &&
             !state.operation &&
             !state.painting &&
-            state.layers.compositing === 0
+            state.layers.compositing === 0 &&
+            state.visibleTiles > 0 &&
+            state.refining === 0
           );
         });
         const before = JSON.parse(

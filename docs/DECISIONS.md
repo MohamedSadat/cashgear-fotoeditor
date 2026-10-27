@@ -12,6 +12,11 @@
 - Still measure/report the complete Chrome/Edge hardware API matrix and first/
   warm conditions. This exception does not change exact sample/hash validation,
   CPU/GPU/file limits, required checks, remote CI or any other phase boundary.
+- Later screenshot review found that the initial harness left the diagnostic
+  texture on screen while timing real document I/O. Those API timings are
+  retained as superseded evidence. Final measurements use normal document mode
+  and require populated visible tiles before timing; the explicit P12 deferral
+  of the speed target remains the user's selected acceptance boundary.
 
 ## 2026-10-27 - P8 export execution and sources
 

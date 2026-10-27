@@ -335,3 +335,34 @@ that audit required no product/sample change. Evidence is
 
 Still required: save performance investigation, full regression/current desktop
 checks and final-head remote gates. PSD export and HEIC remain unselected.
+
+## Final color/measurement audit
+
+The image BMP decoder skips V4/V5 color fields. A bounded adapter now extracts
+embedded V5 RGB ICC data using DIB-relative offsets, rejects overlap/truncation,
+caps profiles at 4 MiB and routes them through the existing qcms conversion.
+Explicit sRGB/Windows-sRGB definitions are accepted; linked, calibrated and unknown
+definitions are refused rather than silently interpreted as sRGB. No external
+profile path is followed. Field layout follows Microsoft's
+[BITMAPV5HEADER](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-bitmapv5header).
+The added native test covers alpha-zero RGB, all alpha extremes, linear conversion
+and invalid extents/color definitions. All 174 Rust tests and native/WASM clippy
+pass. Independent Pillow/LittleCMS 2.19 compares both 257x259 PNG/BMP linear inputs
+at maximum RGBA error `[1, 1, 0, 0]`, with exact alpha, including hidden RGB.
+Production WASM is 4,443,265 bytes / gzip9 1,639,949. All 40 focused hardware
+format/export browser cases pass once with no errors/skips/retries. Rebuilt
+WebView2 passes both NVIDIA APIs, including the tagged BMP and refusal case.
+Evidence: `bench/results/p8-bmp-icc-*`.
+
+Screenshot inspection exposed a benchmark-harness mistake: it timed genuine
+document I/O but left the fixed diagnostic texture onscreen. Those reports/logs
+and archives are retained as superseded `p8-*-diagnostic-*` evidence. Final
+benchmarks request `document=1` and require visible tiles with completed
+refinement before timing. Normal-document runs must complete before acceptance.
+The user's explicit speed-target deferral to P12 remains recorded in DECISIONS.md.
+
+Independent audits of both large encoded variants match the same canonical
+document hash. Their sole ZIP entry difference is `composite.png`: maximum RGB
+backend error is one, alpha is exact, and its encoded length differs by one byte.
+Manifest, thumbnail and all authoritative tile payloads agree. This does not
+substitute preview comparisons for document sample validation.

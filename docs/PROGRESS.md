@@ -2,6 +2,25 @@
 
 ## P8 - In progress; product choices recorded
 
+The final import audit adds bounded BMP V5 ICC extraction; the base decoder
+ignored V4/V5 color definitions. All 174 Rust tests, native/WASM clippy and the
+standard build pass at 4,443,265 raw / gzip9 1,639,949 bytes. Independent
+LittleCMS comparisons of PNG and BMP have maximum error `[1, 1, 0, 0]`, including
+exact alpha/hidden RGB. All 40 focused format/export hardware browser cases pass
+once, without errors/skips/retries. Rebuilt WebView2 passes both NVIDIA APIs,
+five extended inputs, 13 PSDs and four export modes per backend. Evidence:
+`bench/results/p8-bmp-icc-*`.
+
+The completed initial 16-save/64-export matrix timed real document work but used
+the fixed diagnostic onscreen scene. Screenshot review caught this harness error;
+data/archives are retained under `p8-*-diagnostic-*` as superseded evidence. Final
+runners use normal document mode and require populated visible tiles/refinement
+completion. Their corrected matrices and full hardware regression remain gates;
+the explicit P12 save-speed deferral is unchanged.
+The corrected normal-document export proof completes all four formats with
+visible document tiles and 16.1 MiB GPU residency; its screenshot shows the
+actual 24 MP photo. Full corrected matrices remain required.
+
 The integrated source is committed/pushed through `d05d5d1`. Its current worker
 passes all 128 focused hardware file/export/PSD/viewport/GPU cases on one attempt
 each, with no errors/skips/retries. The rebuilt expanded WebView2 smoke passes
