@@ -50,14 +50,21 @@ if (release) {
   module.dispose();
   await writeFile(path, bytes);
   const gzippedBytes = gzipSync(bytes, { level: 9 }).length;
-  const report = { wasmBytes: bytes.length, gzippedBytes, limitBytes: 1500000 };
+  const report = { wasmBytes: bytes.length, gzippedBytes, limitBytes: 2000000 };
   await mkdir(join(root, 'bench/results'), { recursive: true });
   await writeFile(
     join(root, 'bench/results/wasm-size.json'),
     JSON.stringify(report, null, 2) + '\n',
   );
   console.log(
-    'Release WASM: ' + bytes.length + ' bytes; gzip: ' + gzippedBytes + ' / 1500000 bytes',
+    'Release WASM: ' +
+      bytes.length +
+      ' bytes; gzip: ' +
+      gzippedBytes +
+      ' / ' +
+      report.limitBytes +
+      ' bytes',
   );
-  if (gzippedBytes > report.limitBytes) throw new Error('P0 WASM gzip size exceeds 1.5 MB');
+  if (gzippedBytes > report.limitBytes)
+    throw new Error('WASM gzip size exceeds the approved 2 MB P8 limit');
 }

@@ -205,7 +205,7 @@ failure; Retry creates a new canvas and worker.
 Additional diagnostic controls inject quota/partial-write failures or pause an
 uncommitted generation for renderer-kill tests. They are hidden in normal use.
 
-Production builds measure optimized WASM and enforce a maximum of 1,500,000
+Production builds measure optimized WASM and enforce P8's user-approved maximum of 2,000,000
 gzipped bytes. The report is written to bench/results/wasm-size.json.
 
 Read docs/DEPLOYMENT.md for static hosting and docs/DECISIONS.md for architectural

@@ -1,5 +1,27 @@
 # Decisions
 
+## 2026-10-27 - P8 WASM size budget
+
+- The user explicitly approved a 2,000,000-byte gzip WASM build gate for P8's
+  required codecs, PSD reader and ZIP/LZ4 support. Replace the former
+  1,500,000-byte gate while continuing to measure and optimize production size.
+- This changes only the WASM delivery-size gate. CPU/GPU residency, dimensions,
+  image/project file caps and all correctness/verification gates are unchanged.
+
+## 2026-10-27 - P8 product choices
+
+- PSD import only; raster-layer PSD export is outside the selected P8 scope.
+- Add BMP, GIF first-frame and 8-bit TIFF imports. HEIC is not selected.
+- Embed an sRGB ICC profile in PNG/JPEG/WebP exports by default.
+- Implement the original roadmap's ZIP/LZ4 project container, retaining `.cgfoto`
+  and backward reading of existing project versions. Preserve bounded streaming,
+  paging, exact samples/crop/guides, thumbnails/composite and schema validation.
+- No local Photoshop installation or fixture corpus is available. Investigate
+  public Photoshop-created fixtures and actual reference evidence; keep the
+  interoperability gate open until that validation passes.
+- These explicit answers replace the pending status in the initial checkpoint.
+  They do not waive the P5 feather comparison, performance or release gates.
+
 ## 2026-10-27 - P8 start and inherited boundaries
 
 - The user explicitly authorized P8 in this fresh session on main without
@@ -9,7 +31,8 @@
 - Retain the shipped `.cgfoto` extension and backward reading. Existing budgets,
   paging, exact straight alpha/hidden RGB, crop/guides and command rules persist.
 - PSD export scope, additional imports, ICC embedding default, container direction
-  and available Photoshop/fixture evidence were asked early and remain unanswered.
+  and available Photoshop/fixture evidence were unanswered at the initial
+  checkpoint; the later explicit choices above now apply.
   Independent reader tests and framing/provenance inspection may proceed; do not
   treat silence as approval of dependent choices or compatibility claims.
 - P5's identifiable Photoshop feather comparison remains pending, without

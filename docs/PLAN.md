@@ -290,11 +290,9 @@ annotation. P8 starts directly on main, without worktrees or agents.
   exact straight samples, hidden RGB, layer tree/properties, masks, adjustments,
   retained outside-crop generations, DPI and guides. Fresh history on reopen and
   session-only selections remain existing decisions.
-- The original format proposal is ZIP with versioned `manifest.json`, LZ4 tile
-  blobs, `thumbnail.png` and `composite.png`. Whether to implement that container
-  or extend the existing bounded streamed format is an explicit pending product
-  question. Keep `.cgfoto` and legacy reading. Do not assume this proposal is
-  already satisfied by the current uncompressed stream.
+- The user selected ZIP with versioned `manifest.json`, LZ4 tile blobs,
+  `thumbnail.png` and `composite.png`. Keep `.cgfoto` and legacy reading. Do not
+  assume this proposal is already satisfied by the current uncompressed stream.
 - Explicit schema compatibility/migrations and adversarial/fuzz reader coverage:
   invalid lengths, directories, checksums, versions, references, decompression
   limits and malformed metadata must never publish a partial candidate.
@@ -305,13 +303,13 @@ annotation. P8 starts directly on main, without worktrees or agents.
   full document/active layer/selection sources. Export only the visible canvas
   window. Lossy formats and JPEG's alpha matte must have explicit behavior.
 - Convert embedded ICC profiles to sRGB on import using a validated Rust color
-  management path. The original candidate is qcms. Export embedding defaults
-  remain a pending product choice; no silent unsupported-profile reinterpretation.
+  management path. Embed sRGB ICC by default, as selected by the user. No silent
+  unsupported-profile reinterpretation.
 - PSD raster import: correct layer order, opacity, supported blends, visibility
   and editable masks. Select/extend/replace the proposed `psd` crate based on its
   actual mask, bounds, channel and malformed-file behavior. Unsupported features
-  must be reported explicitly. Raster-layer PSD export is conditional on the
-  user's pending scope answer. No 16-bit downconversion hidden behind RGBA8 APIs.
+  must be reported explicitly. The user selected import only; PSD export is
+  outside P8. No 16-bit downconversion hidden behind RGBA8 APIs.
 - Validate Photoshop-created files using an identifiable corpus with provenance,
   expected metadata, layer/channel/mask samples and actual reference outputs.
   Synthetic/self-roundtrip fixtures alone cannot establish Photoshop compatibility.
@@ -328,18 +326,19 @@ annotation. P8 starts directly on main, without worktrees or agents.
   WebView2, measured hardware results and exact-final-head remote CI/deployment
   are required. Inspect artifacts for failed/skipped/retried cases. Publish
   `p8-files` only after all applicable acceptance passes; report and stop before P9.
+- P8's gzip WASM limit is 2,000,000 bytes, explicitly approved by the user on
+  2026-10-27. Earlier phase size reports retain their historical 1,500,000-byte gate.
 - Carry forward P5's pending identifiable Photoshop feather comparison without
   `p5-select`, the approved physical Ink deferral and the reported P6/P7 limits.
 
-## P8 unresolved questions (asked 2026-10-27)
+## P8 product questions (answered 2026-10-27)
 
-1. PSD import only, or import plus raster-layer export?
-2. Additional imports: BMP/GIF first frame/8-bit TIFF, and whether to assess HEIC?
-3. Embed sRGB ICC by default on exports?
-4. ZIP/LZ4 project container versus extension of the current streamed format?
-5. Available Photoshop installation or identifiable PSD corpus/reference outputs?
+1. PSD import only.
+2. BMP, GIF first frame and 8-bit TIFF; HEIC not selected.
+3. Embed sRGB ICC by default on exports.
+4. Implement ZIP/LZ4 projects, preserving `.cgfoto` and backward reading.
+5. No local Photoshop or fixtures. Investigate public corpus; actual validation
+   remains an acceptance gate.
 
 The existing `.cgfoto` extension is retained rather than asking again about an
-already shipped product name. Pending answers do not prevent independent reader
-hardening, format inspection and evidence planning. They do gate dependent scope
-and dependency selections. See P8-DESIGN.md for the current investigation.
+already shipped product name. See P8-DESIGN.md for the current investigation.
