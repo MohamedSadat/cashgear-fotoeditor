@@ -24,7 +24,7 @@ const pixel = (png: PNG, x: number, y: number) => [
 async function setup(page: Page, backend: string) {
   await page.goto('/?diagnostic=1&document=1' + (backend === 'WebGL2' ? '&gpu=webgl2' : ''));
   await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');
-  await whenIdle(page, () =>
+  const prepared = await whenIdle(page, () =>
     page.evaluate(async () => {
       const api = Reflect.get(window, '__fotoeditor') as EngineApi;
       await api.newDocument(512, 256, 300);
@@ -40,10 +40,13 @@ async function setup(page: Page, backend: string) {
         });
         await api.selectionAction({ kind: 'fill', color: [...color] });
       }
-      await api.selectionAction({ kind: 'none' });
+      const s = await api.selectionAction({ kind: 'none' });
       await api.interact([{ kind: 'actual', x: 0, y: 0, amount: 0 }]);
+      return s;
     }),
   );
+  await expect.poll(async () => (await state(page)).revision).toBe(prepared.revision);
+  await idle(page);
   await expect(page.getByTestId('zoom')).toHaveText('100.0%');
   await page.getByRole('combobox', { name: 'Brush preset' }).selectOption('Pixel pencil');
   await page.getByRole('button', { name: 'Clone Stamp', exact: true }).click();
@@ -167,18 +170,20 @@ for (const backend of ['WebGPU', 'WebGL2']) {
     const origin = await setup(page, backend);
     await pick(page, origin);
     await page.getByRole('combobox', { name: 'Brush preset' }).selectOption('Hard round');
-    const baseline = await whenIdle(page, () =>
+    const selected = await whenIdle(page, () =>
       page.evaluate(async () => {
         const api = Reflect.get(window, '__fotoeditor') as EngineApi;
-        const s = await api.selectionAction({
+        return api.selectionAction({
           kind: 'shape',
           shape: { kind: 'rectangle', x0: 256, y0: 0, x1: 512, y1: 256 },
           mode: 'new',
           antialias: false,
         });
-        return s.history.undo;
       }),
     );
+    await expect.poll(async () => (await state(page)).revision).toBe(selected.revision);
+    await idle(page);
+    const baseline = selected.history.undo;
     const before = await exported(page);
     await page.mouse.click(origin.x + 256.5, origin.y + 128.5);
     await idle(page, baseline + 1);

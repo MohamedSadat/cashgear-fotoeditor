@@ -208,6 +208,9 @@ All 36 local software cases (three repetitions of the complete clone matrix)
 and sixteen installed-browser hardware cases pass with the corrected fixture,
 one attempt each, without skips, retries, flaky cases or global errors. Only
 test synchronization and this report changed; runtime/performance code is intact.
+The remaining setup/selection preparation paths use the same revision/idle
+barrier; the complete twelve-case software clone matrix also passes after that
+extension, without retries, skips, flaky cases or global errors.
 
 Earlier serial-native input delivered only 170-197 requested moves per four
 seconds. Later probes corrected bounded input delivery, pressed-button state and
