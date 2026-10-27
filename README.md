@@ -211,6 +211,20 @@ environment browser flags, as documented in
 [Microsoft's WebView2 guidance](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/security#for-an-elevated-host-app-use-appropriate-override-flags).
 Normal app launches do not expose a debugging port.
 
+P8 hardware measurements use `pnpm bench:files` and `pnpm bench:export`, after a
+production build. Generate the distinct dense save fixture with:
+
+    cargo run --release -p fotoeditor-io --example layers -- bench/results/fixtures/p8-layers-20-6000x4000.cgfoto 6000 4000 20
+
+The export benchmark reuses the existing P5/P6 `p5-photo.png` 6000x4000 reference.
+Both scripts refuse software adapters and record runtime asset hashes, actual
+encoded lengths and logical residency. Run them without competing tests/builds.
+Defaults are one first and three warm trials per Chrome/Edge hardware API;
+P8_SAVE_TRIALS/P8_EXPORT_TRIALS and the corresponding CHANNELS/BACKENDS variables
+support focused probes. Reports stay in bench/results. The real dense save is
+slower than the original three-second target; the user accepted that measured P8
+limit and deferred the speed target to P12. See docs/DECISIONS.md.
+
 Use ?gpu=webgl2 to force WebGL2. The ?diagnostic=1 scene uploads a 2x2 texture from
 Rust and displays red, green, blue, and white quadrants. Its diagnostic controls
 exercise device-loss and panic recovery. ?diagnostic=1&fault=init tests initialization
