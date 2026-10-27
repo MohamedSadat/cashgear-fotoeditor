@@ -25,6 +25,27 @@ export interface FrameResult extends PhysicalSize {
   snapshot?: DocumentSnapshot;
 }
 export interface DocumentSnapshot {
+  projectSavePaused?: boolean;
+  imageExportTiming?: {
+    serial: number;
+    captureMs: number;
+    encodeAndWriteMs: number;
+    codecHeapPeakBytes: number;
+    codecHeapLimitBytes: number;
+    logicalCpuAtCodecPeakBytes: number;
+    bytes: number;
+  };
+  projectSaveTiming?: {
+    serial: number;
+    totalMs: number;
+    hydrateMs: number;
+    encodeMs: number;
+    writeMs: number;
+    yieldMs: number;
+    writes: number;
+    packets: number;
+    bytes: number;
+  };
   importPaused?: boolean;
   transform?: {
     target: number;
@@ -127,6 +148,9 @@ export interface Interaction {
   sample?: [number, number, number, number, number, number];
 }
 export interface EngineApi {
+  diagnosticProjectSaveFault(fault: 'pause-after-write' | 'quota'): void | Promise<void>;
+  diagnosticExportBudget(): void | Promise<void>;
+  exportImage(options: ImageExportOptions): Promise<File>;
   diagnosticImportFault(): void | Promise<void>;
   geometryMetadata(action: GeometryMetadata): Promise<DocumentSnapshot>;
   geometryAction(action: GeometryAction): Promise<DocumentSnapshot>;
@@ -196,6 +220,14 @@ export interface EngineApi {
   openImageFile(file: File): Promise<DocumentSnapshot>;
   exportPng(): Promise<Uint8Array>;
   cancelJob(): boolean | Promise<boolean>;
+}
+export interface ImageExportOptions {
+  format: 'png' | 'jpeg' | 'webp';
+  source: 'full' | 'layer' | 'selection';
+  quality: number;
+  lossless: boolean;
+  embedIcc: boolean;
+  matte: [number, number, number];
 }
 export interface Guide {
   axis: 'horizontal' | 'vertical';
@@ -359,3 +391,5 @@ export interface EngineFatalEvent {
   type: 'engine-fatal';
   message: string;
 }
+export type CodecHostRequest =
+  { type: 'codec-start'; id: string; port: MessagePort } | { type: 'codec-stop'; id: string };

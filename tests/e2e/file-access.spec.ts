@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { PNG } from 'pngjs';
 import type { EngineApi, DocumentSnapshot } from '../../apps/web/src/engine/types';
 import { whenIdle } from './idle';
 const snapshot = async (page: import('@playwright/test').Page) =>
@@ -6,6 +7,85 @@ const snapshot = async (page: import('@playwright/test').Page) =>
     (await page.getByTestId('gpu-canvas').getAttribute('data-snapshot'))!,
   ) as DocumentSnapshot;
 for (const backend of ['WebGPU', 'WebGL2']) {
+  test(
+    backend +
+      ' aborts cancelled and failed project writes before releasing the file-job reservation',
+    async ({ page }) => {
+      await page.goto('/?diagnostic=1&document=1' + (backend === 'WebGL2' ? '&gpu=webgl2' : ''));
+      await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');
+      const result = await whenIdle(page, () =>
+        page.evaluate(async () => {
+          const api = Reflect.get(window, '__fotoeditor') as EngineApi;
+          await api.newDocument(4, 4, 72);
+          await api.selectionAction({ kind: 'fill', color: [201, 33, 77, 128] });
+          await api.selectionAction({ kind: 'fill', color: [11, 93, 57, 255] });
+          await api.interact([{ kind: 'undo', x: 0, y: 0, amount: 0 }]);
+          const before = Array.from(await api.exportPng());
+          const handle = await (
+            await navigator.storage.getDirectory()
+          ).getFileHandle('atomic-target.cgfoto', { create: true });
+          const original = await handle.createWritable();
+          await original.write(new Uint8Array([53, 77, 91]));
+          await original.close();
+          await api.diagnosticProjectSaveFault('pause-after-write');
+          const saving = api.saveProjectFile(handle).then(
+            () => 'unexpected success',
+            (error) => String(error),
+          );
+          const deadline = performance.now() + 30_000;
+          let paused = false;
+          while (performance.now() < deadline) {
+            const state = JSON.parse(
+              document.querySelector('[data-testid="gpu-canvas"]')!.getAttribute('data-snapshot')!,
+            );
+            if (state?.projectSavePaused) {
+              paused = true;
+              break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 5));
+          }
+          if (!paused) throw new Error('Project write did not pause');
+          const cancelled = await api.cancelJob();
+          const cancellation = await saving;
+          const afterCancel = Array.from(
+            new Uint8Array(await (await handle.getFile()).arrayBuffer()),
+          );
+          await api.diagnosticProjectSaveFault('quota');
+          let failure = '';
+          try {
+            await api.saveProjectFile(handle);
+          } catch (error) {
+            failure = String(error);
+          }
+          const afterFailure = Array.from(
+            new Uint8Array(await (await handle.getFile()).arrayBuffer()),
+          );
+          const after = Array.from(await api.exportPng());
+          await api.interact([{ kind: 'redo', x: 0, y: 0, amount: 0 }]);
+          const redone = Array.from(await api.exportPng());
+          return {
+            before,
+            after,
+            redone,
+            cancelled,
+            cancellation,
+            failure,
+            afterCancel,
+            afterFailure,
+          };
+        }),
+      );
+      expect(result.cancelled).toBe(true);
+      expect(result.cancellation).toMatch(/cancelled/);
+      expect(result.failure).toMatch(/write failure/);
+      expect(result.after).toEqual(result.before);
+      expect(result.afterCancel).toEqual([53, 77, 91]);
+      expect(result.afterFailure).toEqual([53, 77, 91]);
+      expect(Array.from(PNG.sync.read(Buffer.from(result.redone)).data.subarray(0, 4))).toEqual([
+        11, 93, 57, 255,
+      ]);
+    },
+  );
   test(
     backend +
       ' image import clears the project handle and rejects a wrong save extension without overwriting files',

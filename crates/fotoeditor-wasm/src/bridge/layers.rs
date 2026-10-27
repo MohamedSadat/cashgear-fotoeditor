@@ -859,6 +859,9 @@ impl Engine {
                 if let Some(j) = &self.export {
                     j.needed(&mut add);
                 }
+                if let Some(j) = &self.export_pixels {
+                    j.needed(&mut add);
+                }
             }
             "selection" => self.selected.needed(&mut add),
             "selection-seed" => self.selected.seed_needed(&mut add),

@@ -2,6 +2,37 @@
 
 ## P8 - In progress; product choices recorded
 
+Native export sources/codecs are committed at `f6d86ed`. The integrated export
+candidate passes 173 Rust tests, native/WASM clippy, formatting, TypeScript,
+ESLint, 16 Vitest cases and 459 license expressions. Release WASM is 4,440,303
+bytes / gzip9 1,638,683. The sibling-worker integration passes all 124 focused
+Chrome/Edge hardware cases once without failures/skips/retries/global errors.
+The rebuilt WebView2 passes both NVIDIA APIs, including 13 PSD files and all
+four export modes per backend. A subsequent file-cancellation reservation fix
+passes all 28 export/file-access cases once, including real writable abort and
+late-write-failure preservation of the old destination, pixels and redo.
+Evidence: `bench/results/p8-export-*`. P8-EXPORT.md documents sources, memory,
+codec limits and the observed WebView2 nested-worker failure/fixed sibling route.
+
+Independent Pillow/libjpeg/libwebp checks validate six tagged/untagged exports:
+both WebP alpha planes and lossless RGBA are exact, ICC presence/absence agrees,
+and JPEG is opaque at 300 DPI. The independent large-project audit decodes all
+7,680 LZ4 tile payloads and checks ZIP CRCs. Applying legacy canvas/guide defaults,
+source and saved canonical document SHA-256 both equal
+`7e7073f7c09310418c777f351369f4df961d22429a01ccafe9b8165e65990db6`.
+See `bench/results/p8-large-canonical-reference.json`. The first audit draft
+incorrectly included serialization-version/default-field differences; that
+comparison was corrected without changing project data or samples.
+
+Project output now batches bounded writes and records paging/encoding/write/yield
+timings. The first isolated buffered Chrome/WebGPU save takes 51.952315 seconds:
+25.314535 s paging, 13.118800 s encoding, 8.759465 s writes and 4.436985 s yields.
+The user explicitly accepted the measured P8 limit and deferred the original
+under-three-second target to P12. It remains a miss, not a passed speed target.
+The complete hardware measurement matrix is still required.
+Final full-suite hardware regression, current desktop cancellation verification,
+all four performance combinations and exact-head remote checks remain required.
+
 The PSD/file-access checkpoint passes 171 Rust tests, native/WASM clippy,
 formatting, TypeScript, ESLint, 16 Vitest cases and 458 license expressions.
 The standard release is 4,322,993 bytes / gzip9 1,588,906, within the explicitly
@@ -29,8 +60,8 @@ than the under-three-second criterion: Chrome/hardware WebGPU trials took
 65.407375, 65.599475 and 66.280645 seconds, producing 2,123,367,314-byte archives.
 Observed logical CPU residency peaked at 611,624,942 bytes. The OS cache was not
 cleared; these are first/warm trials, not disk-cold measurements. Evidence:
-`bench/results/p8-save-performance-probe.json`. Profiling/optimization and all
-four browser/API measurements remain. No performance exception is authorized.
+`bench/results/p8-save-performance-probe.json`. The later explicitly approved
+P12 deferral is recorded above; all four browser/API measurements remain.
 
 Started 2026-10-27 at the user's explicit fresh-session request, directly on clean
 main at `86043ed` / remotely verified `p7-transform`, without worktrees or agents.

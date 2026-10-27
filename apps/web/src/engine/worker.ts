@@ -7,7 +7,7 @@ import type {
   Interaction,
   TransformUpdate,
 } from './types';
-import initWasm, { Engine } from './pkg/fotoeditor_wasm';
+import initWasm, { Engine, codec_chunk } from './pkg/fotoeditor_wasm';
 import type { Adjustment, AdjustmentPreviewTarget, SpatialFilter, DocumentSnapshot } from './types';
 import type { RecoveryStatus } from './types';
 import { RecoveryStore } from './recovery';
@@ -37,6 +37,8 @@ let dirty = true;
 let refining = false;
 let operation: string | undefined;
 let projectTiming: { copyMs: number; validateMs: number; compositeMs: number } | undefined;
+let projectSaveTiming: DocumentSnapshot['projectSaveTiming'];
+let imageExportTiming: DocumentSnapshot['imageExportTiming'];
 let recovery: RecoveryStatus = { state: 'starting', persistent: 'unavailable', candidates: [] };
 let store: RecoveryStore | undefined;
 let savedRevision = -1;
@@ -55,6 +57,46 @@ let pauseNextImport = false;
 let importPaused = false;
 let releaseImportPause: (() => void) | undefined;
 let activeImageReader: FileReader | undefined;
+let cancelCodec: (() => void) | undefined;
+let exportBudgetFault = false;
+let activeFileJob: Promise<void> | undefined;
+let projectSaveFault: 'pause-after-write' | 'quota' | undefined;
+let releaseProjectSavePause: (() => void) | undefined;
+let projectSavePaused = false;
+function beginFileJob() {
+  let finish!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  activeFileJob = pending;
+  return () => {
+    if (activeFileJob === pending) activeFileJob = undefined;
+    finish();
+  };
+}
+const codecErrors = new Map<string, (error: Error) => void>();
+self.addEventListener(
+  'message',
+  (event: MessageEvent<{ type?: string; id?: string; error?: string }>) => {
+    if (event.data?.type === 'codec-error' && event.data.id)
+      codecErrors.get(event.data.id)?.(new Error(event.data.error ?? 'Image codec worker failed'));
+  },
+);
+function createCodecWorker() {
+  const id = crypto.randomUUID();
+  const channel = new MessageChannel();
+  // Main-thread creation avoids the WebView2 custom-protocol nested-worker bug.
+  self.postMessage({ type: 'codec-start', id, port: channel.port2 }, [channel.port2]);
+  return {
+    id,
+    port: channel.port1,
+    terminate() {
+      codecErrors.delete(id);
+      channel.port1.close();
+      self.postMessage({ type: 'codec-stop', id });
+    },
+  };
+}
 let histogramRunning = false;
 let previewRequest = 0;
 let previewKey: string | undefined;
@@ -79,6 +121,9 @@ function snapshot(): DocumentSnapshot {
     selection: { ...state.selection, timing: selectionTiming },
     operation,
     projectTiming,
+    projectSaveTiming,
+    imageExportTiming,
+    projectSavePaused,
     adjustmentTiming,
     filterTiming,
     geometryTiming,
@@ -134,6 +179,7 @@ async function importImage(input: File | ArrayBuffer, fileName: string): Promise
   busy = true;
   operation = 'Reading image…';
   const token = beginJob();
+  const finishFileJob = beginFileJob();
   const priorExternal = externalBytes;
   const pauseBeforeCommit = pauseNextImport;
   pauseNextImport = false;
@@ -178,11 +224,15 @@ async function importImage(input: File | ArrayBuffer, fileName: string): Promise
     });
     return snapshot();
   } finally {
-    if (token === job) {
-      e.cancel_job();
-      external(priorExternal);
-      busy = false;
-      operation = undefined;
+    try {
+      if (token === job) {
+        e.cancel_job();
+        external(priorExternal);
+        busy = false;
+        operation = undefined;
+      }
+    } finally {
+      finishFileJob();
     }
   }
 }
@@ -334,7 +384,50 @@ async function writeZip(write: (bytes: Uint8Array) => Promise<void>, token: numb
   const maskView = e.mask_view_enabled();
   fileMaskView = maskView;
   let written = 0;
+  const priorExternal = externalBytes;
+  const timing = {
+    serial: (projectSaveTiming?.serial ?? 0) + 1,
+    totalMs: 0,
+    hydrateMs: 0,
+    encodeMs: 0,
+    writeMs: 0,
+    yieldMs: 0,
+    writes: 0,
+    packets: 0,
+    bytes: 0,
+  };
+  const started = performance.now();
+  const fault = projectSaveFault;
+  projectSaveFault = undefined;
   try {
+    // One batching buffer, one browser write copy and bounded bridge/paging
+    // scratch coexist. Admit before allocating or beginning the Rust writer.
+    external(priorExternal + 16 * CHUNK);
+    const pending = new Uint8Array(4 * CHUNK);
+    let buffered = 0;
+    const flush = async () => {
+      if (!buffered) return;
+      cancelled(token);
+      const start = performance.now();
+      await write(pending.subarray(0, buffered));
+      if (timing.writes === 0 && fault) {
+        if (fault === 'quota')
+          throw new DOMException('Diagnostic project write failure', 'QuotaExceededError');
+        projectSavePaused = true;
+        try {
+          await new Promise<void>((resolve) => {
+            releaseProjectSavePause = resolve;
+          });
+        } finally {
+          releaseProjectSavePause = undefined;
+          projectSavePaused = false;
+        }
+      }
+      cancelled(token);
+      timing.writeMs += performance.now() - start;
+      timing.writes++;
+      buffered = 0;
+    };
     if (maskView) {
       e.preview_mask(false);
       await recompose(token);
@@ -342,19 +435,33 @@ async function writeZip(write: (bytes: Uint8Array) => Promise<void>, token: numb
     e.zip_write_begin();
     for (;;) {
       cancelled(token);
+      let start = performance.now();
       await pages.hydrate(e, 'write');
+      timing.hydrateMs += performance.now() - start;
+      start = performance.now();
       const bytes = e.zip_write_next();
+      timing.encodeMs += performance.now() - start;
       if (!bytes) break;
       if (bytes.length) {
-        await write(bytes);
+        if (bytes.length > pending.length - buffered) await flush();
+        pending.set(bytes, buffered);
+        buffered += bytes.length;
         written += bytes.length;
+        timing.packets++;
       }
+      start = performance.now();
       await yieldProjectTask();
+      timing.yieldMs += performance.now() - start;
     }
+    await flush();
+    timing.totalMs = performance.now() - started;
+    timing.bytes = written;
+    projectSaveTiming = timing;
     return written;
   } finally {
     if (token === job) {
       e.cancel_job();
+      external(priorExternal);
       fileMaskView = false;
       if (maskView) {
         e.preview_mask(true);
@@ -840,6 +947,167 @@ async function runTransformPreview(update: TransformUpdate) {
   }
 }
 const api: EngineApi = {
+  diagnosticProjectSaveFault(fault) {
+    if (!diagnostic) throw new Error('Project diagnostics are disabled');
+    projectSaveFault = fault;
+  },
+  diagnosticExportBudget() {
+    if (!diagnostic) throw new Error('Export diagnostics are disabled');
+    exportBudgetFault = true;
+  },
+  async exportImage(options) {
+    const e = requireIdle();
+    busy = true;
+    operation = 'Exporting image…';
+    const token = beginJob();
+    const finishFileJob = beginFileJob();
+    const priorExternal = externalBytes;
+    const maskView = e.mask_view_enabled();
+    const budgetFault = exportBudgetFault;
+    exportBudgetFault = false;
+    let created: string | undefined;
+    let complete = false;
+    let helper: ReturnType<typeof createCodecWorker> | undefined;
+    const started = performance.now();
+    let codecHeapPeakBytes = 0;
+    let codecHeapLimitBytes = 0;
+    let codecBaseline = 0;
+    try {
+      fileMaskView = maskView;
+      if (maskView) {
+        e.preview_mask(false);
+        await recompose(token);
+      }
+      const document = snapshot().document!;
+      e.begin_image_export(JSON.stringify(options));
+      while (true) {
+        await yieldProjectTask();
+        cancelled(token);
+        await pages.hydrate(e, 'export');
+        if (options.format === 'png' ? e.export_step() : e.capture_step()) break;
+      }
+      const { id, handle } = await pages.create();
+      const captureMs = performance.now() - started;
+      created = id;
+      cancelled(token);
+      let length: number;
+      if (options.format === 'png') {
+        length = e.finish_export_file();
+        external(priorExternal + 8 * CHUNK);
+        const access = await handle.createSyncAccessHandle();
+        try {
+          for (let offset = 0; offset < length;) {
+            cancelled(token);
+            const bytes = codec_chunk(offset);
+            if (!bytes.length) throw new Error('Incomplete encoded image');
+            let written = 0;
+            while (written < bytes.length) {
+              const count = access.write(bytes.subarray(written), { at: offset + written });
+              if (!Number.isInteger(count) || count <= 0 || count > bytes.length - written)
+                throw new Error('Image export storage write failed');
+              written += count;
+            }
+            offset += bytes.length;
+            await yieldProjectTask();
+          }
+          access.truncate(length);
+          access.flush();
+        } finally {
+          access.close();
+        }
+      } else {
+        const pixels = e.finish_capture();
+        external(priorExternal + pixels.byteLength + 8 * CHUNK);
+        await pages.persist(e);
+        cancelled(token);
+        e.page_evict(64 * CHUNK, '[]');
+        const budget = budgetFault
+          ? Math.min(256 * 1024, e.export_codec_budget())
+          : e.export_codec_budget();
+        // Reserve the helper's entire heap allowance in the owner while it runs.
+        codecHeapLimitBytes = budget;
+        codecBaseline = 768 * CHUNK - e.export_codec_budget();
+        external(externalBytes + budget);
+        helper = createCodecWorker();
+        operation = 'Encoding ' + (options.format === 'webp' ? 'WebP' : 'JPEG') + '…';
+        const endpoint = helper;
+        const worker = endpoint.port;
+        length = await new Promise<number>((resolve, reject) => {
+          cancelCodec = () => {
+            endpoint.terminate();
+            reject(new Error('Operation cancelled'));
+          };
+          codecErrors.set(endpoint.id, reject);
+          worker.onmessageerror = () => reject(new Error('Could not read an image codec response'));
+          worker.onmessage = ({
+            data,
+          }: MessageEvent<{ length?: number; peak?: number; error?: string }>) => {
+            codecHeapPeakBytes = data.peak ?? 0;
+            if (data.error) reject(new Error(data.error));
+            else if (
+              !Number.isInteger(data.length) ||
+              data.length! <= 0 ||
+              data.length! > 128 * CHUNK
+            )
+              reject(new Error('Invalid encoded image length'));
+            else resolve(data.length!);
+          };
+          worker.postMessage(
+            {
+              pixels: pixels.buffer,
+              width: document.width,
+              height: document.height,
+              dpi: document.dpi,
+              options,
+              handle,
+              budget,
+            },
+            [pixels.buffer],
+          );
+          worker.start();
+        });
+        helper.terminate();
+        helper = undefined;
+        cancelCodec = undefined;
+      }
+      cancelled(token);
+      const file = await handle.getFile();
+      if (file.size !== length || length > 128 * CHUNK) throw new Error('Incomplete image export');
+      const extension = options.format === 'jpeg' ? 'jpg' : options.format;
+      complete = true;
+      imageExportTiming = {
+        serial: (imageExportTiming?.serial ?? 0) + 1,
+        captureMs,
+        encodeAndWriteMs: performance.now() - started - captureMs,
+        codecHeapPeakBytes,
+        codecHeapLimitBytes,
+        logicalCpuAtCodecPeakBytes: codecBaseline + codecHeapPeakBytes,
+        bytes: length,
+      };
+      return new File([file], name.replace(/\.[^.]+$/, '') + '.' + extension, {
+        type: 'image/' + options.format,
+      });
+    } finally {
+      try {
+        helper?.terminate();
+        cancelCodec = undefined;
+        if (!complete && created) await pages.discard(created);
+        if (token === job) {
+          e.cancel_job();
+          external(priorExternal);
+          if (maskView) {
+            e.preview_mask(true);
+            await recompose(token);
+          }
+          fileMaskView = false;
+          busy = false;
+          operation = undefined;
+        }
+      } finally {
+        finishFileJob();
+      }
+    }
+  },
   async hitTest(x, y) {
     const e = requireIdle();
     busy = true;
@@ -1474,6 +1742,7 @@ const api: EngineApi = {
     busy = true;
     operation = 'Opening project…';
     const token = beginJob();
+    const finishFileJob = beginFileJob();
     try {
       if (buffer.byteLength > 128 * CHUNK)
         throw new Error('Use streamed project opening for files larger than 128 MiB');
@@ -1491,10 +1760,14 @@ const api: EngineApi = {
       replaced(fileName);
       return snapshot();
     } finally {
-      if (token === job) {
-        e.cancel_job();
-        busy = false;
-        operation = undefined;
+      try {
+        if (token === job) {
+          e.cancel_job();
+          busy = false;
+          operation = undefined;
+        }
+      } finally {
+        finishFileJob();
       }
     }
   },
@@ -1503,15 +1776,20 @@ const api: EngineApi = {
     busy = true;
     operation = 'Opening project…';
     const token = beginJob();
+    const finishFileJob = beginFileJob();
     try {
       await readProject(file, true, token);
       replaced(file.name);
       return snapshot();
     } finally {
-      if (token === job) {
-        e.cancel_job();
-        busy = false;
-        operation = undefined;
+      try {
+        if (token === job) {
+          e.cancel_job();
+          busy = false;
+          operation = undefined;
+        }
+      } finally {
+        finishFileJob();
       }
     }
   },
@@ -1521,6 +1799,7 @@ const api: EngineApi = {
     busy = true;
     operation = 'Saving project…';
     const token = beginJob();
+    const finishFileJob = beginFileJob();
     let writable: FileSystemWritableFileStream | undefined;
     try {
       writable = await handle.createWritable();
@@ -1535,11 +1814,15 @@ const api: EngineApi = {
       name = handle.name;
       return size;
     } finally {
-      await writable?.abort().catch(() => {});
-      if (token === job) {
-        e.cancel_job();
-        busy = false;
-        operation = undefined;
+      try {
+        await writable?.abort().catch(() => {});
+        if (token === job) {
+          e.cancel_job();
+          busy = false;
+          operation = undefined;
+        }
+      } finally {
+        finishFileJob();
       }
     }
   },
@@ -1548,6 +1831,7 @@ const api: EngineApi = {
     busy = true;
     operation = 'Preparing project download…';
     const token = beginJob();
+    const finishFileJob = beginFileJob();
     let created: string | undefined;
     let complete = false;
     try {
@@ -1581,11 +1865,15 @@ const api: EngineApi = {
         type: 'application/octet-stream',
       });
     } finally {
-      if (!complete && created) await pages.discard(created);
-      if (token === job) {
-        e.cancel_job();
-        busy = false;
-        operation = undefined;
+      try {
+        if (!complete && created) await pages.discard(created);
+        if (token === job) {
+          e.cancel_job();
+          busy = false;
+          operation = undefined;
+        }
+      } finally {
+        finishFileJob();
       }
     }
   },
@@ -1873,7 +2161,10 @@ const api: EngineApi = {
     };
   },
   dispose() {
+    releaseProjectSavePause?.();
     ++job;
+    cancelCodec?.();
+    cancelCodec = undefined;
     activeImageReader?.abort();
     activeImageReader = undefined;
     releaseImportPause?.();
@@ -2024,7 +2315,7 @@ const api: EngineApi = {
       }
     }
   },
-  cancelJob() {
+  async cancelJob() {
     // A completed document replacement is atomic and cannot be cancelled after
     // commit while it waits for its first normal viewport frame.
     if (
@@ -2034,7 +2325,10 @@ const api: EngineApi = {
       operation === 'Restoring session…'
     )
       return false;
+    const fileJob = activeFileJob;
     ++job;
+    cancelCodec?.();
+    cancelCodec = undefined;
     activeImageReader?.abort();
     activeImageReader = undefined;
     ++previewRequest;
@@ -2053,6 +2347,13 @@ const api: EngineApi = {
       fileMaskView = false;
       requireEngine().preview_mask(true);
       dirty = true;
+    }
+    if (fileJob) {
+      cancelAllowed = false;
+      releaseProjectSavePause?.();
+      operation = 'Cancelling file operation…';
+      await fileJob;
+      if (disposed) return true;
     }
     external(0);
     operation = undefined;

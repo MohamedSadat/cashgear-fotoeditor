@@ -9,6 +9,7 @@ import { FilterPanel } from './FilterPanel';
 import { GeometryPanel } from './GeometryPanel';
 import { TransformPanel } from './TransformPanel';
 import { CropPanel } from './CropPanel';
+import { ExportDialog } from './ExportDialog';
 import { useCrop, startCrop, resetCrop } from './crop-state';
 import { startTransform, cancelTransform, useTransform, resetTransform } from './transform-state';
 import { useSelection } from './selection-state';
@@ -35,6 +36,7 @@ const memory = (n: number) => (n / 1048576).toFixed(1) + ' MiB';
 export function App() {
   const [generation, setGeneration] = useState(0);
   const [dialog, setDialog] = useState(false);
+  const [exportDialog, setExportDialog] = useState(false);
   const [showBrush, setShowBrush] = useState(false);
   const [preset, setPreset] = useState('Full HD');
   const [width, setWidth] = useState(1920);
@@ -312,6 +314,16 @@ export function App() {
     cursor[1] < doc.height;
   return (
     <div className="app" data-status={status}>
+      {exportDialog && engineApi && (
+        <ExportDialog
+          api={engineApi}
+          onClose={() => setExportDialog(false)}
+          onBusy={(value) => {
+            workerJobStarted.current = value;
+            setBusy(value ? 'Exporting image…' : '');
+          }}
+        />
+      )}
       <header className="topbar">
         <div className="brand-mark" aria-hidden="true">
           f<span>.</span>
@@ -369,6 +381,12 @@ export function App() {
             onClick={() => void exportPng()}
           >
             Export PNG <span aria-hidden="true">↗</span>
+          </button>
+          <button
+            disabled={!doc || status !== 'ready' || working || painting}
+            onClick={() => setExportDialog(true)}
+          >
+            Export image…
           </button>
         </nav>
         <input

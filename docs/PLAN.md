@@ -317,6 +317,9 @@ annotation. P8 starts directly on main, without worktrees or agents.
   seconds target. Specify distinct dense samples, file size/hash, storage, browser,
   API, cold/warm conditions, timing boundaries, percentiles and logical residency.
   Sparse/shared duplicates do not substitute for this workload. Record misses.
+  On 2026-10-27 the user explicitly accepted the measured P8 save-speed limit
+  and deferred the under-three-second target to P12; continue full measurements
+  and report the miss. Other acceptance requirements remain unchanged.
 - Preserve 16,384-pixel retained/visible sides, paging, shared 768 MiB CPU and
   128 MiB GPU budgets, 128 MiB image limits and the 4 GiB streamed project cap.
   Count codec, conversion, compression, thumbnail/composite, file/bridge and

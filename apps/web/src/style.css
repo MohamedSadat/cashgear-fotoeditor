@@ -780,6 +780,19 @@ dialog {
 dialog::backdrop {
   background: #080c12aa;
 }
+.export-dialog {
+  width: 560px;
+  max-height: calc(100vh - 32px);
+}
+.export-dialog fieldset {
+  padding: 0;
+  border: 0;
+}
+.export-dialog input[type='checkbox'] {
+  display: inline;
+  width: auto;
+  margin: 0 8px 0 0;
+}
 dialog h2 {
   font-size: 26px;
   font-weight: 500;

@@ -1,5 +1,7 @@
 //! The only JavaScript-facing engine API.
 #[cfg(target_arch = "wasm32")]
+mod codec;
+#[cfg(target_arch = "wasm32")]
 mod bridge {
     mod adjustments;
     mod filters;
@@ -40,6 +42,7 @@ mod bridge {
         import: Option<ImageImport>,
         import_ready: bool,
         export: Option<ExportJob>,
+        export_pixels: Option<fotoeditor_io::ExportPixelsJob>,
         project_read: Option<ProjectReader>,
         project_write: Option<ProjectWriter>,
         revision: u32,
@@ -140,6 +143,11 @@ mod bridge {
                     )
                     + self.export.as_ref().map_or(0, |j| j.temporary_bytes())
                     + self
+                        .export_pixels
+                        .as_ref()
+                        .map_or(0, |j| j.temporary_bytes())
+                    + crate::codec::output_capacity()
+                    + self
                         .project_read
                         .as_ref()
                         .map_or(0, |j| j.temporary_bytes())
@@ -182,6 +190,7 @@ mod bridge {
                 import: None,
                 import_ready: false,
                 export: None,
+                export_pixels: None,
                 project_read: None,
                 project_write: None,
                 revision: 0,
@@ -626,6 +635,77 @@ mod bridge {
             );
             Ok(())
         }
+        pub fn begin_image_export(&mut self, options: &str) -> Result<(), JsValue> {
+            let options: fotoeditor_io::ImageExportOptions =
+                serde_json::from_str(options).map_err(|e| JsValue::from_str(&e.to_string()))?;
+            options.validate().map_err(|e| JsValue::from_str(&e))?;
+            let document = self
+                .document
+                .as_ref()
+                .ok_or("Open or create a document first")?;
+            let composite = if self.export_original() {
+                document
+            } else {
+                self.layered
+                    .display
+                    .as_ref()
+                    .ok_or("Document composite unavailable")?
+            };
+            let active = self
+                .layered
+                .active
+                .or_else(|| document.layers.first().map(|layer| layer.id));
+            if options.format == fotoeditor_io::ImageExportFormat::Png {
+                self.export = Some(
+                    ExportJob::new_custom(
+                        document,
+                        composite,
+                        options.source,
+                        active,
+                        options.embed_icc,
+                        self.residency(),
+                    )
+                    .map_err(|e| JsValue::from_str(&e))?,
+                );
+            } else {
+                self.export_pixels = Some(
+                    fotoeditor_io::ExportPixelsJob::new(
+                        document,
+                        composite,
+                        options.source,
+                        active,
+                        self.residency(),
+                    )
+                    .map_err(|e| JsValue::from_str(&e))?,
+                );
+            }
+            Ok(())
+        }
+        pub fn capture_step(&mut self) -> Result<bool, JsValue> {
+            self.export_pixels
+                .as_mut()
+                .ok_or("No export capture")?
+                .step()
+                .map_err(|e| JsValue::from_str(&e))
+        }
+        pub fn finish_capture(&mut self) -> Result<Vec<u8>, JsValue> {
+            self.export_pixels
+                .take()
+                .ok_or("No export capture")?
+                .finish()
+                .map_err(|e| JsValue::from_str(&e))
+        }
+        pub fn finish_export_file(&mut self) -> Result<u32, JsValue> {
+            Ok(crate::codec::store_output(self.finish_export()?))
+        }
+        pub fn export_codec_budget(&self) -> u32 {
+            let r = self.residency();
+            fotoeditor_core::CPU_BUDGET
+                .saturating_sub(r.document)
+                .saturating_sub(r.history)
+                .saturating_sub(r.temporary)
+                .min(u32::MAX as u64) as u32
+        }
         pub fn export_step(&mut self) -> Result<bool, JsValue> {
             self.export
                 .as_mut()
@@ -650,6 +730,8 @@ mod bridge {
             self.import = None;
             self.import_ready = false;
             self.export = None;
+            self.export_pixels = None;
+            crate::codec::codec_clear();
             self.project_read = None;
             self.project_write = None;
         }

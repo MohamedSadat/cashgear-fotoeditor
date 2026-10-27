@@ -1007,6 +1007,47 @@ try {
         maximumMatteRgbaError: maximum,
       });
     }
+    await page.waitForFunction(() => {
+      const state = JSON.parse(
+        document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot,
+      );
+      return state && !state.operation && !state.painting;
+    });
+    result.imageExports = await page.evaluate(async () => {
+      const api = window.__fotoeditor;
+      await api.newDocument(65, 33, 300);
+      await api.selectionAction({ kind: 'fill', color: [179, 53, 77, 128] });
+      const before = Array.from(await api.exportPng());
+      const results = [];
+      for (const [format, lossless] of [
+        ['png', false],
+        ['jpeg', false],
+        ['webp', false],
+        ['webp', true],
+      ]) {
+        const file = await api.exportImage({
+          format,
+          lossless,
+          source: 'full',
+          quality: 85,
+          embedIcc: true,
+          matte: [255, 255, 255],
+        });
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const marker = new TextDecoder('latin1').decode(bytes);
+        if (file.size !== bytes.length || !file.type.startsWith('image/'))
+          throw new Error('Invalid image export File');
+        if (
+          !marker.includes(format === 'jpeg' ? 'ICC_PROFILE' : format === 'webp' ? 'ICCP' : 'iCCP')
+        )
+          throw new Error('Missing exported sRGB profile');
+        results.push({ format, lossless, size: file.size, name: file.name, type: file.type });
+      }
+      const after = Array.from(await api.exportPng());
+      if (before.length !== after.length || before.some((byte, at) => byte !== after[at]))
+        throw new Error('Image export changed document samples');
+      return results;
+    });
     result.software = process.env.GPU_TEST_SOFTWARE === '1';
     await mkdir(join(root, 'bench/results'), { recursive: true });
     await page.screenshot({ path: join(root, 'bench/results/desktop-p4-' + backend + '.png') });

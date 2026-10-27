@@ -311,9 +311,27 @@ the measured ZIP SHA-256 is
 `9978218f56d7d25ba744bb603f118e9401eb8943b927a15c9b4643c75d9bb1c4`.
 These file hashes identify evidence, not equivalent canonical document hashes.
 See `bench/results/p8-save-performance-probe.json`. The under-three-second
-criterion fails; profiling/optimization, all four hardware combinations and
-large canonical validation remain. There is no approved exception.
+criterion fails. At that checkpoint no exception was approved; the later user
+decision in DECISIONS.md accepts the measured P8 limit and defers speed to P12.
 
-Still required: export dialog/JPEG/WebP quality/size/source controls, save
-optimization and complete regression/final-head remote checks. PSD export and
-HEIC remain unselected.
+The subsequent export candidate adds the dialog and bounded PNG/JPEG/WebP sources
+and codecs; P8-EXPORT.md records execution/memory contracts and independent codec
+checks. It passes 173 Rust tests, 459 licenses, 124 focused hardware browser cases
+and rebuilt WebView2 on both hardware APIs. A further file-cancellation lifetime
+fix passes 28 export/file-access cases, including destination preservation after
+real writes followed by cancellation/failure. Release WASM is 4,440,303 bytes /
+gzip9 1,638,683. Project output batching/profiling is implemented; new measurements
+remain separate from the earlier 65-second probe.
+
+scripts/project-reference.py independently decodes every stored LZ4 generation,
+validates ZIP/raw framing CRCs and hashes canonical document metadata with each
+generation reference replaced by its complete sample SHA-256. Legacy omitted
+canvas/guides defaults are normalized, and file schema is not document data.
+The 7,680-tile source and saved archive match canonical SHA-256
+`7e7073f7c09310418c777f351369f4df961d22429a01ccafe9b8165e65990db6`.
+The earlier audit draft treated absent/explicit defaults differently; fixing
+that audit required no product/sample change. Evidence is
+`bench/results/p8-large-canonical-reference.json`.
+
+Still required: save performance investigation, full regression/current desktop
+checks and final-head remote gates. PSD export and HEIC remain unselected.

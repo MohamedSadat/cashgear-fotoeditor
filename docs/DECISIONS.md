@@ -1,5 +1,43 @@
 # Decisions
 
+## 2026-10-27 - P8 measured save-speed exception
+
+- After reviewing the real 20-layer 6000x4000 dense save (2,123,367,314-byte
+  ZIP/LZ4 output), the user explicitly selected: "Accept the measured limit for
+  P8; defer the save-speed target to P12".
+- The initial 65-66 second probe improves to 51.952315 seconds after bounded
+  batching. That measured trial includes 25.314535 s paging, 13.118800 s encoding,
+  8.759465 s writes and 4.436985 s cooperative yields. The original under-three-
+  second target fails; it is deferred to P12, not reported as passed.
+- Still measure/report the complete Chrome/Edge hardware API matrix and first/
+  warm conditions. This exception does not change exact sample/hash validation,
+  CPU/GPU/file limits, required checks, remote CI or any other phase boundary.
+
+## 2026-10-27 - P8 export execution and sources
+
+- PNG retains its bounded scanline job. JPEG and WebP capture immutable visible
+  RGBA samples in Rust, then encode in a disposable CPU-only worker/WASM instance.
+  The engine worker continues to own document/history/GPU resources. This helper
+  owns no editable document and does not introduce P12 parallel pixel kernels.
+  Main-thread code only creates/terminates the sibling worker; a MessagePort
+  carries immutable samples directly between the engine and codec. Nested worker
+  loading fails under packaged WebView2's custom protocol, matching
+  https://github.com/tauri-apps/tauri/issues/15755. The CSP remains unchanged.
+- A codec-instance allocator ceiling is admitted against the owner's remaining
+  shared CPU budget, including transferred input and bounded output chunks.
+  Exceeding it fails the isolated job; cancellation terminates that worker.
+  Encoded output is written to OPFS in chunks and returned as a file-backed File.
+  Temporary exports remain in the session until abandoned-session cleanup.
+- The dialog defaults to PNG/full document/sRGB ICC, JPEG quality 85 with a white
+  matte, and lossy WebP quality 85 with exact alpha. Lossless WebP is selectable.
+  Isolated active-raster exports include its enabled mask, opacity and fill;
+  groups/adjustments require full-document export. Selection export is canvas-sized
+  with selection coverage applied to alpha. Every source uses the visible crop.
+  Actual encoded bytes supply the size preview; export reuses a matching preview.
+- webpkit 0.1.0 (MIT OR Apache-2.0) supplies bare VP8 encoding. The container uses
+  an exact uncompressed WebP alpha plane, avoiding an extra alpha-compressor
+  working set. Existing image-webp supplies exact lossless RGBA encoding.
+
 ## 2026-10-27 - P8 WASM size budget
 
 - The user explicitly approved a 2,000,000-byte gzip WASM build gate for P8's

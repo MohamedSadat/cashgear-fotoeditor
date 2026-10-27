@@ -1,8 +1,9 @@
 # CashGear FotoEditor
 
-A focused photo editing and painting workspace. Open PNG, JPEG and WebP images,
-create transparent canvases, paint on layers and masks, and export lossless
-RGBA8 PNG. Save editable `.cgfoto` projects and recover completed browser autosaves.
+A focused photo editing and painting workspace. Open PNG, JPEG, WebP, BMP,
+GIF (first frame), 8-bit TIFF and supported raster PSD files. Create transparent
+canvases, paint on layers and masks, and export PNG, JPEG or WebP. Save editable
+`.cgfoto` projects and recover completed browser autosaves.
 The worker-owned Rust engine processes paged tiles and displays them through
 WebGPU or WebGL2.
 
@@ -89,10 +90,22 @@ External clipboard conversions may normalize transparent RGB. Active selections
 are session state and are omitted from project/recovery files.
 
 Save project preserves layers, masks, groups, straight RGBA8 samples, hidden RGB
-and exact DPI in a versioned `.cgfoto` file. Layered/large saves use a streamed
-writable file destination; small default single-raster projects can download in
-the legacy format. Open project or drop the file to reopen with fresh undo
+and exact DPI in a versioned ZIP/LZ4 `.cgfoto` file, including a thumbnail and
+composite preview. Saves stream to a writable destination or a file-backed
+download. Legacy projects remain readable. Open project or drop the file to reopen with fresh undo
 history. Project files store the document only, not history or view state.
+
+Chromium file pickers support reusing an opened/saved project handle, Save project
+as and ten recent handles. Opening a recent file requests permission when needed;
+missing/denied entries show an error and can be forgotten. File-input fallback
+remains available where filesystem pickers are unavailable.
+
+Export image offers actual encoded size previews, quality-controlled JPEG/WebP,
+lossless WebP, optional sRGB ICC embedding (on by default), and document, isolated
+active-raster or canvas-sized selection sources. JPEG uses the chosen matte;
+WebP retains alpha. All exports use the visible canvas. PNG and lossless WebP
+preserve exact RGBA, including hidden RGB. Unsupported PSD rendering features are
+refused explicitly; see [PSD scope and reference evidence](docs/P8-PSD.md).
 
 Recovery saves changed, completed documents every 30 seconds and on tab hide when
 idle. Tab-hide saves are best effort: startup asks to restore the last completed
