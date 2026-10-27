@@ -1,6 +1,8 @@
 use super::*;
 use fotoeditor_core::*;
-use fotoeditor_io::{LayerProjectReader, LayerProjectWriter, StoredProjectTile};
+use fotoeditor_io::{
+    LayerProjectReader, LayerProjectWriter, StoredProjectTile, ZipProjectReader, ZipProjectWriter,
+};
 use std::collections::{HashMap, HashSet};
 static NEXT_IO: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
 
@@ -20,6 +22,8 @@ pub(super) struct LayerRuntime {
     merge: Option<MergeRecipe>,
     read: Option<LayerProjectReader>,
     write: Option<LayerProjectWriter>,
+    zip_read: Option<ZipProjectReader>,
+    zip_write: Option<ZipProjectWriter>,
     pages: HashMap<u64, StoredProjectTile>,
     gpu_coord: Option<TileCoord>,
     pub(super) golden: Option<Vec<Rgba8>>,
@@ -112,6 +116,8 @@ impl LayerRuntime {
     pub fn cancel(&mut self) {
         self.read = None;
         self.write = None;
+        self.zip_read = None;
+        self.zip_write = None;
         self.render = None;
         self.merge = None;
         self.pages.clear();
@@ -129,6 +135,8 @@ impl LayerRuntime {
             + self.io_sessions.len() as u64 * 2 * 1024 * 1024
             + self.read.as_ref().map_or(0, |r| r.temporary_bytes())
             + self.write.as_ref().map_or(0, |r| r.temporary_bytes())
+            + self.zip_read.as_ref().map_or(0, |r| r.temporary_bytes())
+            + self.zip_write.as_ref().map_or(0, |r| r.temporary_bytes())
             + self.golden.as_ref().map_or(0, |p| p.capacity() as u64 * 4)
             + if self.gpu_coord.is_some() {
                 4 * 1024 * 1024
@@ -876,6 +884,9 @@ impl Engine {
                 }
             }
             "write" => {
+                if let Some(writer) = &self.layered.zip_write {
+                    writer.needed(&mut add);
+                }
                 if let Some(tile) = self.layered.write.as_ref().and_then(|w| w.needed_tile()) {
                     if !tile.is_resident() {
                         needed.push(tile.clone());
@@ -1125,6 +1136,107 @@ impl Engine {
         );
         self.refresh_pages();
         Ok(self.layered.write.as_ref().unwrap().file_bytes as f64)
+    }
+    pub fn zip_write_begin(&mut self) -> Result<(), JsValue> {
+        let source = if self.export_original() {
+            self.document.as_ref()
+        } else {
+            self.layered.display.as_ref()
+        };
+        self.layered.zip_write = Some(
+            ZipProjectWriter::new(
+                self.document.as_ref().ok_or("No document")?,
+                source.ok_or("Document composite is unavailable")?,
+                self.residency(),
+            )
+            .map_err(js)?,
+        );
+        self.layered.memory = None;
+        self.refresh_pages();
+        Ok(())
+    }
+    pub fn zip_write_next(&mut self) -> Result<Option<Vec<u8>>, JsValue> {
+        let before = self
+            .layered
+            .zip_write
+            .as_ref()
+            .ok_or("No ZIP project save")?
+            .temporary_bytes();
+        let mut r = self.paging_residency();
+        r.temporary = r.temporary.saturating_sub(before);
+        let result = self
+            .layered
+            .zip_write
+            .as_mut()
+            .unwrap()
+            .next_packet(r)
+            .map_err(js);
+        let after = self.layered.zip_write.as_ref().unwrap().temporary_bytes();
+        self.layered.memory = Some(Residency {
+            temporary: r.temporary + after,
+            ..r
+        });
+        result
+    }
+    pub fn zip_read_begin(&mut self, length: f64) -> Result<(), JsValue> {
+        if !length.is_finite()
+            || length.fract() != 0.0
+            || !(22.0..=fotoeditor_io::MAX_PROJECT_BYTES as f64).contains(&length)
+        {
+            return Err(JsValue::from_str("Invalid project ZIP file size"));
+        }
+        self.layered.zip_read =
+            Some(ZipProjectReader::new(length as u64, self.residency()).map_err(js)?);
+        self.layered.memory = None;
+        Ok(())
+    }
+    pub fn zip_read_request(&self) -> Result<String, JsValue> {
+        let request = self
+            .layered
+            .zip_read
+            .as_ref()
+            .ok_or("No project ZIP read")?
+            .request()
+            .map_err(js)?;
+        Ok(serde_json::to_string(
+            &request.map(|r| serde_json::json!({"offset":r.offset,"length":r.length})),
+        )
+        .unwrap())
+    }
+    pub fn zip_read_feed(&mut self, bytes: &[u8]) -> Result<(), JsValue> {
+        let mut r = self.paging_residency();
+        r.temporary = r.temporary.saturating_sub(
+            self.layered
+                .zip_read
+                .as_ref()
+                .ok_or("No project ZIP read")?
+                .temporary_bytes(),
+        );
+        self.layered
+            .zip_read
+            .as_mut()
+            .unwrap()
+            .feed(bytes, r)
+            .map_err(js)
+    }
+    pub fn zip_read_output(&mut self) -> Result<Option<Vec<u8>>, JsValue> {
+        Ok(self
+            .layered
+            .zip_read
+            .as_mut()
+            .ok_or("No project ZIP read")?
+            .take_output())
+    }
+    pub fn zip_read_finish(&mut self) -> Result<f64, JsValue> {
+        let length = self
+            .layered
+            .zip_read
+            .take()
+            .ok_or("No project ZIP read")?
+            .finish()
+            .map_err(js)?;
+        self.layered.memory = None;
+        Ok(length as f64)
     }
     pub fn stream_write_next(&mut self) -> Result<Option<Vec<u8>>, JsValue> {
         let mut r = self.paging_residency();

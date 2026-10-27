@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:net';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { chromium, expect } from '@playwright/test';
@@ -237,6 +237,7 @@ try {
     // Capture the normal download Blob without opening WebView2's native save UI.
     // This instruments browser download APIs only; the actual Rust save/load runs.
     await page.evaluate(() => {
+      Reflect.set(window, 'showSaveFilePicker', undefined);
       const create = URL.createObjectURL.bind(URL),
         click = HTMLAnchorElement.prototype.click;
       URL.createObjectURL = (blob) => {
@@ -260,7 +261,7 @@ try {
       await page.waitForFunction(() => typeof window.__projectPayload === 'string');
       const data = await page.evaluate(() => window.__projectPayload);
       const bytes = Buffer.from(data.split(',')[1], 'base64');
-      expect(bytes.subarray(0, 8).toString()).toBe('CGFOTO\r\n');
+      expect(bytes.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 3, 4]))).toBe(true);
       return bytes;
     }
     const project = await savedProject();
@@ -666,11 +667,17 @@ try {
         const start = performance.now();
         const size = await api.saveProjectFile(handle);
         const saveMs = performance.now() - start;
-        const opened = await api.openProjectFile(await handle.getFile());
+        const saved = await handle.getFile();
+        const zipEntries = new DataView(await saved.slice(saved.size - 22).arrayBuffer()).getUint16(
+          10,
+          true,
+        );
+        const opened = await api.openProjectFile(saved);
         const after = await digest();
         return {
           size,
           saveMs,
+          zipEntries,
           layers: opened.layers.nodes.length,
           tiles: opened.document.tiles,
           memory: opened.memory,
@@ -681,7 +688,8 @@ try {
       expect(result.denseStream.layers).toBe(50);
       expect(result.denseStream.tiles).toBe(9600);
       expect(result.denseStream.exactComposite).toBe(true);
-      expect(result.denseStream.size).toBeGreaterThan(2400 * 1048576);
+      expect(result.denseStream.zipEntries).toBe(9603);
+      expect(result.denseStream.size).toBeGreaterThan(128 * 1048576);
     }
     await page.goto(
       origin +
@@ -875,6 +883,73 @@ try {
       expect(result.cropStraighten[key], key).toBe(true);
     expect(result.cropStraighten.revealed.width).toBeGreaterThan(32);
     expect(result.cropStraighten.revealed.height).toBeGreaterThan(24);
+    result.extendedFormats = [];
+    const exportedPng = () =>
+      page.evaluate(async () => {
+        const deadline = performance.now() + 60000;
+        for (;;) {
+          try {
+            return Array.from(await window.__fotoeditor.exportPng());
+          } catch (error) {
+            if (
+              !/Finish or cancel the current operation first/.test(String(error)) ||
+              performance.now() >= deadline
+            )
+              throw error;
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+        }
+      });
+    for (const name of ['p8-input.bmp', 'p8-input.gif', 'p8-input.tiff', 'p8-icc-linear.png']) {
+      // Direct diagnostic RPCs finish before the frame pump publishes its idle
+      // snapshot to React. A disabled input's change handler intentionally refuses work.
+      await expect(page.getByTestId('open-image')).toBeEnabled();
+      await page
+        .getByTestId('open-image')
+        .setInputFiles(join(root, 'bench/results/fixtures', name));
+      await expect(page.getByTestId('operation-status')).toHaveText(/Opened in/);
+      const actual = PNG.sync.read(Buffer.from(await exportedPng()));
+      const expected = PNG.sync.read(
+        await readFile(join(root, 'bench/results/fixtures', name + '.expected.png')),
+      );
+      expect([actual.width, actual.height]).toEqual([expected.width, expected.height]);
+      expect(actual.data.equals(expected.data), name).toBe(true);
+      result.extendedFormats.push({
+        name,
+        width: actual.width,
+        height: actual.height,
+        exactSamples: true,
+      });
+    }
+    const beforeRefusal = Buffer.from(await exportedPng());
+    for (const [name, error] of [
+      ['p8-invalid-icc.png', /ICC/],
+      ['p8-16bit.png', /16-bit/],
+    ]) {
+      await expect(page.getByTestId('open-image')).toBeEnabled();
+      await page
+        .getByTestId('open-image')
+        .setInputFiles(join(root, 'bench/results/fixtures', name));
+      await expect(page.getByTestId('operation-status')).toHaveText(error);
+      expect(Buffer.from(await exportedPng()).equals(beforeRefusal)).toBe(true);
+    }
+    await expect(page.getByTestId('open-project')).toBeEnabled();
+    await page
+      .getByTestId('open-project')
+      .setInputFiles(join(root, 'bench/results/fixtures/p8-native.cgfoto'));
+    await expect(page.getByTestId('operation-status')).toHaveText(/Opened in/);
+    result.nativeZip = await page.evaluate(
+      () =>
+        JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot).document,
+    );
+    expect(result.nativeZip).toMatchObject({
+      width: 255,
+      height: 256,
+      originX: 1,
+      originY: 2,
+      retainedWidth: 257,
+      retainedHeight: 259,
+    });
     result.software = process.env.GPU_TEST_SOFTWARE === '1';
     await mkdir(join(root, 'bench/results'), { recursive: true });
     await page.screenshot({ path: join(root, 'bench/results/desktop-p4-' + backend + '.png') });

@@ -26,6 +26,7 @@ let frames = 0;
 let job = 0;
 let busy = false;
 let cancelAllowed = true;
+let fileMaskView = false;
 let presentation: { resolve: () => void; reject: (error: Error) => void } | undefined;
 let name = 'Untitled';
 let cursorScreen: [number, number] | undefined;
@@ -125,15 +126,24 @@ async function runComposite(token = job, committing = false) {
   }
   dirty = true;
 }
-async function readStream(file: File, commit: boolean, token = job) {
+async function readStream(
+  file: File,
+  commit: boolean,
+  token = job,
+  existing?: { id: string; file: File },
+) {
+  cancelled(token);
   const e = requireEngine();
   const priorExternal = externalBytes;
   external(priorExternal + 2 * CHUNK);
   try {
     const start = performance.now();
-    const source = commit
-      ? await pages.copy(file, () => cancelled(token))
-      : { id: crypto.randomUUID().replaceAll('-', ''), file };
+    const source =
+      existing ??
+      (commit
+        ? await pages.copy(file, () => cancelled(token))
+        : { id: crypto.randomUUID().replaceAll('-', ''), file });
+    cancelled(token);
     const copied = performance.now();
     e.stream_read_begin(source.file.size, source.id);
     for (let offset = 0; offset < source.file.size;) {
@@ -171,6 +181,104 @@ async function readStream(file: File, commit: boolean, token = job) {
     }
   } finally {
     if (!disposed && token === job) external(priorExternal);
+  }
+}
+async function readZip(file: File, commit: boolean, token: number) {
+  const e = requireEngine();
+  const priorExternal = externalBytes;
+  external(priorExternal + 2 * CHUNK);
+  let created: string | undefined;
+  let registered = false;
+  try {
+    const { id, handle } = await pages.create();
+    created = id;
+    cancelled(token);
+    e.zip_read_begin(file.size);
+    const access = await handle.createSyncAccessHandle();
+    let written = 0;
+    try {
+      for (;;) {
+        cancelled(token);
+        const output = e.zip_read_output();
+        if (output) {
+          let at = 0;
+          while (at < output.length) {
+            const count = access.write(output.subarray(at), { at: written + at });
+            if (!Number.isInteger(count) || count <= 0 || count > output.length - at)
+              throw new Error('Project decompression storage write failed');
+            at += count;
+          }
+          written += output.length;
+        }
+        const request = JSON.parse(e.zip_read_request()) as {
+          offset: number;
+          length: number;
+        } | null;
+        if (!request) break;
+        const bytes = new Uint8Array(
+          await file.slice(request.offset, request.offset + request.length).arrayBuffer(),
+        );
+        cancelled(token);
+        e.zip_read_feed(bytes);
+        await yieldProjectTask();
+      }
+      if (e.zip_read_finish() !== written) throw new Error('Project decompression length mismatch');
+      access.truncate(written);
+      access.flush();
+    } finally {
+      access.close();
+    }
+    cancelled(token);
+    const source = await pages.register(id, handle, written);
+    registered = true;
+    cancelled(token);
+    await readStream(source.file, commit, token, source);
+    if (!commit) {
+      await pages.discard(id);
+      registered = false;
+    }
+  } finally {
+    if (created) {
+      const retained =
+        registered && !disposed && (JSON.parse(e.page_stores()) as string[]).includes(created);
+      if (!retained) await pages.discard(created);
+    }
+    if (!disposed && token === job) external(priorExternal);
+  }
+}
+
+async function writeZip(write: (bytes: Uint8Array) => Promise<void>, token: number) {
+  const e = requireEngine();
+  const maskView = e.mask_view_enabled();
+  fileMaskView = maskView;
+  let written = 0;
+  try {
+    if (maskView) {
+      e.preview_mask(false);
+      await recompose(token);
+    }
+    e.zip_write_begin();
+    for (;;) {
+      cancelled(token);
+      await pages.hydrate(e, 'write');
+      const bytes = e.zip_write_next();
+      if (!bytes) break;
+      if (bytes.length) {
+        await write(bytes);
+        written += bytes.length;
+      }
+      await yieldProjectTask();
+    }
+    return written;
+  } finally {
+    if (token === job) {
+      e.cancel_job();
+      fileMaskView = false;
+      if (maskView) {
+        e.preview_mask(true);
+        await recompose(token);
+      }
+    }
   }
 }
 async function writeStream(
@@ -222,6 +330,10 @@ async function readProject(input: Uint8Array | File, commit: boolean, token = jo
   const e = requireEngine();
   if (input instanceof File) {
     const header = await input.slice(0, 12).arrayBuffer();
+    if (header.byteLength >= 4 && new DataView(header).getUint32(0, true) === 0x04034b50) {
+      await readZip(input, commit, token);
+      return;
+    }
     if (header.byteLength === 12 && new DataView(header).getUint32(8, true) === 2) {
       await readStream(input, commit, token);
       return;
@@ -1284,7 +1396,10 @@ const api: EngineApi = {
       if (buffer.byteLength > 128 * CHUNK)
         throw new Error('Use streamed project opening for files larger than 128 MiB');
       e.admit_project_buffer(buffer.byteLength);
-      const layered = buffer.byteLength >= 12 && new DataView(buffer).getUint32(8, true) === 2;
+      const layered =
+        buffer.byteLength >= 12 &&
+        (new DataView(buffer).getUint32(8, true) === 2 ||
+          new DataView(buffer).getUint32(0, true) === 0x04034b50);
       await readProject(
         layered ? new File([buffer], fileName) : new Uint8Array(buffer),
         true,
@@ -1325,10 +1440,9 @@ const api: EngineApi = {
     const token = beginJob();
     let writable: FileSystemWritableFileStream | undefined;
     try {
-      const size = e.stream_write_begin();
       writable = await handle.createWritable();
       const output = writable;
-      await writeStream(async (bytes) => {
+      const size = await writeZip(async (bytes) => {
         await output.write(bytes as Uint8Array<ArrayBuffer>);
       }, token);
       cancelled(token);
@@ -1337,6 +1451,52 @@ const api: EngineApi = {
       return size;
     } finally {
       await writable?.abort().catch(() => {});
+      if (token === job) {
+        e.cancel_job();
+        busy = false;
+        operation = undefined;
+      }
+    }
+  },
+  async saveProjectDownload() {
+    const e = requireIdle();
+    busy = true;
+    operation = 'Preparing project download…';
+    const token = beginJob();
+    let created: string | undefined;
+    let complete = false;
+    try {
+      const { id, handle } = await pages.create();
+      created = id;
+      cancelled(token);
+      const access = await handle.createSyncAccessHandle();
+      let offset = 0;
+      try {
+        const size = await writeZip(async (bytes) => {
+          let at = 0;
+          while (at < bytes.length) {
+            const count = access.write(bytes.subarray(at), { at: offset + at });
+            if (!Number.isInteger(count) || count <= 0 || count > bytes.length - at)
+              throw new Error('Project download storage write failed');
+            at += count;
+          }
+          offset += bytes.length;
+        }, token);
+        if (size !== offset) throw new Error('Project download length mismatch');
+        access.truncate(offset);
+        access.flush();
+      } finally {
+        access.close();
+      }
+      cancelled(token);
+      const file = await handle.getFile();
+      if (file.size !== offset) throw new Error('Incomplete project download');
+      complete = true;
+      return new File([file], name.replace(/\.[^.]+$/, '') + '.cgfoto', {
+        type: 'application/octet-stream',
+      });
+    } finally {
+      if (!complete && created) await pages.discard(created);
       if (token === job) {
         e.cancel_job();
         busy = false;
@@ -1818,6 +1978,11 @@ const api: EngineApi = {
     releaseAdjustmentPause = undefined;
     releaseSelectionPause = undefined;
     requireEngine().cancel_job();
+    if (fileMaskView) {
+      fileMaskView = false;
+      requireEngine().preview_mask(true);
+      dirty = true;
+    }
     external(0);
     operation = undefined;
     busy = false;

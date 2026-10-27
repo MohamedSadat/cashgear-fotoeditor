@@ -1,6 +1,20 @@
 # Progress
 
-## P8 - Started; scope answers and interoperability evidence pending
+## P8 - In progress; product choices recorded
+
+The user approved a 2,000,000-byte P8 gzip WASM limit on 2026-10-27. The standard
+ZIP-integrated release build passes at 4,280,109 bytes / gzip9 1,572,150. Earlier
+failures against the old gate remain recorded. Native import/ICC is committed at
+`d2ae624`; bounded ZIP/LZ4 serialization is committed at `7556b05`. Integration
+passes 168 Rust tests, native/WASM clippy, formatting, TypeScript, ESLint, 16
+Vitest cases, 458 license expressions and 72 focused hardware Chrome/Edge cases,
+each passing once with zero failures/skips/retries/global errors. The rebuilt
+Windows shell and expanded WebView2 smoke pass both NVIDIA APIs. The initial
+desktop attempt exposed a test race after direct diagnostic RPCs; the smoke now
+waits for the input's enabled state before dispatching a file change. Evidence is
+`bench/results/p8-zip-integration-*`. This is a checkpoint, not phase acceptance.
+Remote evidence still belongs to foundation `b881a1b`, whose CI/deployment pass
+with 329 single-attempt software cases and both software WebView2 APIs.
 
 Started 2026-10-27 at the user's explicit fresh-session request, directly on clean
 main at `86043ed` / remotely verified `p7-transform`, without worktrees or agents.
@@ -8,7 +22,9 @@ Read AGENTS.md, PLAN.md, PROGRESS.md, DECISIONS.md and the complete original P8
 roadmap on printed pages 16-17, as text and rendered pages. The source PDF remains
 unchanged. PLAN.md records the acceptance; P8-DESIGN.md records the investigation
 and fixture/performance gates. Product and fixture questions were asked early;
-their dependent choices remain pending, with no new dependencies selected.
+the user selected PSD import only, BMP/GIF first-frame/8-bit TIFF, embedded sRGB ICC
+by default and ZIP/LZ4 projects. No local Photoshop/fixtures are available; public
+corpus investigation and actual validation remain required. See DECISIONS.md.
 
 Independent work adds an adversarial legacy/streamed project corpus and a borrowed,
 allocation-free PSD framing/resource inspector, plus a native candidate-fixture

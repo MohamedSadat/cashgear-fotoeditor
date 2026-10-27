@@ -9,8 +9,8 @@ complete original P8 requirements and acceptance were read on printed pages
 `83c7e9f904a7bb97d13e8f3ca87f2024e6760627c3a568c6c0065cdf861c62ff`.
 Rendered review pages are ignored evidence under `bench/results/p8-roadmap/`.
 
-This document records investigation and gates, not phase completion. Product
-answers, integrated codecs/export/UI, Photoshop validation, performance and the
+This document records investigation and gates, not phase completion. Integrated
+codecs/export/UI, Photoshop validation, performance and the
 full local/remote acceptance sequence remain outstanding.
 
 ## Existing contracts
@@ -42,15 +42,16 @@ composites, thumbnails and bridge copies in admission. Logical capacities remain
 distinct from process/browser/driver memory. All changed jobs need cancellation,
 paging-failure, budget-refusal and preserved-current-document/redo coverage.
 
-## Product decisions awaiting answers
+## Product decisions (answered 2026-10-27)
 
-The four unresolved product choices are PSD export scope, additional imports,
-export ICC default and project container direction. The fifth question establishes
-available Photoshop/corpus evidence. `.cgfoto`, fresh history on reopen,
-session-only selection and the existing backward-reading promise already apply.
-No new format dependency is selected while dependent scope remains unanswered.
+The user selected PSD import only, BMP/GIF first-frame/8-bit TIFF imports, embedded
+sRGB ICC by default on export, and the original ZIP/LZ4 project container. HEIC
+and PSD export are not selected. No local Photoshop/fixture corpus is available;
+investigate public fixtures without treating that as a passed compatibility gate.
+`.cgfoto`, fresh history on reopen, session-only selection and backward reading
+remain existing decisions. Dependency and implementation investigation may proceed.
 
-The source ZIP/LZ4 proposal requires an explicit decision: it differs from both
+The selected ZIP/LZ4 format differs from both
 the v1 single-raster container and the v2 framing/schema-4 streamed layered format.
 A ZIP implementation must stream entries and bound directory/manifest sizes,
 reject duplicate/unsafe names and unsupported/encrypted entries, enforce decoded
@@ -105,8 +106,8 @@ mod.rs`, lines 397-399). Adopting it unchanged cannot satisfy editable mask impo
 Registry inspection finds webp-rust 0.3.2 (MIT) and webpkit 0.1.0
 (MIT OR Apache-2.0) as lossy encoder candidates needing correctness, memory,
 WASM, cancellation and size evaluation. zenwebp 0.4.6 is AGPL-3.0-only OR a
-commercial license and is ineligible under the existing policy. None is added to
-Cargo.toml/lockfiles or shipped. Metadata research/download to the Cargo cache
+commercial license and is ineligible under the existing policy. Neither WebP
+candidate is added to Cargo.toml/lockfiles or shipped. Metadata research/download to the Cargo cache
 does not constitute a dependency approval or license inventory addition.
 
 Primary references: [image WebP encoder](https://docs.rs/image/0.25.10/image/codecs/webp/struct.WebPEncoder.html),
@@ -187,7 +188,7 @@ result is established by `p8-save-fixture.log`.
 
 For each integrated increment run applicable checks before a small conventional
 commit on main. Full phase acceptance includes Rust formatting/native+WASM clippy/
-tests, TS/ESLint/Vitest/Prettier, release build with the current 1,500,000-byte gzip
+tests, TS/ESLint/Vitest/Prettier, release build with the approved 2,000,000-byte gzip
 WASM gate, complete dependency inventory, installed Chrome and Edge on hardware
 WebGPU/WebGL2, Windows/WebView2, measured workload and exact-final-head remote
 CI/deployment. Inspect raw artifacts for failures, skips and retries. P7's 24 MP
@@ -208,3 +209,85 @@ or that a PSD can be opened in the editor. The rebuilt Windows shell and existin
 expanded WebView2 smoke pass both NVIDIA hardware APIs. Raw evidence is
 `bench/results/p8-foundation-verification.json` and the associated logs/reports.
 Remote checkpoint CI/deployment is separate from eventual final-phase verification.
+
+The foundation commit `b881a1b` passes CI `40413241817` and deployment
+`40413241805`. Its inspected artifact has all 329 software browser cases passing
+on one attempt, zero errors/skips/retries, and both software WebView2 backends.
+This evidence applies to that committed foundation, not subsequent working-tree
+codec/ZIP integration.
+
+## Integrated codec/ZIP checkpoint
+
+The working tree implements BMP, GIF first-frame and classic 8-bit TIFF imports,
+RGB/grayscale matrix/TRC ICC conversion through qcms 0.3.0, and canonical generated
+sRGB ICC embedding in PNG exports. Untagged samples remain unchanged. Canonical
+working-space exports avoid a needless quantized conversion on reopen. Alpha and
+hidden RGB survive. LUT/CMYK profiles and BigTIFF are refused explicitly. TIFF
+uses the first image, with non-ICC metadata capped at 1 MiB and ICC at 4 MiB.
+PNG inflation/header metadata is capped before construction; JPEG/WebP/GIF/TIFF
+metadata gets bounded preflight. Color/metadata scratch reserves 32 MiB. A
+generated 257x259 linear-profile fixture compares against LittleCMS 2.19 via
+Pillow ImageCms with maximum RGBA errors `[2, 1, 0, 0]` and unchanged alpha.
+
+New ZIP/LZ4 project files retain `.cgfoto`. The ZIP profile uses stored entries,
+bounded raw LZ4 blocks with exact decoded tile lengths, schema-4 `manifest.json`,
+64-pixel PNG thumbnail and visible-window `composite.png`. It excludes ZIP64,
+encryption, descriptors, extras and comments. Headers/directories must agree;
+names are safe/unique, extents contiguous, and CRCs/entry lengths/expansion/file
+limits are checked before a complete candidate can publish. ZIP scratch is
+32 MiB plus the existing 16 MiB document-adapter reserve. PNG previews get bounded
+signature/header/chunk/CRC validation; they are not decoded into authoritative
+samples when opening. The document is rebuilt from exact tile data and renders
+its own composite. Download fallback uses a file-backed OPFS snapshot, avoiding
+a whole-project ArrayBuffer/Blob allocation. Those temporary download packs
+remain in the owning session's directory until abandoned-session cleanup.
+
+Opening converts bounded compressed tiles into a flushed immutable raw backing
+pack, then runs the existing semantic document validator before replacement.
+Both encoded archive and expanded backing retain the 4 GiB limit. Legacy v1 and
+raw-stream schemas 2/3/4 remain readable; recovery continues to use the existing
+validated raw generations. Cancellation, failed storage and invalid input release
+only their candidate backing, preserving stores referenced by document/history.
+The PNG export output/bridge reservation remains visible while paging hydrates
+sources, rather than allowing those allocations to consume its admitted capacity.
+
+The candidate passes all 168 Rust tests, native/WASM clippy, TypeScript,
+ESLint, formatting, 16 Vitest cases and 458 license expressions. All 64 focused
+hardware browser cases pass once across Chrome/Edge and both APIs, with no errors,
+skips or retries. Expanded hardware WebView2 passes new imports, ICC refusal,
+new ZIP files and the existing editing/crop/streamed roundtrip regressions on both
+NVIDIA APIs. The final 32 MiB metadata-reserve adjustment passes those code checks,
+another 64 hardware GPU/viewport/format cases on one attempt without any failures,
+skips or retries, and the rebuilt expanded WebView2 smoke on both hardware APIs.
+Raw evidence is consolidated in `bench/results/p8-zip-format-checkpoint.json`;
+logs distinguish the earlier history/crop-focused and final viewport-focused runs.
+Independent Python
+zipfile, python-lz4 4.4.5 and Pillow validate generated archive CRCs, all retained
+RGBA samples exactly (`[0, 0, 0, 0]` maximum error), crop metadata and PNG previews.
+Evidence: `bench/results/p8-zip-*`, `p8-icc-reference.json` and
+`p8-zip-independent.json`.
+
+The initial standard release builds failed the former 1,500,000-byte gzip gate. The first
+codec build is 1,551,251 bytes; the integrated ZIP build is 1,571,997 bytes, and
+the final memory-guard build is 1,572,075 bytes (4,279,499 raw). A
+shrink-level-one probe saves only 2,661 bytes from the first build and is not
+adopted. The user subsequently approved a 2,000,000-byte P8 gate on 2026-10-27.
+The standard production build passes that enforced limit: 4,280,109 raw bytes,
+gzip9 1,572,150. Native codecs/ICC and native ZIP serialization are committed as
+`d2ae624` and `7556b05`; the separately verified worker/UI integration passes
+168 Rust tests, native/WASM clippy, formatting, TypeScript, ESLint, 16 Vitest
+cases and 458 licenses. All 72 hardware Chrome/Edge format/project/history/crop
+cases pass once, zero failures/skips/retries/global errors. The rebuilt shell's
+expanded WebView2 smoke passes both NVIDIA APIs. Its initial attempt caught a
+test race: direct RPC completion precedes React's idle snapshot; file changes
+must wait for the disabled input to become enabled. The corrected smoke waits
+for that actual state rather than adding a sleep. Evidence is
+`bench/results/p8-zip-integration-*`.
+Earlier functional web/desktop builds do not retrospectively turn the
+failed size checks into passes. Final phase acceptance still requires all remaining
+features, measurements and exact-head local/remote gates.
+
+Still required: export dialog/JPEG/WebP quality/size/source controls, File System
+Access open/reuse/recent-file controls, actual PSD decoding and suitable public
+Photoshop reference validation, 20-layer hardware save measurements, complete
+regression and final-head remote checks. PSD export and HEIC remain unselected.

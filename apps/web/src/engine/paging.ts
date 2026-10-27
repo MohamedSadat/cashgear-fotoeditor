@@ -73,6 +73,16 @@ export class PagingStore {
     const handle = (await this.directory!.getFileHandle(id, { create: true })) as SyncHandle;
     return { id, handle };
   }
+  async register(id: string, handle: FileSystemFileHandle, expected: number) {
+    const file = await handle.getFile();
+    if (file.size !== expected) throw new Error('Incomplete immutable project backing');
+    this.sources.set(id, { handle, file });
+    return { id, file };
+  }
+  async discard(id: string) {
+    this.sources.delete(id);
+    await this.directory?.removeEntry(id).catch(() => {});
+  }
   async hydrate(
     engine: Engine,
     scope:

@@ -135,31 +135,13 @@ export function App() {
   const saveProject = async () => {
     if (!api.current || !doc || working) return;
     const token = ++operation.current;
-    workerJobStarted.current = true;
+    workerJobStarted.current = false;
     setBusy('Saving project…');
     setNotice('');
     try {
-      const layers = snapshot?.layers.nodes;
-      const layered =
-        layers &&
-        (layers.length !== 1 ||
-          layers[0].children ||
-          layers[0].mask ||
-          layers[0].name !== 'Layer 1' ||
-          !layers[0].properties.visible ||
-          layers[0].properties.opacity !== 1 ||
-          layers[0].properties.fill !== 1 ||
-          layers[0].properties.blend !== 'normal' ||
-          layers[0].properties.passThrough ||
-          layers[0].properties.clipped ||
-          Object.values(layers[0].properties.locks).some(Boolean));
-      if (layered || doc.cropped || doc.guides?.length || doc.tiles * 262152 + 40 > 128 * 1048576) {
-        const picker = Reflect.get(window, 'showSaveFilePicker') as
-          ((options: object) => Promise<FileSystemFileHandle>) | undefined;
-        if (!picker)
-          throw new Error(
-            'Streamed project saving needs the file picker in Chrome, Edge or the desktop app.',
-          );
+      const picker = Reflect.get(window, 'showSaveFilePicker') as
+        ((options: object) => Promise<FileSystemFileHandle>) | undefined;
+      if (picker) {
         const handle = await picker({
           suggestedName: (snapshot?.name ?? 'Untitled').replace(/\.[^.]+$/, '') + '.cgfoto',
           types: [
@@ -169,21 +151,22 @@ export function App() {
             },
           ],
         });
+        if (token !== operation.current) return;
+        workerJobStarted.current = true;
         const size = await api.current.saveProjectFile(handle);
         setNotice('Project saved · document only · ' + (size / 1048576).toFixed(1) + ' MiB');
         return;
       }
-      const bytes = await api.current.saveProject();
+      workerJobStarted.current = true;
+      const file = await api.current.saveProjectDownload();
       if (token !== operation.current) return;
-      const url = URL.createObjectURL(
-        new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'application/octet-stream' }),
-      );
+      const url = URL.createObjectURL(file);
       const link = document.createElement('a');
       link.href = url;
       link.download = (snapshot?.name ?? 'Untitled').replace(/\.[^.]+$/, '') + '.cgfoto';
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 30000);
-      setNotice('Project saved · document only · ' + (bytes.length / 1048576).toFixed(1) + ' MiB');
+      setNotice('Project saved · document only · ' + (file.size / 1048576).toFixed(1) + ' MiB');
     } catch (e) {
       if (token === operation.current) setNotice(String(e));
     } finally {
@@ -304,7 +287,7 @@ export function App() {
           ref={file}
           type="file"
           data-testid="open-image"
-          accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"
+          accept="image/png,image/jpeg,image/webp,image/bmp,image/gif,image/tiff,.png,.jpg,.jpeg,.webp,.bmp,.gif,.tif,.tiff"
           hidden
           onChange={(e) => {
             const selected = e.target.files?.[0];
@@ -462,7 +445,7 @@ export function App() {
                   +
                 </span>
                 <h1>A fresh start.</h1>
-                <p>Drop a PNG, JPEG or WebP, or create a new canvas.</p>
+                <p>Drop a PNG, JPEG, WebP, BMP, GIF or 8-bit TIFF, or create a new canvas.</p>
                 <div className="welcome-actions">
                   <button
                     className="primary"

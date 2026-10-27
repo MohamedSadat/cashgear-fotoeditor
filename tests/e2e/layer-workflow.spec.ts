@@ -58,10 +58,12 @@ for (const backend of ['WebGPU', 'WebGL2']) {
         return {
           same: first.length === second.length && first.every((b, i) => b === second[i]),
           size: first.length,
+          entries: new DataView(first.buffer).getUint16(first.length - 12, true),
         };
       });
       expect(roundtrip.same).toBe(true);
-      expect(roundtrip.size).toBeGreaterThan(786432);
+      // Three RGBA tiles, one mask, manifest and two PNG previews survive LZ4.
+      expect(roundtrip.entries).toBe(7);
       await expect.poll(async () => (await state(page)).history.undo).toBe(0);
       expect((await image(page)).data.equals(masked.data)).toBe(true);
       await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');

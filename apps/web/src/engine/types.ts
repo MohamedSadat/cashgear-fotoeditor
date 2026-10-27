@@ -162,6 +162,7 @@ export interface EngineApi {
   applyMask(target: number): Promise<DocumentSnapshot>;
   openProjectFile(file: File): Promise<DocumentSnapshot>;
   saveProjectFile(handle: FileSystemFileHandle): Promise<number>;
+  saveProjectDownload(): Promise<File>;
   configureHistory(bytes: number, steps: number): Promise<void>;
   historyJump(target: number): Promise<void>;
   resolution(dpi: number, gesture: number): Promise<void>;

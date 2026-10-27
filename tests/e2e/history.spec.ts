@@ -28,6 +28,8 @@ async function stroke(page: Page, color: string, offset = 0) {
   await idle(page);
 }
 async function project(page: Page) {
+  // Exercise the download fallback explicitly, without a native save dialog.
+  await page.evaluate(() => Reflect.set(window, 'showSaveFilePicker', undefined));
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Save project', exact: true }).click();
   const bytes = await readFile((await (await download).path())!);
@@ -117,7 +119,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
           mimeType: 'application/octet-stream',
           buffer: bad,
         });
-        await expect(page.getByTestId('operation-status')).toHaveText(/version|checksum/);
+        await expect(page.getByTestId('operation-status')).toHaveText(/ZIP|version|checksum/);
         await idle(page, 0);
         expect((await project(page)).equals(bytes)).toBe(true);
       }
