@@ -44,9 +44,10 @@ gestures scroll; Ctrl/Cmd+wheel or trackpad pinch zooms around the pointer.
 Space+drag or middle mouse pans; R+drag rotates. The left rail fits, resets to
 100%, rotates, flips and resets rotation. View changes never modify export pixels.
 The document limit is 16,384 pixels per side; dense images also have a memory
-admission limit. Image files and PNG exports are capped at 128 MiB. Streamed v2
+admission limit. Encoded image imports/exports are capped at 128 MiB. Streamed
 projects have a 4 GiB total-file cap and also require enough local disk storage.
-16-bit input and color-profile conversion remain later-phase work.
+Supported embedded RGB/gray matrix/TRC profiles convert to sRGB on import;
+unsupported profiles are refused. 16-bit processing remains P11 work.
 
 B selects brush, E eraser, I eyedropper, Alt temporarily samples a document pixel,
 [ and ] resize the brush, and X swaps primary/secondary colors. Ctrl+Z undoes one
@@ -223,7 +224,9 @@ Defaults are one first and three warm trials per Chrome/Edge hardware API;
 P8_SAVE_TRIALS/P8_EXPORT_TRIALS and the corresponding CHANNELS/BACKENDS variables
 support focused probes. Reports stay in bench/results. The real dense save is
 slower than the original three-second target; the user accepted that measured P8
-limit and deferred the speed target to P12. See docs/DECISIONS.md.
+limit and deferred the speed target to P12. Final normal-document saves take
+43.276-60.282 seconds. See the [P8 report](docs/P8-REPORT.md) for complete
+measurements, correctness evidence and scope limits.
 
 Use ?gpu=webgl2 to force WebGL2. The ?diagnostic=1 scene uploads a 2x2 texture from
 Rust and displays red, green, blue, and white quadrants. Its diagnostic controls

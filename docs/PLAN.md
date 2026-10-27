@@ -279,7 +279,13 @@ See P7-DESIGN.md for implementation and evidence contracts.
 3. Hide outside pixels non-destructively, including across project/recovery saves.
 4. Content-aware scale outside v1.
 
-## P8 acceptance (in progress)
+## P8 acceptance
+
+Implementation, local verification and final normal-document hardware
+measurements are recorded in [P8-REPORT.md](P8-REPORT.md). The annotated
+`p8-files` tag certifies exact-final-head remote CI/deployment and artifact
+inspection. The user-accepted save-speed exception below remains a P12 target.
+Stop before P9.
 
 Source: the complete P8 section on printed pages 16-17 of the original roadmap,
 read as text and rendered pages on 2026-10-27. The source PDF remains unchanged.

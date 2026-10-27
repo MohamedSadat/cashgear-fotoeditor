@@ -333,8 +333,9 @@ The earlier audit draft treated absent/explicit defaults differently; fixing
 that audit required no product/sample change. Evidence is
 `bench/results/p8-large-canonical-reference.json`.
 
-Still required: save performance investigation, full regression/current desktop
-checks and final-head remote gates. PSD export and HEIC remain unselected.
+At that checkpoint, save performance investigation, full regression/current
+desktop checks and final-head remote gates remained required. Final evidence is
+recorded in P8-REPORT.md. PSD export and HEIC remain unselected.
 
 ## Final color/measurement audit
 
@@ -358,7 +359,7 @@ Screenshot inspection exposed a benchmark-harness mistake: it timed genuine
 document I/O but left the fixed diagnostic texture onscreen. Those reports/logs
 and archives are retained as superseded `p8-*-diagnostic-*` evidence. Final
 benchmarks request `document=1` and require visible tiles with completed
-refinement before timing. Normal-document runs must complete before acceptance.
+refinement before timing. Normal-document runs are required before acceptance.
 The user's explicit speed-target deferral to P12 remains recorded in DECISIONS.md.
 
 Independent audits of both large encoded variants match the same canonical

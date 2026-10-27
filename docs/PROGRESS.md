@@ -1,6 +1,38 @@
 # Progress
 
-## P8 - In progress; product choices recorded
+## P8 - Files, color and raster PSD delivery
+
+Implementation and local acceptance are complete. Completion is certified by the
+annotated `p8-files` tag after exact-final-head CI/deployment and artifact
+inspection pass; its annotation records the immutable evidence. The full report
+is [P8-REPORT.md](P8-REPORT.md). Work stops before P9.
+
+All 564 final installed Chrome/Edge WebGPU/WebGL2 cases pass in 26.8 minutes,
+one attempt each, with no skips, failures, retries or global errors. The normal-
+document hardware matrix completes sixteen dense 20-layer 6000x4000 saves in
+43.276-60.282 seconds, with peak logical CPU 609.02 MiB and GPU 20.49 MiB.
+All four retained archives have SHA-256 identity with the independently decoded
+variants and preserve canonical document hash
+`7e7073f7c09310418c777f351369f4df961d22429a01ccafe9b8165e65990db6`.
+The original three-second target fails and is explicitly deferred to P12.
+
+All 64 normal-document 24 MP exports complete within budgets. Per-browser/API
+first/warm percentiles, output sizes and allocator/reservation measurements are
+in the report; the complete helper allowance is distinguished from actual
+allocator use. Final PNG/BMP/associated-TIFF ICC checks, thirteen independent PSD
+oracles and six export decoder references pass. Hardware WebView2 passes both
+APIs, six extended imports, thirteen PSDs and four export modes per backend.
+Raw evidence: `bench/results/p8-final-*`, `p8-save-performance.json`,
+`p8-export-performance.json`, `p8-tiff-*` and independent reference reports.
+The deployed implementation also passes all 44 focused format/export hardware
+browser cases once, with no errors/skips/retries, and retains COOP/COEP headers.
+Evidence: `bench/results/p8-hosted-*`.
+Implementation CI 40520015674 and deployment 40520015528 pass at `bee33f9`;
+downloaded artifacts confirm 419 single-attempt software browser passes without
+errors/skips/retries and both software WebView2 backends. Final-report-head
+certification is recorded in the completion tag annotation.
+
+### Earlier P8 checkpoints
 
 The final TIFF audit corrects associated-alpha samples before ICC conversion and
 extracts bounded ICC metadata even when it exceeds a tiny image's pixel buffer.
