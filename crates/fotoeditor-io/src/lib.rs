@@ -1,5 +1,13 @@
 //! Bounded CPU codecs; construction/export jobs yield between tile rows/scanlines.
 mod color;
+mod export_capture;
+mod export_source;
+#[cfg(test)]
+mod export_tests;
+mod image_encode;
+pub use export_capture::*;
+pub use export_source::ImageExportSource;
+pub use image_encode::*;
 #[cfg(test)]
 mod extended_tests;
 mod import_metadata;
@@ -213,41 +221,49 @@ impl Write for Output {
     }
 }
 pub struct ExportJob {
-    document: Document,
+    source: export_source::RasterSource,
     stream: Option<png::StreamWriter<'static, Output>>,
     out: Output,
     next_y: u32,
     row: Vec<u8>,
+    selected: bool,
 }
 impl ExportJob {
     pub fn needed(&self, visitor: &mut dyn FnMut(fotoeditor_core::TileRef<'_>)) {
-        let rect = self.document.canvas_rect();
-        if self.next_y >= rect.height {
-            return;
-        }
-        let y1 = rect.y + (self.next_y + 32).min(rect.height);
-        for ty in (rect.y + self.next_y) / TILE_SIZE..y1.div_ceil(TILE_SIZE) {
-            for tx in rect.x / TILE_SIZE..(rect.x + rect.width).div_ceil(TILE_SIZE) {
-                if let Some(t) = self.document.raster().tiles().get(&(tx, ty)) {
-                    visitor(fotoeditor_core::TileRef::Rgba(t));
-                }
-            }
-        }
+        self.source.needed(self.next_y, visitor);
     }
     pub fn new(document: &Document, residency: Residency) -> Result<Self, String> {
-        document.validate_geometry()?;
-        document.export_raster()?;
-        let rect = document.canvas_rect();
+        Self::new_custom(
+            document,
+            document,
+            ImageExportSource::Full,
+            None,
+            true,
+            residency,
+        )
+    }
+    pub fn new_custom(
+        document: &Document,
+        composite: &Document,
+        kind: ImageExportSource,
+        active: Option<fotoeditor_core::LayerId>,
+        embed_icc: bool,
+        residency: Residency,
+    ) -> Result<Self, String> {
+        let source = export_source::RasterSource::new(document, composite, kind, active)?;
+        let rect = source.rect;
         // Conservative output capacity + JS bridge copy; shared tile Arcs add no pixel copies.
         residency.check_cpu(2 * MAX_FILE_BYTES + rect.width as u64 * 8 + 4 * 1024 * 1024)?;
         let out = Output(Rc::new(RefCell::new(Vec::new())));
         let mut info = png::Info::with_size(rect.width, rect.height);
-        info.icc_profile = Some(std::borrow::Cow::Borrowed(srgb_icc()));
+        if embed_icc {
+            info.icc_profile = Some(std::borrow::Cow::Borrowed(srgb_icc()));
+        }
         let mut encoder = png::Encoder::with_info(out.clone(), info).map_err(|e| e.to_string())?;
         encoder.set_color(png::ColorType::Rgba);
         encoder.set_depth(png::BitDepth::Eight);
         encoder.set_compression(png::Compression::Fast);
-        let ppu = (document.dpi / 0.0254).round() as u32;
+        let ppu = (source.dpi / 0.0254).round() as u32;
         encoder.set_pixel_dims(Some(png::PixelDimensions {
             xppu: ppu,
             yppu: ppu,
@@ -259,11 +275,12 @@ impl ExportJob {
             .into_stream_writer()
             .map_err(|e| e.to_string())?;
         Ok(Self {
-            document: document.clone(),
+            source,
             stream: Some(stream),
             out,
             next_y: 0,
             row: vec![0; rect.width as usize * 4],
+            selected: false,
         })
     }
     pub fn temporary_bytes(&self) -> u64 {
@@ -271,27 +288,9 @@ impl ExportJob {
         2 * MAX_FILE_BYTES + self.row.capacity() as u64 + 4 * 1024 * 1024
     }
     pub fn step(&mut self) -> Result<bool, String> {
-        let rect = self.document.canvas_rect();
+        let rect = self.source.rect;
         for local_y in self.next_y..(self.next_y + 32).min(rect.height) {
-            let y = rect.y + local_y;
-            self.row.fill(0);
-            for tx in rect.x / TILE_SIZE..(rect.x + rect.width).div_ceil(TILE_SIZE) {
-                if let Some(tile) = self.document.raster().tiles().get(&(tx, y / TILE_SIZE)) {
-                    let tile = tile.pin()?;
-                    let x0 = (tx * TILE_SIZE).max(rect.x);
-                    let x1 = ((tx + 1) * TILE_SIZE).min(rect.x + rect.width);
-                    let n = (x1 - x0) as usize;
-                    let start = ((y % TILE_SIZE) * TILE_SIZE + x0 % TILE_SIZE) as usize;
-                    for (dst, p) in self.row[(x0 - rect.x) as usize * 4..][..n * 4]
-                        .as_chunks_mut::<4>()
-                        .0
-                        .iter_mut()
-                        .zip(&tile.pixels[start..start + n])
-                    {
-                        dst.copy_from_slice(&p.0);
-                    }
-                }
-            }
+            self.selected |= self.source.read_row(local_y, &mut self.row)?;
             self.stream
                 .as_mut()
                 .ok_or("Export already finished")?
@@ -302,8 +301,11 @@ impl ExportJob {
         Ok(self.next_y == rect.height)
     }
     pub fn finish(mut self) -> Result<Vec<u8>, String> {
-        if self.next_y != self.document.canvas_rect().height {
+        if self.next_y != self.source.rect.height {
             return Err("Export is incomplete".into());
+        }
+        if self.source.selection && !self.selected {
+            return Err("The selection is empty".into());
         }
         self.stream
             .take()

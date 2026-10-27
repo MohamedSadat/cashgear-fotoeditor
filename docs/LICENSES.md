@@ -303,6 +303,7 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | web_atoms | 0.2.6 | MIT OR Apache-2.0 |
 | Cargo | web-sys | 0.3.106 | MIT OR Apache-2.0 |
 | Cargo | web-time | 1.1.0 | MIT OR Apache-2.0 |
+| Cargo | webpkit | 0.1.0 | MIT OR Apache-2.0 |
 | Cargo | webview2-com-macros | 0.8.1 | MIT |
 | Cargo | webview2-com-sys | 0.39.1 | MIT |
 | Cargo | webview2-com | 0.39.1 | MIT |
