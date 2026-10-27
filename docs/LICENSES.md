@@ -161,6 +161,7 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | litrs | 1.0.1 | MIT OR Apache-2.0 |
 | Cargo | lock_api | 0.4.14 | MIT OR Apache-2.0 |
 | Cargo | log | 0.4.34 | MIT OR Apache-2.0 |
+| Cargo | lz4_flex | 0.14.0 | MIT |
 | Cargo | markup5ever | 0.39.0 | MIT OR Apache-2.0 |
 | Cargo | memchr | 2.8.3 | Unlicense OR MIT |
 | Cargo | mime | 0.3.17 | MIT OR Apache-2.0 |

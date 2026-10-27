@@ -8,21 +8,29 @@ mod project;
 mod project_adversarial;
 mod project_layers;
 mod project_stream;
+mod project_zip;
+mod project_zip_read;
+#[cfg(test)]
+mod project_zip_tests;
 mod psd_preflight;
 #[cfg(test)]
 mod resample_reference;
+mod zip_stream;
 pub use color::srgb_icc;
 use fotoeditor_core::{Document, Residency, Rgba8, MAX_SIDE, TILE_PIXELS, TILE_SIZE};
 use image::{ImageDecoder, ImageReader};
 pub use project::*;
 pub use project_layers::*;
 pub use project_stream::*;
+pub use project_zip::*;
+pub use project_zip_read::*;
 pub use psd_preflight::*;
 use std::{
     cell::RefCell,
     io::{Cursor, Write},
     rc::Rc,
 };
+pub use zip_stream::*;
 pub const MAX_FILE_BYTES: u64 = 128 * 1024 * 1024;
 pub fn encode_thumbnail(width: u32, height: u32, pixels: &[u8]) -> Result<Vec<u8>, String> {
     if width == 0
