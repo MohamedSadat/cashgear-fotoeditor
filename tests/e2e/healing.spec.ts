@@ -189,6 +189,12 @@ for (const backend of ['WebGPU', 'WebGL2']) {
     await page.mouse.click(o.x + 256.5, o.y + 128.5);
     await idle(page, prepared.history.undo + 1);
     expect(pixel(PNG.sync.read(await exported(page)), 256, 128)).toEqual([160, 120, 90, 255]);
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await idle(page, prepared.history.undo);
+    await page.getByRole('button', { name: 'Spot Healing', exact: true }).click();
+    await page.mouse.click(o.x + 256.5, o.y + 128.5);
+    await idle(page, prepared.history.undo + 1);
+    expect(pixel(PNG.sync.read(await exported(page)), 256, 128)).toEqual([160, 120, 90, 255]);
     const masked = await whenIdle(page, () =>
       page.evaluate(async () => {
         const api = Reflect.get(window, '__fotoeditor') as EngineApi;
@@ -206,6 +212,47 @@ for (const backend of ['WebGPU', 'WebGL2']) {
     await expect.poll(async () => (await state(page)).editError).toMatch(/raster pixel target/);
     expect((await state(page)).history.undo).toBe(masked.history.undo);
     expect(baseline).toBeGreaterThan(0);
+  });
+
+  test(`${backend} healing Undo and Redo wait for a busy worker and execute exactly once`, async ({
+    page,
+  }) => {
+    const o = await setup(page, backend, 'Healing Brush'),
+      before = await exported(page),
+      baseline = (await state(page)).history.undo;
+    await page.mouse.click(o.x + 256.5, o.y + 128.5);
+    await idle(page, baseline + 1);
+    const after = await exported(page);
+    for (const [action, count, expected] of [
+      ['Undo', baseline, before],
+      ['Redo', baseline + 1, after],
+    ] as const) {
+      await whenIdle(page, () =>
+        page.evaluate(async () => {
+          const api = Reflect.get(window, '__fotoeditor') as EngineApi;
+          await api.diagnosticAdjustmentFault('pause-before-commit');
+          Reflect.set(
+            window,
+            'healingBackgroundJob',
+            api.applyFilter({ kind: 'gaussian', radius: 1 }).then(() => '', String),
+          );
+        }),
+      );
+      await expect(page.getByTestId('operation-status')).toContainText('Filter ready');
+      const heldCount = (await state(page)).history.undo;
+      await page.getByRole('button', { name: action, exact: true }).click();
+      expect((await state(page)).history.undo).toBe(heldCount);
+      const cancelled = await page.evaluate(async () => {
+        const api = Reflect.get(window, '__fotoeditor') as EngineApi;
+        const cancelled = await api.cancelJob();
+        return { cancelled, error: await Reflect.get(window, 'healingBackgroundJob') };
+      });
+      expect(cancelled.cancelled).toBe(true);
+      expect(cancelled.error).toMatch(/cancelled/);
+      await idle(page, count);
+      expect((await state(page)).editError).toBeUndefined();
+      expect((await exported(page)).equals(expected)).toBe(true);
+    }
   });
 
   test(`${backend} healing jobs cancel after pointer release on Escape or focus loss`, async ({

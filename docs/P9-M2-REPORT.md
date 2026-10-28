@@ -38,6 +38,8 @@ behavior and acceptance before implementation. Stop before M3 content-aware fill
   alpha behavior and alpha lock remain. Zero-alpha RGB never guides a solve.
   Mask/Quick Mask targets are explicitly refused, as in Clone Stamp.
 - One named Healing Brush / Spot Healing command per stroke; exact undo/redo.
+  Undo/Redo arriving during worker work wait in the existing bounded interaction
+  queue instead of being discarded during a compositing/autosave race.
   Overlapping dabs and nearby search never sample preview pixels. Source, target
   and halo respect the visible crop. Retained samples, unrelated hidden RGB,
   masks/selections, guides/DPI and legacy project/recovery readers retain their
@@ -134,13 +136,14 @@ exact command undo/redo. Native/WASM clippy, formatting, TypeScript, ESLint,
 16 Vitest tests and the 459-expression license inventory pass. Production WASM
 is 4,475,194 bytes / gzip9 1,653,033, within the unchanged 2,000,000-byte gate.
 
-All 44 final focused installed Chrome/Edge WebGPU/WebGL2 cases pass once with
+All 48 final focused installed Chrome/Edge WebGPU/WebGL2 cases pass once with
 zero skips/retries/flaky cases/global errors, including M1 Clone Stamp regression,
 actual source picking, separate-layer healing, selection, visible cancellation,
-post-release Escape/focus-loss cancellation and the real portrait. Rebuilt
+post-release Escape/focus-loss cancellation, queued busy-worker Undo/Redo and the
+real portrait. Rebuilt
 WebView2 passes both NVIDIA hardware APIs with both healing tools' pixel,
 one-command and exact undo/redo checks plus the existing broad desktop smoke.
-Evidence: `p9-m2-cached-focused.*`, `p9-m2-cached-desktop-*`.
+Evidence: `p9-m2-queued-focused.*`, `p9-m2-queued-desktop-*`.
 Full final hardware and remote certification remain mandatory.
 
 Earlier investigations are retained separately. The first portrait harness
@@ -151,6 +154,10 @@ browser execution are now sequenced against fixed assets. The post-release
 cancellation review closed a longer-job gap in the existing pointer foundation;
 normal release still completes a job. Final acceptance never substitutes an
 earlier green/retried/interrupted report for clean exact-head evidence.
+The first complete timing attempt stopped when an Undo restore raced worker work.
+Its partial rows are retained separately; the worker now queues history input,
+and a held-job test proves exactly-once Undo/Redo without retrying clicks. Final
+timings use the corrected worker and retain explicit failure snapshot guards.
 
 ## Deferred work and next milestone
 

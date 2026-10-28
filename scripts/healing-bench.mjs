@@ -262,13 +262,39 @@ try {
                     path: `bench/results/p9-m2-bench-${channel}-${backend}-${mode}-${size}-${tool === 'Healing Brush' ? 'healing' : 'spot'}.png`,
                   });
                 await page.getByRole('button', { name: 'Undo', exact: true }).click();
-                await page.waitForFunction(
-                  (baseline) =>
-                    JSON.parse(
+                try {
+                  await page.waitForFunction((baseline) => {
+                    const s = JSON.parse(
                       document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot,
-                    ).history.undo === baseline,
-                  baseline,
-                );
+                    );
+                    if (s.editError) throw Error(s.editError);
+                    return s.history.undo === baseline;
+                  }, baseline);
+                } catch (error) {
+                  const snapshot = await page
+                    .getByTestId('gpu-canvas')
+                    .getAttribute('data-snapshot');
+                  await writeFile(
+                    out.replace('.json', '-failure.json'),
+                    JSON.stringify(
+                      {
+                        channel,
+                        backend,
+                        mode,
+                        tool,
+                        size,
+                        trial,
+                        baseline,
+                        error: String(error),
+                        snapshot: JSON.parse(snapshot),
+                      },
+                      null,
+                      2,
+                    ) + '\n',
+                  );
+                  await page.screenshot({ path: out.replace('.json', '-failure.png') });
+                  throw error;
+                }
               }
               const warm = trials.slice(1, 4).map((t) => t.elapsedMs);
               const result = {

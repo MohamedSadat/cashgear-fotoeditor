@@ -2218,7 +2218,10 @@ const api: EngineApi = {
     inputsWaiting = [];
     for (let index = 0; index < pending.length; index++) {
       const input = pending[index];
-      if (e.painting() && ['stroke-begin', 'clone-source', 'undo', 'redo'].includes(input.kind)) {
+      if (
+        (e.painting() && ['stroke-begin', 'clone-source', 'undo', 'redo'].includes(input.kind)) ||
+        (busy && ['undo', 'redo'].includes(input.kind))
+      ) {
         inputsWaiting = pending.slice(index);
         break;
       }
