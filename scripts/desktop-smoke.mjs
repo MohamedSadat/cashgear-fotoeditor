@@ -1187,6 +1187,59 @@ try {
         pixel: [...image.data.subarray(at, at + 4)],
       });
     }
+    const fillPrepared = await page.evaluate(async () => {
+      const api = window.__fotoeditor;
+      await api.newDocument(64, 64, 300);
+      await api.selectionAction({ kind: 'fill', color: [160, 120, 90, 255] });
+      await api.selectionAction({
+        kind: 'shape',
+        shape: { kind: 'rectangle', x0: 27, y0: 27, x1: 38, y1: 38 },
+        mode: 'new',
+        antialias: false,
+      });
+      return api.selectionAction({ kind: 'fill', color: [220, 20, 80, 255] });
+    });
+    await page.waitForFunction((revision) => {
+      const s = JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot);
+      return s.revision === revision && !s.operation;
+    }, fillPrepared.revision);
+    const fillBefore = await exportedPng();
+    await page
+      .locator('summary')
+      .filter({ hasText: /^Edit$/ })
+      .click();
+    await page.getByRole('button', { name: 'Content-aware fill', exact: true }).click();
+    await page.waitForFunction((count) => {
+      const s = JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot);
+      return s.history.undo === count + 1 && !s.operation && !s.selection.busy;
+    }, fillPrepared.history.undo);
+    const fillAfter = await exportedPng(),
+      filled = PNG.sync.read(Buffer.from(fillAfter));
+    const fillAt = (32 * 64 + 32) * 4;
+    expect([...filled.data.subarray(fillAt, fillAt + 4)]).toEqual([160, 120, 90, 255]);
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await page.waitForFunction(
+      (count) =>
+        JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot).history
+          .undo === count,
+      fillPrepared.history.undo,
+    );
+    expect(Buffer.from(await exportedPng()).equals(Buffer.from(fillBefore))).toBe(true);
+    await page.getByRole('button', { name: 'Redo', exact: true }).click();
+    await page.waitForFunction(
+      (count) =>
+        JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot).history
+          .undo ===
+        count + 1,
+      fillPrepared.history.undo,
+    );
+    expect(Buffer.from(await exportedPng()).equals(Buffer.from(fillAfter))).toBe(true);
+    result.contentAware = {
+      oneCommand: true,
+      exactUndo: true,
+      exactRedo: true,
+      pixel: [...filled.data.subarray(fillAt, fillAt + 4)],
+    };
     result.software = process.env.GPU_TEST_SOFTWARE === '1';
     await mkdir(join(root, 'bench/results'), { recursive: true });
     await page.screenshot({ path: join(root, 'bench/results/desktop-p4-' + backend + '.png') });

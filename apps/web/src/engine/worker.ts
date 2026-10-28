@@ -1369,7 +1369,7 @@ const api: EngineApi = {
   async selectionAction(action) {
     const e = requireIdle();
     busy = true;
-    operation = 'Updating selection…';
+    operation = action.kind === 'content-aware' ? 'Content-aware fill…' : 'Updating selection…';
     const token = beginJob();
     const start = performance.now();
     let kernelMs = 0;

@@ -11,6 +11,7 @@ pub(super) enum Job {
     Wand(WandJob),
     Mask(MaskJob),
     Fill(FillJob),
+    ContentAware(ContentAwareJob),
     Copy(CopyJob),
     Paste(PasteJob),
 }
@@ -58,6 +59,7 @@ impl SelectionRuntime {
                     u64::from(j.input.width.max(j.input.height) + 1024) * 32 + 4 * 65536
                 }
                 Some(Job::Fill(_)) => 2 * (TILE_PIXELS * 4) as u64,
+                Some(Job::ContentAware(j)) => j.scratch_bytes(),
                 Some(Job::Copy(_)) | Some(Job::Paste(_)) => 2 * 1024 * 1024,
                 None => 0,
             }
@@ -85,6 +87,7 @@ impl SelectionRuntime {
             }
             Some(Job::Mask(j)) => j.visit_candidates(v),
             Some(Job::Fill(j)) => j.visit_candidates(v),
+            Some(Job::ContentAware(j)) => j.visit_candidates(v),
             Some(Job::Copy(j)) => {
                 for t in j.source.tiles().values() {
                     v(TileRef::Rgba(t));
@@ -116,6 +119,7 @@ impl SelectionRuntime {
             Some(Job::Wand(j)) => j.needed(v),
             Some(Job::Mask(j)) => j.needed(v),
             Some(Job::Fill(j)) => j.needed(v),
+            Some(Job::ContentAware(j)) => j.needed(v),
             Some(Job::Copy(j)) => j.needed(v),
             Some(Job::Paste(j)) => j.needed(v),
             None => {}
@@ -433,10 +437,13 @@ impl Engine {
         {
             return Err(js("Return to layer pixels before copying or cutting"));
         }
-        if matches!(kind, "wand" | "bucket" | "copy" | "cut") {
+        if kind == "content-aware" && (self.selected.quick_mask || self.layered.mask_target) {
+            return Err(js("Return to layer pixels before content-aware fill"));
+        }
+        if matches!(kind, "wand" | "bucket" | "copy" | "cut" | "content-aware") {
             self.selected.source =
                 Some(self.selection_source(a["allLayers"].as_bool().unwrap_or(false))?);
-            self.selected.seed = if matches!(kind, "copy" | "cut") {
+            self.selected.seed = if matches!(kind, "copy" | "cut" | "content-aware") {
                 [0, 0]
             } else {
                 serde_json::from_value::<WandOptions>(a["options"].clone())
@@ -548,6 +555,28 @@ impl Engine {
                 serde_json::from_value(a["color"].clone()).map_err(js)?,
                 a["clear"].as_bool().unwrap_or(false),
             )?),
+            "content-aware" => {
+                if self.selected.quick_mask || self.layered.mask_target {
+                    return Err(js("Return to layer pixels before content-aware fill"));
+                }
+                let target = self
+                    .layered
+                    .active
+                    .or_else(|| doc.layers.first().map(|l| l.id))
+                    .ok_or("Choose a raster layer")?;
+                Job::ContentAware(
+                    ContentAwareJob::new(
+                        doc,
+                        target,
+                        self.selected
+                            .source
+                            .clone()
+                            .ok_or("Prepare the content-aware source first")?,
+                        available,
+                    )
+                    .map_err(js)?,
+                )
+            }
             "copy" | "cut" => {
                 self.selected.cut = a["kind"] == "cut";
                 Job::Copy(
@@ -617,6 +646,7 @@ impl Engine {
                 Job::Wand(j) => j.step(),
                 Job::Mask(j) => j.step(),
                 Job::Fill(j) => j.step(),
+                Job::ContentAware(j) => j.step(),
                 Job::Copy(j) => j.step(),
                 Job::Paste(j) => j.step(),
             }
@@ -670,6 +700,9 @@ impl Engine {
                     self.commit_selection_command(Box::new(command))?;
                 }
             },
+            Job::ContentAware(j) => {
+                self.commit_selection_command(Box::new(j.finish().map_err(js)?))?
+            }
             Job::Copy(j) => {
                 self.selected.clipboard = Some(j.finish().map_err(js)?);
                 self.refresh_pages();

@@ -349,6 +349,7 @@ export type SelectionAction =
   | { kind: 'wand'; options: WandOptions; allLayers: boolean }
   | { kind: 'bucket'; options: WandOptions; allLayers: boolean; color: Rgba }
   | { kind: 'fill'; color: Rgba; clear?: boolean }
+  | { kind: 'content-aware'; allLayers: boolean }
   | { kind: 'copy' | 'cut'; allLayers: boolean }
   | { kind: 'paste'; inPlace: boolean };
 export interface LayerProperties {

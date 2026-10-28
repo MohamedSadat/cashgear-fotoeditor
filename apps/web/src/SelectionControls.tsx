@@ -86,6 +86,18 @@ export function SelectionControls({ api, disabled }: { api?: EngineApi; disabled
             Fill background
           </button>
           <button
+            disabled={
+              blocked ||
+              !snapshot?.selection.active ||
+              !!snapshot?.selection.quickMask ||
+              !!snapshot?.layers.maskTarget
+            }
+            title="Fill the selection from surrounding texture. Uses the All layers sampling option."
+            onClick={() => act({ kind: 'content-aware', allLayers: settings.allLayers })}
+          >
+            Content-aware fill
+          </button>
+          <button
             disabled={blocked}
             onClick={() => act({ kind: 'fill', color: primary, clear: true })}
           >

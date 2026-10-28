@@ -325,6 +325,17 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
         return;
       }
       if (
+        event.code === 'Escape' &&
+        (useSelection.getState().busy || useWorkspace.getState().snapshot?.selection.busy)
+      ) {
+        event.preventDefault();
+        void client.api
+          .cancelJob()
+          .catch((error) => useSelection.setState({ notice: String(error) }));
+        clearSelectionGesture();
+        return;
+      }
+      if (
         event.target instanceof HTMLElement &&
         (['INPUT', 'SELECT', 'TEXTAREA'].includes(event.target.tagName) ||
           event.target.isContentEditable)
