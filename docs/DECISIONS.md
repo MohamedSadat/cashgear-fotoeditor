@@ -1,5 +1,24 @@
 # Decisions
 
+## 2026-10-28 - P9 M3 scope and engineering choices
+
+- The user explicitly authorized complete M3 content-aware fill on main without
+  agents/worktrees, starting at certified M2 `9f000fd`, then stop before M4.
+  Existing P9 product choices persist; no unresolved product question is inferred.
+- Use an original deterministic multiscale Rust PatchMatch implementation:
+  alternating propagation, shrinking random search and patch-vote reconstruction.
+  Require a nonempty explicit selection, opaque donor patches outside its entire
+  nonzero support, immutable current/all-visible sampling and one exact command.
+  P9-DESIGN.md records the behavior and acceptance before implementation.
+- Automatic donor neighborhoods extend the selected bounding box by its largest
+  side, clamped to 128..512 pixels and the visible crop. Fixed 7x7 patches and six
+  iterations per scale are engineering defaults; there is no semantic object
+  recognition, arbitrary-scene quality guarantee or separate M3 speed threshold.
+- Preserve every existing budget, size/license policy and acceptance gate. No new
+  performance exception is approved or inferred. All inherited P5/Ink/P6/P7/P8
+  limits and M1's explicit all-visible clone speed deferral to P12 remain.
+- No P9 completion tag until M3-M5 and phase-wide acceptance pass.
+
 ## 2026-10-28 - P9 M2 scope and engineering choices
 
 - The user explicitly authorized Healing Brush and Spot Healing in this fresh

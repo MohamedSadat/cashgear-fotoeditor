@@ -23,6 +23,7 @@
     "bench:brush": "pnpm test:fixtures && node scripts/brush-bench.mjs",
     "bench:clone": "node scripts/clone-bench.mjs",
     "bench:healing": "node scripts/healing-bench.mjs",
+    "bench:content-aware": "node scripts/content-aware-bench.mjs",
     "bench:history": "pnpm test:fixtures && node scripts/history-bench.mjs",
     "bench:selection": "node scripts/selection-bench.mjs",
     "bench:filters": "node scripts/filter-bench.mjs",
