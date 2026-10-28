@@ -90,6 +90,14 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       before = await exported(page);
     await fill(page);
     await idle(page, prepared.history.undo + 1);
+    const timing = (await state(page)).selection.timing!;
+    expect(timing.cpuPeakBytes).toBeGreaterThan(
+      prepared.memory.document + prepared.memory.history + prepared.memory.temporary,
+    );
+    expect(timing.cpuPeakBytes).toBeLessThanOrEqual(768 * 1024 ** 2);
+    expect(timing.gpuPeakBytes).toBeGreaterThan(0);
+    expect(timing.gpuPeakBytes).toBeLessThanOrEqual(128 * 1024 ** 2);
+    expect(timing.maxStepMs).toBeGreaterThanOrEqual(0);
     const after = await exported(page),
       image = PNG.sync.read(after);
     expect(pixel(image, 256, 64)).toEqual([160, 120, 90, 255]);

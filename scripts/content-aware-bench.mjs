@@ -37,7 +37,7 @@ const report = {
     ),
   ),
   method:
-    'Serial installed hardware Chrome/Edge, actual WebGPU/WebGL2, fresh context per API/source. Normal populated 6000x4000 document at 100%, 1280x850 DPR1. Centered 48x48 and 200x200 hard rectangular selections, current raw raster or all visible into separate empty raster. Fixed deterministic seed, 7x7 patches, six iterations per scale, automatic 128..512px neighborhood. First and three warm Apply calls per size; exact Undo outside timing. OS/file caches not cleared. API-to-observed-committed-frame includes automation/worker/cooperative CPU/GPU/persistence; kernel timing excludes yields/composition. Main-thread observer collects logical CPU/GPU, frame cadence and maximum snapshot gap; no physical RAM/VRAM or changed-pixel fps claim. No separate roadmap M3 speed threshold.',
+    'Serial installed hardware Chrome/Edge, actual WebGPU/WebGL2, fresh context per API/source. Normal populated 6000x4000 document at 100%, 1280x850 DPR1. Centered 48x48 and 200x200 hard rectangular selections, current raw raster or all visible into separate empty raster. Fixed deterministic seed, 7x7 patches, six iterations per scale, automatic 128..512px neighborhood. First and three warm Apply calls per size; exact Undo outside timing. OS/file caches not cleared. API-to-observed-committed-frame includes automation/worker/cooperative CPU/GPU/persistence; kernel timing excludes yields/composition. Worker probes read logical CPU/GPU residency at cooperative slices, before commit and across composition tiles/readback; main-thread observation adds presented-frame cadence and maximum snapshot gap. Memory includes admitted scratch capacity, with at most 2.25 MiB additional synchronous compositor scratch reported separately; no physical RAM/VRAM or changed-pixel fps claim. No separate roadmap M3 speed threshold.',
   results: [],
 };
 await mkdir('bench/results', { recursive: true });
@@ -221,10 +221,20 @@ try {
                   return data;
                 });
                 await monitor.dispose();
+                const peakLogicalCpuBytes = Math.max(
+                  ...raw.cpu,
+                  result.selection.timing.cpuPeakBytes,
+                );
+                const peakLogicalGpuBytes = Math.max(
+                  ...raw.gpu,
+                  result.selection.timing.gpuPeakBytes,
+                );
                 if (
                   errors.length ||
-                  Math.max(...raw.cpu) > 768 * 1024 ** 2 ||
-                  Math.max(...raw.gpu) > 128 * 1024 ** 2
+                  !Number.isFinite(peakLogicalCpuBytes) ||
+                  !Number.isFinite(peakLogicalGpuBytes) ||
+                  peakLogicalCpuBytes > 768 * 1024 ** 2 ||
+                  peakLogicalGpuBytes > 128 * 1024 ** 2
                 )
                   throw Error('Invalid resource result: ' + JSON.stringify({ raw, errors }));
                 trials.push({
@@ -236,8 +246,9 @@ try {
                   cadenceP95: percentile(raw.periods, 0.95),
                   cadenceP99: percentile(raw.periods, 0.99),
                   maxSnapshotGapMs: Math.max(...raw.periods),
-                  peakLogicalCpuBytes: Math.max(...raw.cpu),
-                  peakLogicalGpuBytes: Math.max(...raw.gpu),
+                  peakLogicalCpuBytes,
+                  peakLogicalGpuBytes,
+                  maxStepMs: result.selection.timing.maxStepMs,
                 });
                 if (trial === 3)
                   await page.screenshot({

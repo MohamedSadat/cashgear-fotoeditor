@@ -236,23 +236,27 @@ async function importImage(input: File | ArrayBuffer, fileName: string): Promise
     }
   }
 }
-async function recompose(token = job) {
+async function recompose(token = job, memoryProbe?: () => void) {
   const e = requireEngine();
   if (!e.composite_needed() || !e.composite_begin()) return;
-  await runComposite(token);
+  memoryProbe?.();
+  await runComposite(token, false, memoryProbe);
 }
-async function runComposite(token = job, committing = false) {
+async function runComposite(token = job, committing = false, memoryProbe?: () => void) {
   const e = requireEngine();
   let done = false;
   while (!done) {
     cancelled(token);
     await pages.hydrate(e, 'render');
+    memoryProbe?.();
     const readback = e.composite_gpu_begin();
     if (readback) {
       const bytes = (await readback) as Uint8Array;
       cancelled(token);
+      memoryProbe?.();
       done = e.composite_gpu_accept(bytes);
     } else done = e.composite_step();
+    memoryProbe?.();
     if (done && committing) cancelAllowed = false;
     await yieldProjectTask();
   }
@@ -1374,6 +1378,17 @@ const api: EngineApi = {
     const start = performance.now();
     let kernelMs = 0;
     const stages = [0, 0, 0, 0, 0];
+    let cpuPeakBytes = 0,
+      gpuPeakBytes = 0,
+      maxStepMs = 0;
+    const probe =
+      action.kind === 'content-aware'
+        ? () => {
+            const m = snapshot().memory;
+            cpuPeakBytes = Math.max(cpuPeakBytes, m.document + m.history + m.temporary);
+            gpuPeakBytes = Math.max(gpuPeakBytes, m.gpu);
+          }
+        : undefined;
     const maskView = e.mask_view_enabled();
     const fault = selectionFault;
     selectionFault = undefined;
@@ -1399,13 +1414,14 @@ const api: EngineApi = {
         await pages.hydrate(e, 'selection-seed');
       cancelled(token);
       e.selection_begin(encoded);
+      probe?.();
       let sliceStart = performance.now();
       for (;;) {
         cancelled(token);
         if (e.selection_cold()) await pages.hydrate(e, 'selection');
         cancelled(token);
-        const stepStart = performance.now();
         const phase = e.selection_phase();
+        if (phase === 3) probe?.();
         if (fault === 'pause-before-commit' && phase === 3) {
           operation = 'Selection ready to commit (diagnostic)…';
           await new Promise<void>((resolve) => {
@@ -1413,19 +1429,28 @@ const api: EngineApi = {
           });
           cancelled(token);
         }
+        const stepStart = performance.now();
         const done = e.selection_step();
         const elapsed = performance.now() - stepStart;
+        maxStepMs = Math.max(maxStepMs, elapsed);
         kernelMs += elapsed;
         stages[phase] += elapsed;
         if (done) break;
         if (performance.now() - sliceStart >= 4) {
+          probe?.();
           await yieldProjectTask();
           sliceStart = performance.now();
         }
       }
       cancelAllowed = false;
-      await recompose(token);
-      selectionTiming = { kernelMs, totalMs: performance.now() - start, stages };
+      await recompose(token, probe);
+      probe?.();
+      selectionTiming = {
+        kernelMs,
+        totalMs: performance.now() - start,
+        stages,
+        ...(probe ? { cpuPeakBytes, gpuPeakBytes, maxStepMs } : {}),
+      };
       dirty = true;
       return snapshot();
     } finally {

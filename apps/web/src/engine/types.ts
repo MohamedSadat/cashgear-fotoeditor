@@ -66,7 +66,14 @@ export interface DocumentSnapshot {
     busy: boolean;
     lastWandPixels: number;
     clipboard: { width: number; height: number } | null;
-    timing?: { kernelMs: number; totalMs: number; stages?: number[] };
+    timing?: {
+      kernelMs: number;
+      totalMs: number;
+      stages?: number[];
+      cpuPeakBytes?: number;
+      gpuPeakBytes?: number;
+      maxStepMs?: number;
+    };
   };
   layers: {
     nodes: LayerNode[];
