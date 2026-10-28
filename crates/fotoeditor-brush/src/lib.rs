@@ -4,7 +4,9 @@ use kurbo::{Line, ParamCurve, Point};
 use serde::Deserialize;
 use std::collections::{HashMap, VecDeque};
 mod clone;
+mod healing;
 pub use clone::{CloneAnchor, CloneOptions};
+pub use healing::HealingOptions;
 const QUEUE_LIMIT: usize = 2048;
 const TILE_BYTES: u64 = (TILE_PIXELS * 4) as u64;
 
@@ -22,6 +24,7 @@ pub struct BrushSettings {
     pub eraser: bool,
     pub pencil: bool,
     pub clone: Option<CloneOptions>,
+    pub healing: Option<HealingOptions>,
     #[serde(skip)]
     pub alpha_lock: bool,
     pub stabilizer: Stabilizer,
@@ -49,6 +52,7 @@ impl Default for BrushSettings {
             eraser: false,
             pencil: false,
             clone: None,
+            healing: None,
             alpha_lock: false,
             stabilizer: Stabilizer::Off,
             strength: 0.35,
@@ -73,7 +77,8 @@ pub enum Stabilizer {
 }
 impl BrushSettings {
     pub fn validate(&self) -> Result<(), String> {
-        if !self.size.is_finite()
+        if (self.clone.is_some() && self.healing.is_some())
+            || !self.size.is_finite()
             || !(1.0..=2048.0).contains(&self.size)
             || !self.angle.is_finite()
             || self.angle.abs() > 360.0
@@ -251,6 +256,8 @@ pub struct StrokeCommand {
     /// Immutable pre-stroke samples; adapters enumerate these for unique residency.
     pub sampled_source: Option<Document>,
     clone_offset: [i32; 2],
+    healing: Option<HealingOptions>,
+    patch: Option<healing::HealingPatch>,
     pub applied_time: f64,
     pub completed_time: f64,
     base: Document,
@@ -282,8 +289,8 @@ impl StrokeCommand {
         available: u64,
         layer: fotoeditor_core::LayerId,
     ) -> Result<Self, String> {
-        if settings.clone.is_some() {
-            return Err("Clone Stamp requires an immutable sampled source".into());
+        if settings.clone.is_some() || settings.healing.is_some() {
+            return Err("Retouching requires an immutable sampled source".into());
         }
         let node = base.layer(layer)?;
         fotoeditor_core::check_layer_edit(&base.layers, layer, false)?;
@@ -313,6 +320,8 @@ impl StrokeCommand {
             preview,
             sampled_source: None,
             clone_offset: [0, 0],
+            healing: None,
+            patch: None,
             applied_time: 0.0,
             completed_time: 0.0,
             base: base.clone(),
@@ -333,6 +342,7 @@ impl StrokeCommand {
         self.coverage.len() as u64 * TILE_BYTES * 2
             + (self.queue.capacity() * size_of::<Sample>()) as u64
             + self.tip.bytes()
+            + self.patch.as_ref().map_or(0, |p| p.bytes())
     }
     /// Hydration can consume budget after stroke admission; never grow its ceiling.
     pub fn limit_available(&mut self, available: u64) {
@@ -503,12 +513,43 @@ impl StrokeCommand {
                     break;
                 }
             }
+            if let Some(options) = self.healing {
+                if self.patch.is_none() {
+                    let patch = healing::HealingPatch::new(
+                        self.dab.as_ref().unwrap(),
+                        options.spot,
+                        self.clone_offset,
+                        self.available.saturating_sub(self.temporary_bytes()),
+                    )?;
+                    self.patch = Some(patch);
+                    // The adapter hydrates the patch halo/search candidate first.
+                    return Ok(());
+                }
+                while !self.patch.as_ref().unwrap().done() {
+                    if self.clone_source_cold() || pixels == 0 {
+                        return Ok(());
+                    }
+                    let patch = self.patch.as_mut().unwrap();
+                    let limit = pixels;
+                    pixels = pixels.saturating_sub(patch.work());
+                    patch.step(
+                        self.sampled_source.as_ref().unwrap(),
+                        self.dab.as_ref().unwrap(),
+                        &self.tip,
+                        limit,
+                    )?;
+                }
+                if pixels == 0 {
+                    return Ok(());
+                }
+            }
             let dab = self.dab.as_mut().unwrap();
             let coord = (dab.x / TILE_SIZE, dab.y / TILE_SIZE);
             if !self.coverage.contains_key(&coord) {
                 let required = (self.coverage.len() as u64 + 1) * TILE_BYTES * 2
                     + (self.queue.capacity() * size_of::<Sample>()) as u64
                     + self.tip.bytes();
+                let required = required + self.patch.as_ref().map_or(0, |p| p.bytes());
                 if required > self.available {
                     return Err("This stroke exceeds the 768 MiB document/history/temporary budget; stroke cancelled".into());
                 }
@@ -553,6 +594,7 @@ impl StrokeCommand {
                     end,
                     source,
                     self.clone_offset,
+                    self.patch.as_ref(),
                 )?
             } else {
                 stamp_row(
@@ -577,6 +619,7 @@ impl StrokeCommand {
             if dab.y == dab.y1 {
                 self.completed_time = self.completed_time.max(dab.p.time);
                 self.dab = None;
+                self.patch = None;
             }
         }
         Ok(())
@@ -590,7 +633,13 @@ impl StrokeCommand {
         }
         self.preview.raster_mut().compact_dirty();
         let command = TileCommand::between(&self.base, &self.preview)?;
-        Ok(if self.sampled_source.is_some() {
+        Ok(if let Some(options) = self.healing {
+            command.named(if options.spot {
+                "Spot Healing"
+            } else {
+                "Healing Brush"
+            })
+        } else if self.sampled_source.is_some() {
             command.named("Clone Stamp")
         } else {
             command

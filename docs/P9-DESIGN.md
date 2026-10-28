@@ -77,3 +77,55 @@ P5's identifiable Photoshop feather comparison remains pending without
 limits and P8's explicitly accepted save-speed miss (deferred to P12) persist.
 P8's thirteen validated raster PSDs do not close the feather gate. P10 is outside
 this phase. No new license or dependency is assumed by this design.
+
+## M2 design and acceptance (2026-10-28, before implementation)
+
+Starts at certified M1 `c630690977e1a3ca3a5558f2dd0d3ee78808540f`, with a
+clean checkout matching fetched origin/main. Re-read the complete printed page
+17 visually and verify the original PDF SHA-256 above. All product questions
+are answered. Work directly on main, without agents/worktrees; stop before M3.
+
+- Healing Brush: Alt-click source, aligned/non-aligned integer mapping and
+  current/all-visible sampling reuse M1. Spot Healing needs no source and searches
+  nearby non-overlapping patches, scoring the surrounding ring rather than the
+  blemish interior. Deterministic bounded coarse search/refinement is local patch
+  search, not M3 PatchMatch or content-aware fill.
+- Solve the discrete source-gradient Poisson equation with immutable destination
+  Dirichlet boundary values on each dab's shaped domain. An original conjugate-
+  gradient implementation yields between bounded stages/rows; no external code
+  or new dependency. Reference: Perez, Gangnet and Blake, SIGGRAPH 2003,
+  https://legacy.sites.fas.harvard.edu/~cs278/papers/poisson.pdf.
+- Apply the solved RGB through existing stroke coverage/opacity/flow and selection
+  exactly once. Transparent sampled source/target pixels have no healing domain;
+  hidden RGB cannot guide a solve. All-visible sampling supports a separate empty
+  retouch layer using the immutable visible target as its boundary. Preserve
+  source-over alpha behavior and alpha lock. Mask/Quick Mask targets are refused.
+- Immutable pre-stroke samples are used throughout overlap and search. Source
+  and target domains and their one-pixel halo respect the visible crop. Retained
+  samples, guides/DPI, legacy projects/recovery and unrelated RGB stay unchanged.
+- One named command per stroke, exact undo/redo. Escape/focus loss/overflow,
+  failed hydration, unsuitable source, solver failure and admission refusal must
+  preserve committed pixels, history and redo. Candidate previews may be discarded.
+- Count search, solver vectors/domain/sample buffers, coverage, output COW tiles,
+  immutable source generations, history/paging/display and GPU residency. Keep
+  768 MiB CPU / 128 MiB GPU, existing dimension/file caps and 2,000,000-byte gzip
+  WASM gate. Hydrate only bounded next-dab source/target/search regions.
+- Rust verification: independent small-domain Poisson oracle, nontrivial texture
+  and tonal adaptation, deterministic search excluding the blemish, immutable
+  overlap, tile/crop/alpha/selection/locks, bounded stepping/admission/cold pages,
+  cancellation/refusal/no-op redo and exact undo/redo. Browser verification uses
+  real controls/source picking and worker jobs on both installed browsers/APIs.
+- Portrait gate: acquire an identifiable licensed reference portrait with a real
+  visible blemish; retain provenance/hash/coordinates/settings and inspect full
+  before/after and magnified crops for both tools. Record blemish removal and seam
+  assessment explicitly; synthetic-only evidence cannot pass this gate.
+- Measure first/warm 6000x4000 M2 strokes on verified Chrome/Edge hardware APIs:
+  settings, source mode, input path, completion/cadence/latency percentiles and CPU/
+  GPU peaks. No separate M2 fps/ms threshold exists in the roadmap; no new speed
+  exception or under-one-frame claim is assumed. Software proves function only.
+- Run full formatting, native/WASM clippy, Cargo tests, TypeScript, ESLint,
+  Vitest, production size/licenses, required hardware regression and rebuilt
+  WebView2 on both APIs. Inspect exact-final-head CI/deployment and downloaded
+  artifacts for zero failures/skips/retries/flaky/global errors before acceptance.
+  Report shipped/deferred work, portrait evidence, measured performance, validation
+  and proposed M3, then stop. No phase tag until all P9 milestones pass.

@@ -431,8 +431,12 @@ mod bridge {
             }
             let mut settings: BrushSettings =
                 serde_json::from_str(settings).map_err(|e| JsValue::from_str(&e.to_string()))?;
-            if settings.clone.is_some() && (self.selected.quick_mask || self.layered.mask_target) {
-                return Err(JsValue::from_str("Clone Stamp needs a raster pixel target"));
+            if (settings.clone.is_some() || settings.healing.is_some())
+                && (self.selected.quick_mask || self.layered.mask_target)
+            {
+                return Err(JsValue::from_str(
+                    "Clone Stamp / healing needs a raster pixel target",
+                ));
             }
             let doc = self
                 .document
@@ -472,15 +476,26 @@ mod bridge {
             } else {
                 target
             };
-            if let Some(options) = settings.clone {
+            if let Some(options) =
+                settings
+                    .clone
+                    .or(settings.healing.map(|h| fotoeditor_brush::CloneOptions {
+                        aligned: h.aligned,
+                        all_layers: h.all_layers,
+                    }))
+            {
                 if self.selected.quick_mask || self.layered.mask_target {
                     return Err(JsValue::from_str("Clone Stamp needs a raster pixel target"));
                 }
                 let (x, y) = self.view.screen_to_document(x, y);
-                let offset = self
-                    .clone_anchor
-                    .mapping([x, y], options.aligned)
-                    .map_err(|e| JsValue::from_str(&e))?;
+                let offset = if settings.healing.is_some_and(|h| h.spot) {
+                    [0, 0]
+                } else {
+                    self.clone_anchor
+                        .mapping([x, y], options.aligned)
+                        .map_err(|e| JsValue::from_str(&e))?
+                };
+                let spot = settings.healing.is_some_and(|h| h.spot);
                 let mut sampled = if options.all_layers {
                     if self.layered.requires_composite(Some(doc)) {
                         self.layered
@@ -508,7 +523,11 @@ mod bridge {
                     StrokeCommand::for_clone(doc, settings, available, target, sampled, offset)
                         .map_err(|e| JsValue::from_str(&e))?,
                 );
-                self.clone_pending = Some((offset, options.aligned));
+                self.clone_pending = if spot {
+                    None
+                } else {
+                    Some((offset, options.aligned))
+                };
                 self.refresh_pages();
                 return Ok(());
             }

@@ -25,7 +25,7 @@ impl CloneAnchor {
         if point.iter().any(|v| !v.is_finite() || *v < 0.0)
             || !bounds.contains(point[0].floor() as u32, point[1].floor() as u32)
         {
-            return Err("Choose a Clone Stamp source inside the visible canvas".into());
+            return Err("Choose a sampling source inside the visible canvas".into());
         }
         self.source = Some(point.map(|v| v.floor() as i32));
         self.offset = None;
@@ -34,12 +34,12 @@ impl CloneAnchor {
     pub fn mapping(&self, destination: [f64; 2], aligned: bool) -> Result<[i32; 2], String> {
         let source = self
             .source
-            .ok_or("Alt-click to choose a Clone Stamp source first")?;
+            .ok_or("Alt-click to choose a sampling source first")?;
         if destination
             .iter()
             .any(|v| !v.is_finite() || v.abs() > f64::from(MAX_SIDE) * 2.0)
         {
-            return Err("Invalid Clone Stamp destination".into());
+            return Err("Invalid retouch destination".into());
         }
         if let (true, Some(offset)) = (aligned, self.offset) {
             return Ok(offset);
@@ -59,6 +59,7 @@ impl StrokeCommand {
         source: Document,
         offset: [i32; 2],
     ) -> Result<Self, String> {
+        settings.validate()?;
         if offset.iter().any(|v| v.unsigned_abs() > MAX_SIDE)
             || source.width != base.width
             || source.height != base.height
@@ -70,8 +71,10 @@ impl StrokeCommand {
         if settings.eraser {
             return Err("Clone Stamp cannot erase".into());
         }
+        let healing = settings.healing.take();
         settings.clone = None;
         let mut stroke = Self::for_layer(base, settings, available, layer)?;
+        stroke.healing = healing;
         stroke.sampled_source = Some(source);
         stroke.clone_offset = offset;
         Ok(stroke)
@@ -94,6 +97,13 @@ impl StrokeCommand {
         let (Some(source), Some(dab)) = (&self.sampled_source, &self.dab) else {
             return;
         };
+        if let Some(patch) = &self.patch {
+            patch.needed(source, visitor);
+            return;
+        }
+        if self.healing.is_some() {
+            return;
+        }
         let bounds = source.canvas_rect();
         let [dx, dy] = self.clone_offset;
         let x0 = (i64::from(dab.x0) + i64::from(dx)).max(i64::from(bounds.x));
@@ -131,11 +141,12 @@ pub(super) fn stamp_row(
     end: u32,
     source: &Document,
     offset: [i32; 2],
+    healed: Option<&healing::HealingPatch>,
 ) -> Result<bool, String> {
     let (base, selection, clip_default) = destination;
     let bounds = source.canvas_rect();
     let sy = i64::from(dab.y) + i64::from(offset[1]);
-    if sy < i64::from(bounds.y) || sy >= i64::from(bounds.y + bounds.height) {
+    if healed.is_none() && (sy < i64::from(bounds.y) || sy >= i64::from(bounds.y + bounds.height)) {
         return Ok(false);
     }
     let sy = sy as u32;
@@ -147,21 +158,32 @@ pub(super) fn stamp_row(
     let mut x = dab.x;
     while x < end {
         let sx = i64::from(x) + i64::from(offset[0]);
-        if sx < i64::from(bounds.x) || sx >= i64::from(bounds.x + bounds.width) {
+        if healed.is_none()
+            && (sx < i64::from(bounds.x) || sx >= i64::from(bounds.x + bounds.width))
+        {
             x += 1;
             continue;
         }
         let sx = sx as u32;
-        let count = (end - x)
-            .min(TILE_SIZE - sx % TILE_SIZE)
-            .min(bounds.x + bounds.width - sx);
-        let sampled = source
-            .raster()
-            .tiles()
-            .get(&(sx / TILE_SIZE, sy / TILE_SIZE))
-            .map(|t| t.pin())
-            .transpose()?;
-        if selection.is_none()
+        let count = if healed.is_some() {
+            end - x
+        } else {
+            (end - x)
+                .min(TILE_SIZE - sx % TILE_SIZE)
+                .min(bounds.x + bounds.width - sx)
+        };
+        let sampled = if healed.is_some() {
+            None
+        } else {
+            source
+                .raster()
+                .tiles()
+                .get(&(sx / TILE_SIZE, sy / TILE_SIZE))
+                .map(|t| t.pin())
+                .transpose()?
+        };
+        if healed.is_none()
+            && selection.is_none()
             && clip_default == 255
             && scale == 1.0
             && base.is_some_and(|t| t.known_opaque)
@@ -185,12 +207,14 @@ pub(super) fn stamp_row(
             continue;
         }
         for n in 0..count {
-            let color = sampled
-                .as_ref()
-                .map_or(source.raster().default, |t| {
+            let color = if let Some(patch) = healed {
+                patch.sample(x + n, dab.y)
+            } else {
+                sampled.as_ref().map_or(source.raster().default, |t| {
                     t.pixels[((sy % TILE_SIZE) * TILE_SIZE + sx % TILE_SIZE + n) as usize]
                 })
-                .0;
+            }
+            .0;
             if color[3] == 0 {
                 continue;
             }
