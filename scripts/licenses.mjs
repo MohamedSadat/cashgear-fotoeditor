@@ -145,6 +145,8 @@ const output = [
   'These are validation tools only, not web or desktop runtime dependencies.',
   'Unmodified public PSD regression fixtures use MIT licenses. Source revisions,',
   'SHA-256 hashes and preserved upstream notices are in tests/fixtures/psd/.',
+  'P9 M2 uses an unmodified public-domain U.S. Air Force reference photograph.',
+  'Photographer, source, hash and altered-result labeling: tests/fixtures/retouch/README.md.',
   '',
   'The downloaded wasm-bindgen CLI uses MIT OR Apache-2.0. Binaryen uses Apache-2.0.',
   'Rust uses MIT OR Apache-2.0; Node.js and pnpm use MIT. Windows toolchains and',

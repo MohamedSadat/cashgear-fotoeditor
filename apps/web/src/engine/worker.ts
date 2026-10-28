@@ -2242,7 +2242,7 @@ const api: EngineApi = {
           if (busy) throw new Error('Finish the current operation first');
           if (input.kind === 'stroke-begin') {
             editError = undefined;
-            if (input.brush?.clone?.allLayers) {
+            if (input.brush?.clone?.allLayers || input.brush?.healing?.allLayers) {
               busy = true;
               try {
                 await recompose();

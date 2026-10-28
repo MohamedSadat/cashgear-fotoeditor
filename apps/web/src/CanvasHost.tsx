@@ -85,9 +85,17 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
     let gestureRevision: number | undefined;
     let polygonMode: ReturnType<typeof selectionMode> = 'new';
     const isSelecting = () =>
-      !['brush', 'clone', 'eraser', 'eyedropper', 'move', 'transform', 'crop'].includes(
-        useBrush.getState().tool,
-      );
+      ![
+        'brush',
+        'clone',
+        'healing',
+        'spot',
+        'eraser',
+        'eyedropper',
+        'move',
+        'transform',
+        'crop',
+      ].includes(useBrush.getState().tool);
     const documentPoint = (x: number, y: number): [number, number] => {
       const s = useWorkspace.getState().snapshot!;
       const d = s.document!;
@@ -231,9 +239,13 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       clearInterval(spray);
       spray = undefined;
     };
-    function cancelStroke() {
+    function cancelStroke(includePending = false) {
       endSpray();
-      if (strokePointer !== undefined) send({ kind: 'stroke-cancel', x: 0, y: 0, amount: 0 });
+      if (
+        strokePointer !== undefined ||
+        (includePending && useWorkspace.getState().snapshot?.painting)
+      )
+        send({ kind: 'stroke-cancel', x: 0, y: 0, amount: 0 });
       strokePointer = undefined;
       strokeSettings = undefined;
     }
@@ -243,7 +255,12 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       const snapshot = useWorkspace.getState().snapshot;
       const source = snapshot?.cloneStamp?.source;
       const offset = snapshot?.cloneStamp?.offset;
-      cloneMarker.hidden = brush.tool !== 'clone' || !source || !snapshot?.document;
+      cloneMarker.setAttribute(
+        'aria-label',
+        brush.tool === 'healing' ? 'Healing source' : 'Clone source',
+      );
+      cloneMarker.hidden =
+        !['clone', 'healing'].includes(brush.tool) || !source || !snapshot?.document;
       if (!cloneMarker.hidden && source) {
         const destination = lastScreen ? documentPoint(...lastScreen) : undefined;
         const point: [number, number] =
@@ -299,6 +316,12 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
         if (event.code === 'Space') space = false;
         if (event.code === 'KeyR') rotate = false;
         refreshOutline();
+        return;
+      }
+      if (event.code === 'Escape' && useWorkspace.getState().snapshot?.painting) {
+        event.preventDefault();
+        cancelStroke(true);
+        clearSelectionGesture();
         return;
       }
       if (
@@ -381,7 +404,8 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
           clearSelectionGesture();
           return;
         }
-        if (strokePointer !== undefined) cancelStroke();
+        if (strokePointer !== undefined || useWorkspace.getState().snapshot?.painting)
+          cancelStroke(true);
         else
           send({
             kind: event.code === 'KeyY' || event.shiftKey ? 'redo' : 'undo',
@@ -394,6 +418,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
           { KeyB: 'brush', KeyE: 'eraser', KeyI: 'eyedropper', KeyS: 'clone' } as const
         )[event.code as 'KeyB' | 'KeyE' | 'KeyI' | 'KeyS'];
         if (tool) useBrush.setState({ tool });
+        if (event.code === 'KeyJ') useBrush.setState({ tool: event.shiftKey ? 'spot' : 'healing' });
         if (event.code === 'KeyX') useBrush.getState().swap();
         if (event.code === 'BracketLeft' || event.code === 'BracketRight') {
           event.preventDefault();
@@ -406,7 +431,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
             ),
           });
         }
-        if (event.code === 'Escape') cancelStroke();
+        if (event.code === 'Escape') cancelStroke(true);
       }
       refreshOutline();
     }
@@ -417,7 +442,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       space = false;
       rotate = false;
       drag = undefined;
-      cancelStroke();
+      cancelStroke(true);
       refreshOutline();
     }
     window.addEventListener('keydown', key);
@@ -526,7 +551,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
           }
           return;
         }
-        if (event.altKey && brush.tool === 'clone') {
+        if (event.altKey && ['clone', 'healing'].includes(brush.tool)) {
           send({ kind: 'clone-source', x, y, amount: 0 });
           return;
         }
@@ -562,6 +587,15 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
             eraser: brush.tool === 'eraser' || event.button === 5,
             ...(brush.tool === 'clone'
               ? { clone: { aligned: brush.cloneAligned, allLayers: brush.cloneAllLayers } }
+              : {}),
+            ...(['healing', 'spot'].includes(brush.tool)
+              ? {
+                  healing: {
+                    spot: brush.tool === 'spot',
+                    aligned: brush.cloneAligned,
+                    allLayers: brush.cloneAllLayers,
+                  },
+                }
               : {}),
           },
         });
@@ -702,13 +736,14 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       transform.cancelDrag();
       clearSelectionGesture();
       drag = undefined;
-      cancelStroke();
+      cancelStroke(true);
     });
     canvas.addEventListener('lostpointercapture', () => {
       if (crop.dragging()) crop.cancelDrag();
       if (transform.dragging()) transform.cancelDrag();
       if (selectionDrag) clearSelectionGesture();
       drag = undefined;
+      // Normal pointer release also loses capture; keep its pending solver job.
       cancelStroke();
     });
     canvas.addEventListener('pointerleave', () => {

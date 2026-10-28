@@ -486,6 +486,17 @@ export function App() {
           >
             S
           </button>
+          {(['healing', 'spot'] as const).map((t) => (
+            <button
+              key={t}
+              aria-label={t === 'healing' ? 'Healing Brush' : 'Spot Healing'}
+              title={t === 'healing' ? 'Healing Brush · J' : 'Spot Healing · Shift+J'}
+              aria-pressed={tool === t}
+              onClick={() => useBrush.setState({ tool: t })}
+            >
+              {t === 'healing' ? 'J' : 'J+'}
+            </button>
+          ))}
           {(
             [
               'brush',

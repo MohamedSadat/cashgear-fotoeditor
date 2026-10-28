@@ -64,22 +64,34 @@ export const BrushPanel = memo(function BrushPanel() {
   return (
     <div className="brush-panel">
       <span className="section-eyebrow">BRUSH & COLOR</span>
-      {tool === 'clone' && (
+      {['clone', 'healing', 'spot'].includes(tool) && (
         <fieldset className="clone-controls">
-          <legend>Clone Stamp</legend>
-          <p>Alt-click to pick a source. S selects Clone Stamp.</p>
+          <legend>
+            {tool === 'clone'
+              ? 'Clone Stamp'
+              : tool === 'healing'
+                ? 'Healing Brush'
+                : 'Spot Healing'}
+          </legend>
+          <p>
+            {tool === 'spot'
+              ? 'Paint over a small blemish to find a nearby patch. Shift+J selects Spot Healing.'
+              : `Alt-click to pick a source. ${tool === 'clone' ? 'S selects Clone Stamp.' : 'J selects Healing Brush.'}`}
+          </p>
+          {tool !== 'spot' && (
+            <label>
+              <input
+                type="checkbox"
+                checked={cloneAligned}
+                onChange={(e) => useBrush.setState({ cloneAligned: e.target.checked })}
+              />
+              Aligned source
+            </label>
+          )}
           <label>
-            <input
-              type="checkbox"
-              checked={cloneAligned}
-              onChange={(e) => useBrush.setState({ cloneAligned: e.target.checked })}
-            />
-            Aligned source
-          </label>
-          <label>
-            Clone sample
+            {tool === 'clone' ? 'Clone sample' : 'Healing sample'}
             <select
-              aria-label="Clone sample"
+              aria-label={tool === 'clone' ? 'Clone sample' : 'Healing sample'}
               value={cloneAllLayers ? 'all' : 'current'}
               onChange={(e) => useBrush.setState({ cloneAllLayers: e.target.value === 'all' })}
             >

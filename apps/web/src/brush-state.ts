@@ -95,6 +95,8 @@ interface BrushState {
     | 'crop'
     | 'brush'
     | 'clone'
+    | 'healing'
+    | 'spot'
     | 'eraser'
     | 'eyedropper'
     | 'rectangle'

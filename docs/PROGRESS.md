@@ -1,5 +1,23 @@
 # Progress
 
+## P9 - M2 Healing Brush and Spot Healing in progress
+
+Started 2026-10-28 at certified M1 `c630690977e1a3ca3a5558f2dd0d3ee78808540f`,
+directly on clean main matching fetched origin/main, without worktrees or agents.
+Read the phase records, M1 report/certification and complete original P9 roadmap
+on printed page 17 as extracted text and a rendered page; its SHA-256 matches.
+Existing product decisions answer all M2 questions. P9-DESIGN.md records M2
+behavior and acceptance before implementation.
+
+The implementation adds an original bounded Rust Poisson solver and deterministic
+nearby patch search, immutable sampling, current/all-visible retouching, controls,
+selection/locks/crop, one command and exact undo/redo. Native tests include an
+independent direct equation oracle. The identifiable public-domain Melissa Diaz
+USAF portrait supplies an actual blemish and inspected before/after evidence for
+both tools. Full final-build regression, hardware measurements, rebuilt desktop
+and exact-head remote certification remain required before M2 acceptance.
+M3 content-aware fill and later milestones remain outside this work.
+
 ## P9 - M1 Clone Stamp locally verified
 
 Started 2026-10-27 directly on clean main at `af66e10` / remotely certified

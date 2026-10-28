@@ -150,6 +150,7 @@ export interface Interaction {
     color: Rgba;
     eraser: boolean;
     clone?: { aligned: boolean; allLayers: boolean };
+    healing?: { spot: boolean; aligned: boolean; allLayers: boolean };
   };
   sample?: [number, number, number, number, number, number];
 }
