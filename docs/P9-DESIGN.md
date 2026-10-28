@@ -78,6 +78,58 @@ limits and P8's explicitly accepted save-speed miss (deferred to P12) persist.
 P8's thirteen validated raster PSDs do not close the feather gate. P10 is outside
 this phase. No new license or dependency is assumed by this design.
 
+## M3 design and acceptance (2026-10-28, before implementation)
+
+Starts on clean main at certified M2 `9f000fd603d6a5394dbc1704d80ae9b377b35766`,
+matching fetched origin/main. Re-read the original printed page 17 as extracted
+text and a rendered page; the original PDF SHA-256 above matches. Existing
+product choices answer the phase questions. Work without agents/worktrees;
+stop before M4. M2's immutable certification remains preserved.
+
+- Edit > Content-aware fill requires an explicit nonempty selection and an
+  editable raster target. Current layer is the default; all-visible sampling
+  supports a separate empty retouch layer. Reuse selection controls' All layers
+  option. Mask and Quick Mask targets are refused. Pixel/all locks refuse;
+  alpha lock preserves destination alpha and hidden RGB.
+- An original Rust multiscale PatchMatch implementation uses deterministic
+  initialization, alternating spatial propagation, exponentially shrinking random
+  search and patch reconstruction. Conceptual reference: Barnes et al., SIGGRAPH
+  2009, https://gfx.cs.princeton.edu/pubs/Barnes_2009_PAR/patchmatch.pdf.
+  No reference implementation, GPL code or new processing dependency is used.
+- Donors are opaque patches outside every nonzero selection sample, within the
+  visible crop and a bounded neighborhood of the selection. Feathered samples
+  exclude donors too. Match premultiplied color; hidden RGB never guides search.
+  Reject neighborhoods without a suitable patch atomically. This is texture
+  synthesis, with no semantic object recognition or guarantee for arbitrary scenes.
+- Immutable source and candidate state live in the worker/Rust bridge. Selection
+  coverage clips the final source-over write exactly once; all other samples,
+  hidden RGB, retained crop pixels, masks, guides, DPI and layer metadata remain
+  exact. One Content-aware fill command; byte-exact undo/redo and sparse absence.
+- Selection scanning, source capture, pyramid construction, initialization,
+  matching, reconstruction and candidate writing use bounded cooperative steps.
+  Escape/Cancel, missing/cold backing failures and budget refusal never publish
+  partial edits or clear redo. Hydrate only the next requested tiles.
+- Admit dense source/mask/pyramid/field/reconstruction buffers before allocation,
+  plus COW output tiles, immutable sources, document/history, paging/display/GPU.
+  Preserve 768 MiB CPU / 128 MiB GPU, 16,384 sides, 128 MiB images, 4 GiB projects
+  and the 2,000,000-byte gzip WASM gate. Report actual bounds and limitations.
+- Rust tests cover deterministic nontrivial synthesis, donor exclusion, propagation
+  and random search, fractional selection, transparency/hidden RGB, tile/crop
+  boundaries, locks, empty/unsuitable sources, cold requests, stepping, budget
+  refusal, cancellation/no-op redo and exact command undo/redo. Browser tests use
+  actual controls, both sampling modes and cancellation/refusal on both APIs.
+- Inspect real-photograph before/after results and magnified crops, retaining
+  provenance, hash, selected area and settings. Report visual strengths/limits.
+  Measure meaningful 6000x4000 first/warm fills on installed Chrome/Edge hardware
+  WebGPU/WebGL2, with source/selection/settings, completion percentiles and logical
+  residency. No separate M3 speed threshold or new performance waiver is inferred.
+- Run full repository formatting, native/WASM clippy, Cargo tests, TypeScript,
+  ESLint, Vitest, production size/licenses, full installed-browser hardware
+  regression and rebuilt Windows/WebView2 on both APIs. Inspect exact-final-head
+  remote CI/deployment artifacts and hosted bytes/results; require zero failures,
+  skips/retries/flaky/global errors. Record immutable certification and an M3
+  shipped/deferred/performance/next-M4 report. No `p9-retouch` until M3-M5 pass.
+
 ## M2 design and acceptance (2026-10-28, before implementation)
 
 Starts at certified M1 `c630690977e1a3ca3a5558f2dd0d3ee78808540f`, with a
