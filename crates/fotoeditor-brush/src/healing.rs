@@ -26,6 +26,8 @@ enum Stage {
 }
 
 pub(super) struct HealingPatch {
+    center: [f64; 2],
+    radius: f64,
     x0: i32,
     y0: i32,
     width: usize,
@@ -83,6 +85,8 @@ impl HealingPatch {
             }
         }
         Ok(Self {
+            center: [dab.p.x, dab.p.y],
+            radius: dab.radius,
             x0: dab.x0 as i32 - 1,
             y0: dab.y as i32 - 1,
             width,
@@ -121,6 +125,9 @@ impl HealingPatch {
     }
     pub fn done(&self) -> bool {
         self.stage == Stage::Done
+    }
+    pub fn matches(&self, point: [f64; 2], radius: f64) -> bool {
+        self.done() && self.center == point && self.radius == radius
     }
     pub fn work(&self) -> usize {
         if self.stage == Stage::Search {
@@ -361,7 +368,17 @@ impl HealingPatch {
                 });
             }
             Stage::Direction => self.next(Stage::Multiply),
-            Stage::Output => self.next(Stage::Done),
+            Stage::Output => {
+                // Reuse immutable solved samples for stationary flow/endpoints,
+                // but release all numerical/search scratch before retaining them.
+                self.target = Vec::new();
+                self.solution = Vec::new();
+                self.residual = Vec::new();
+                self.direction = Vec::new();
+                self.product = Vec::new();
+                self.candidates = Vec::new();
+                self.next(Stage::Done);
+            }
             _ => unreachable!(),
         }
         Ok(())

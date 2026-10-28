@@ -466,6 +466,13 @@ impl StrokeCommand {
             p.x = p.x.floor() + 0.5;
             p.y = p.y.floor() + 0.5;
         }
+        if self
+            .patch
+            .as_ref()
+            .is_some_and(|patch| !patch.matches([p.x, p.y], radius))
+        {
+            self.patch = None;
+        }
         let bounds = self.preview.canvas_rect();
         let x0 = (p.x - radius)
             .floor()
@@ -619,7 +626,6 @@ impl StrokeCommand {
             if dab.y == dab.y1 {
                 self.completed_time = self.completed_time.max(dab.p.time);
                 self.dab = None;
-                self.patch = None;
             }
         }
         Ok(())

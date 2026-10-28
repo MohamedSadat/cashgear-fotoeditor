@@ -37,6 +37,8 @@ const report = {
   method:
     'Serial installed hardware browsers, fresh context per API/source mode, ordinary populated 6000x4000 document at 100% / 1280x850 / DPR1. Hard round 48 and 200 px, opacity/flow 100%, pressure 1. Four native mouse click strokes per tool/size, exact undo outside timing restores original between trials. First-use and three warm trials; OS/file caches not cleared. Current raw raster or all visible into a separate empty retouch raster. Healing source [0,-180], aligned; Spot Healing searches automatically. Click-to-committed presentation includes automation/worker/CPU/GPU and persistence. Sample-to-completed-dab GPU acknowledgement excludes scanout/compositor and physical input. Cadence includes unchanged active previews, never presented as changed-pixel throughput. Logical memory excludes allocator/browser/driver overhead. No separate M2 speed threshold exists.',
   results: [],
+  pathMethod:
+    'After the four click trials at 48px, one 48px horizontal path uses native down, four 12px moves with requested 16ms pauses, and up. Report actual completion/ack latency and queue depth; no fixed delivered input rate is assumed. A click has down/up endpoint samples; completed acknowledgements include unchanged endpoints.',
 };
 const save = () => writeFile(out, JSON.stringify(report, null, 2) + '\n');
 await mkdir('bench/results', { recursive: true });

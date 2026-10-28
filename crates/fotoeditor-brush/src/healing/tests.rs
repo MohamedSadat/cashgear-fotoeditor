@@ -305,16 +305,31 @@ fn poisson_matches_independent_dense_gaussian_elimination_on_nontrivial_rgb_doma
     }
     for _ in 0..10000 {
         patch.step(&doc, &dab, &tip, 13).unwrap();
-        if patch.done() {
+        if patch.stage == Stage::Output {
             break;
         }
     }
-    assert!(patch.done());
+    assert!(patch.stage == Stage::Output);
     for (row, &i) in ids.iter().enumerate() {
         for c in 0..3 {
             assert!((patch.solution[i][c] - a[row][n + c]).abs() < 0.0001);
         }
     }
+    while !patch.done() {
+        patch.step(&doc, &dab, &tip, 13).unwrap();
+    }
+    for (row, &i) in ids.iter().enumerate() {
+        for c in 0..3 {
+            assert_eq!(
+                patch.source[i].0[c],
+                a[row][n + c].round().clamp(0.0, 255.0) as u8
+            );
+        }
+    }
+    assert_eq!(
+        patch.bytes(),
+        (patch.source.capacity() * 4 + patch.domain.capacity()) as u64
+    );
 }
 
 #[test]
