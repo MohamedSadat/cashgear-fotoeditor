@@ -1108,6 +1108,85 @@ try {
       exactUndo: true,
       pixel: [...cloned.data.subarray(cloneAt, cloneAt + 4)],
     };
+    result.healing = [];
+    for (const tool of ['Healing Brush', 'Spot Healing']) {
+      const prepared = await page.evaluate(async () => {
+        const api = window.__fotoeditor;
+        await api.newDocument(64, 64, 300);
+        await api.selectionAction({ kind: 'fill', color: [160, 120, 90, 255] });
+        await api.selectionAction({
+          kind: 'shape',
+          shape: { kind: 'rectangle', x0: 38, y0: 30, x1: 43, y1: 35 },
+          mode: 'new',
+          antialias: false,
+        });
+        await api.selectionAction({ kind: 'fill', color: [200, 40, 70, 255] });
+        const s = await api.selectionAction({ kind: 'none' });
+        await api.interact([{ kind: 'actual', x: 0, y: 0, amount: 0 }]);
+        return s;
+      });
+      await page.waitForFunction((revision) => {
+        const s = JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot);
+        return s.revision === revision && !s.painting && !s.operation && s.view.zoom === 1;
+      }, prepared.revision);
+      const before = await exportedPng();
+      await page.getByRole('combobox', { name: 'Brush preset' }).selectOption('Hard round');
+      await page.getByRole('button', { name: tool, exact: true }).click();
+      await page.getByRole('slider', { name: 'Brush size', exact: true }).evaluate((element) => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(
+          element,
+          '16',
+        );
+        element.dispatchEvent(new Event('input', { bubbles: true }));
+        element.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      const b = await page.getByTestId('gpu-canvas').boundingBox(),
+        cx = b.x + b.width / 2,
+        cy = b.y + b.height / 2;
+      if (tool === 'Healing Brush') {
+        await page.keyboard.down('Alt');
+        await page.mouse.click(cx - 16 + 0.5, cy + 0.5);
+        await page.keyboard.up('Alt');
+        await page.waitForFunction(
+          () =>
+            JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot)
+              .cloneStamp.source?.[0] === 16,
+        );
+      }
+      await page.mouse.click(cx + 8 + 0.5, cy + 0.5);
+      await page.waitForFunction((count) => {
+        const s = JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot);
+        return s.history.undo === count + 1 && !s.painting && !s.operation;
+      }, prepared.history.undo);
+      const after = await exportedPng(),
+        image = PNG.sync.read(Buffer.from(after)),
+        at = (32 * 64 + 40) * 4;
+      expect([...image.data.subarray(at, at + 4)]).toEqual([160, 120, 90, 255]);
+      await page.getByRole('button', { name: 'Undo', exact: true }).click();
+      await page.waitForFunction(
+        (count) =>
+          JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot).history
+            .undo === count,
+        prepared.history.undo,
+      );
+      expect(Buffer.from(await exportedPng()).equals(Buffer.from(before))).toBe(true);
+      await page.getByRole('button', { name: 'Redo', exact: true }).click();
+      await page.waitForFunction(
+        (count) =>
+          JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot).history
+            .undo ===
+          count + 1,
+        prepared.history.undo,
+      );
+      expect(Buffer.from(await exportedPng()).equals(Buffer.from(after))).toBe(true);
+      result.healing.push({
+        tool,
+        oneCommand: true,
+        exactUndo: true,
+        exactRedo: true,
+        pixel: [...image.data.subarray(at, at + 4)],
+      });
+    }
     result.software = process.env.GPU_TEST_SOFTWARE === '1';
     await mkdir(join(root, 'bench/results'), { recursive: true });
     await page.screenshot({ path: join(root, 'bench/results/desktop-p4-' + backend + '.png') });
