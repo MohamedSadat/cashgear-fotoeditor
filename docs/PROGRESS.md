@@ -1,5 +1,43 @@
 # Progress
 
+## P9 - M3 content-aware fill
+
+Started 2026-10-28 at certified M2 `9f000fd`, directly on clean main matching
+fetched origin/main, without agents/worktrees. Read the required phase/M2 records
+and complete original P9 roadmap on printed page 17 as text and a rendered page;
+its SHA-256 matches. Existing decisions answer the product questions. M3 behavior
+and acceptance were recorded in P9-DESIGN.md before implementation.
+
+M3 delivers original multiscale Rust PatchMatch content-aware fill through Edit,
+immutable current/all-visible sampling, selection/locks/crop, bounded cooperative
+processing, atomic cancellation/refusal and exact one-command undo/redo. Donors
+are opaque patches outside every nonzero selection sample. The real public-domain
+portrait example removes its blemish without an obvious boundary, with some
+softening; structured/gradient synthesis retains visible quality limitations.
+
+All 207 Rust tests, native/WASM clippy, TypeScript, ESLint, formatting, sixteen
+Vitest cases and 459 license expressions pass. Fifteen focused final-worker
+software cases pass once without skips/retries/flaky/global errors. Rebuilt
+WebView2 passes both NVIDIA APIs and content-aware pixels/command/exact-undo/redo
+plus the retained broad smoke. WASM is 4,494,742 bytes / gzip9 1,662,210 against
+the unchanged 2,000,000-byte gate.
+
+All sixteen 6000x4000 hardware configurations complete, with 64 fills and exact
+exported SHA-256 restoration. Warm 48/200-square current fills take
+272.75-358.32 ms / 2.94405-3.46494 s; all-visible fills take
+5.39473-7.52790 s / 8.31041-11.29218 s. Logical CPU/GPU maxima are
+293.85/32.90 MiB, with the separately admitted 2.25 MiB compositor allowance
+disclosed. No new speed exception is inferred.
+
+[P9-M3-REPORT.md](P9-M3-REPORT.md) records behavior, bounds, visual limitations,
+hardware methodology, complete timing table and next M4. Final acceptance is
+gated on the full 632-case hardware matrix, exact-final-head remote CI/deployment,
+downloaded artifact inspection and hosted hardware/byte verification. Immutable
+results and actual completion status are recorded in
+`bench/results/p9-m3-final-certification.json` and the milestone completion message.
+M4 has not started; P9 remains incomplete without `p9-retouch`. All inherited
+P5/Ink/P6/P7/P8 limits and M1's accepted all-visible clone deferral persist.
+
 ## P9 - M2 Healing Brush and Spot Healing locally verified
 
 Started 2026-10-28 at certified M1 `c630690977e1a3ca3a5558f2dd0d3ee78808540f`,
