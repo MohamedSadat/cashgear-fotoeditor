@@ -354,6 +354,13 @@ already shipped product name. See P8-DESIGN.md for the current investigation.
 
 ## P9 acceptance and milestone boundaries
 
+M1 is accepted at `c630690977e1a3ca3a5558f2dd0d3ee78808540f`; its final
+certification JSON records immutable remote evidence. M2 implementation, local
+hardware verification and measurements are complete on 2026-10-28; see
+P9-M2-REPORT.md. Its completion message/final certification JSON record the
+exact-head remote CI/deployment, downloaded artifacts and hosted verification.
+M2 does not complete P9. Stop before M3 until explicitly requested.
+
 Source: complete original roadmap P9 section on printed page 17, extracted and
 visually inspected on 2026-10-27. Source SHA-256 is recorded in P9-DESIGN.md.
 The user answered all four questions: clone first, CashGear presets only, mirror

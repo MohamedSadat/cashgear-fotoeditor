@@ -1,5 +1,25 @@
 # Decisions
 
+## 2026-10-28 - P9 M2 scope and engineering choices
+
+- The user explicitly authorized Healing Brush and Spot Healing in this fresh
+  session, directly on main without agents/worktrees, then stop before M3.
+  Certified M1 is `c630690977e1a3ca3a5558f2dd0d3ee78808540f`; its final
+  certification JSON records the accepted immutable remote evidence.
+- Existing P9 choices answer all product questions. Engineering choices are an
+  original bounded conjugate-gradient Poisson solve, deterministic nearby ring
+  matching/refinement, immutable current/all-visible raster sampling and a single
+  accounted stationary-patch cache. They are implementation choices, not newly
+  requested product decisions. P9-DESIGN.md records acceptance before coding.
+- An identifiable real, public-domain USAF portrait closes the M2 seam criterion
+  only after inspecting the specified before/after results; synthetic tests alone
+  cannot substitute. The original source, hash, settings and scope are retained.
+- No budget, dependency-license policy, file limit or WASM limit is raised. No
+  new M2 speed exception is approved or inferred. Large-brush latency is reported;
+  the original roadmap has no separate M2 fps/ms target. M1's existing all-layer
+  target deferral and the inherited P5/Ink/P6/P7/P8 boundaries remain unchanged.
+- M2 does not finish P9. No `p9-retouch` tag until M3-M5 and phase acceptance pass.
+
 ## 2026-10-27 - P9 M1 measured clone-speed exception
 
 - After reviewing the complete 6000x4000 hardware matrix, the user explicitly

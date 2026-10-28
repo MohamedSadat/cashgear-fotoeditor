@@ -1,6 +1,6 @@
 # Progress
 
-## P9 - M2 Healing Brush and Spot Healing in progress
+## P9 - M2 Healing Brush and Spot Healing locally verified
 
 Started 2026-10-28 at certified M1 `c630690977e1a3ca3a5558f2dd0d3ee78808540f`,
 directly on clean main matching fetched origin/main, without worktrees or agents.
@@ -11,12 +11,39 @@ behavior and acceptance before implementation.
 
 The implementation adds an original bounded Rust Poisson solver and deterministic
 nearby patch search, immutable sampling, current/all-visible retouching, controls,
-selection/locks/crop, one command and exact undo/redo. Native tests include an
-independent direct equation oracle. The identifiable public-domain Melissa Diaz
-USAF portrait supplies an actual blemish and inspected before/after evidence for
-both tools. Full final-build regression, hardware measurements, rebuilt desktop
-and exact-head remote certification remain required before M2 acceptance.
-M3 content-aware fill and later milestones remain outside this work.
+selection/locks/crop, one command and exact undo/redo. Stationary dabs reuse a
+completed immutable patch after releasing numerical scratch. Pending jobs cancel
+after pointer release; busy-worker Undo/Redo queue and execute exactly once.
+
+All 196 Rust tests, native/WASM clippy, formatting, TypeScript, ESLint, 16 Vitest
+tests and 459 license expressions pass. The final 48 focused installed
+Chrome/Edge hardware cases pass once without skips/retries/flaky/global errors.
+Rebuilt WebView2 passes both NVIDIA APIs and both tools' pixel/command/exact-
+undo/redo checks plus the existing broad desktop smoke. WASM is 4,475,194 bytes /
+gzip9 1,653,033 against the unchanged 2,000,000-byte gate.
+
+The identifiable public-domain Melissa Diaz USAF portrait supplies an actual
+blemish, inspected full before/after images, 100% captures and enlarged crops.
+Both tools remove it without a visible seam; all samples outside the support are
+byte-exact. Source/settings/hashes and the actual scope of the visual assessment
+are in [P9-M2-REPORT.md](P9-M2-REPORT.md).
+
+All 32 isolated 6000x4000 hardware configurations complete: 128 click strokes and
+sixteen short paths. Warm 48 px clicks take 74.43-135.14 ms; 200 px clicks take
+3.25927-3.90813 s. Large brushes remain slow; the roadmap has no separate M2 speed
+threshold and no new exception is inferred. Logical CPU/GPU peaks are
+198.26/32.11 MiB, with the separately admitted compositor allowance disclosed.
+Repeated clone measurements retain the all-layer 60 fps miss and its existing
+user-approved P12 deferral. No software result establishes hardware performance.
+
+All 612 final installed Chrome/Edge WebGPU/WebGL2 hardware cases pass in 29.0
+minutes, one attempt each, with zero skips/retries/flaky/global errors; complete
+case records were inspected. All 36 focused local software cases also pass once
+with the same clean result; they establish function only. Exact-head remote CI/deployment and downloaded-
+artifact certification remain required before M2 acceptance. The deployment
+workflow preserves its exact static bundle for hosted byte checks. The milestone
+completion message and final certification JSON record the immutable remote
+results. M3 and later milestones remain outside this work; no P9 tag.
 
 ## P9 - M1 Clone Stamp locally verified
 
