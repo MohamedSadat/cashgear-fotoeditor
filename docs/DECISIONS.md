@@ -11,6 +11,10 @@
 - No new speed waiver, license, dependency or budget increase is assumed. Preserve
   M3's immutable evidence and classifications, M1's approved P12 clone deferral and
   all inherited P5/Ink/P6/P7/P8 boundaries.
+- M4's full 6000x4000 photographic matrix measures 478.31–820.61 ms for warm
+  scripted 12-move strokes and 3.33–6.67 s for full-image gradients. M4 has no
+  distinct roadmap speed threshold. Report these limits and acknowledgement
+  latency honestly; no real-time claim, new exception or new deferral is inferred.
 
 ## 2026-10-28 - P9 M3 scope and engineering choices
 

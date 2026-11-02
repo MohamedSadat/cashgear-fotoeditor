@@ -1,14 +1,43 @@
 # Progress
 
-## P9 - M4 started
+## P9 - M4 retouch brushes and gradients locally verified
 
 Started 2026-11-02 on clean main matching fetched origin/main at certified M3
 `2ab9dbd`, without agents/worktrees. Read required phase records and M3 report,
 verified M3 certification and original PDF hashes, and read the full printed P9
 page 17 as extracted text and a newly rendered page. Existing decisions answer
 all product questions. P9-DESIGN.md records M4 behavior and acceptance before
-implementation. M4 remains unaccepted until every recorded gate passes. Stop
-before M5; no `p9-retouch`.
+implementation.
+
+M4 delivers Smudge, Blur/Sharpen, Dodge/Burn and Sponge, plus five gradient
+shapes and a 2..32-stop RGBA editor with reusable bounded browser-stored presets.
+Current-raster retouch preserves alpha/hidden RGB; selection/crop/locks, disjoint
+next-dab hydration, atomic cancellation/refusal and exact one-command undo/redo
+are verified. No new dependency or project/recovery format change.
+
+All 220 Rust tests, native/WASM clippy, TypeScript, ESLint, formatting, eighteen
+Vitest cases and 459 license expressions pass. The clean 64-case focused browser
+matrix passes once per case without skips/retries/flaky/global errors. Rebuilt
+WebView2 passes all six brushes and five gradients on both actual NVIDIA APIs,
+plus retained broad smoke. Final Windows WASM is 4,518,624 bytes / gzip9 1,670,556
+against the unchanged 2,000,000-byte gate.
+
+The complete photographic 6000x4000 timing matrix has 44 configurations and 176
+successful calls, with exact hash restoration. Warm scripted 12-move strokes take
+478.31–820.61 ms; full-image gradients 3.33–6.67 s. Observed retouch frame-fence
+CPU peak is 102.67 MiB; gradient worker peak 288.51 MiB plus its admitted 2.25 MiB
+compositor allowance; maximum GPU is 32.11 MiB. Input delivery, acknowledgement
+latencies, intra-step observation bounds and visual limits are disclosed in
+[P9-M4-REPORT.md](P9-M4-REPORT.md). No real-time claim or new speed waiver.
+
+Final acceptance is gated on the complete 696-case installed-browser hardware
+matrix, exact-final-head CI/deployment, downloaded 518-case software and both
+WebView2 API artifacts, eight matching hosted runtime files and 156 relevant
+hosted hardware cases. Actual completion/run identities and immutable hashes are
+recorded in `bench/results/p9-m4-final-certification.json`. Excluded investigations
+remain separate; M3's immutable certification and attempt classifications are
+preserved. Stop after M4 acceptance/report before M5; no `p9-retouch`. Inherited
+P5/Ink/P6/P7/P8 limits, M3 quality limits and M1's approved P12 deferral persist.
 
 ## P9 - M3 content-aware fill
 

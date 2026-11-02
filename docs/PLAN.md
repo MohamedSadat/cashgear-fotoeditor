@@ -362,8 +362,11 @@ exact-head remote CI/deployment, downloaded artifacts and hosted verification.
 M3 implementation and hardware measurements are recorded in P9-M3-REPORT.md.
 Its final certification records complete final-head local/remote/hosted gates.
 M3 does not complete P9. M4 was explicitly authorized on 2026-11-02; its behavior
-and acceptance are recorded in P9-DESIGN.md before implementation. Stop after
-M4 acceptance/report, before M5; do not create `p9-retouch`.
+and acceptance were recorded in P9-DESIGN.md before implementation. M4 local
+verification, photographic hardware measurements and bounds are recorded in
+P9-M4-REPORT.md. Its immutable certification records the actual final-head local,
+remote and hosted gates. Stop after M4 acceptance/report, before M5; do not create
+`p9-retouch`.
 
 Source: complete original roadmap P9 section on printed page 17, extracted and
 visually inspected on 2026-10-27. Source SHA-256 is recorded in P9-DESIGN.md.
