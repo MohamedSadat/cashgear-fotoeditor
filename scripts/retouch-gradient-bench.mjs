@@ -193,8 +193,16 @@ try {
                   frame = Number(c.dataset.frames),
                   paint = s.paintTime,
                   complete = s.paintCompleteTime;
-                const input = (e) =>
-                  data.inputs.push({ x: e.clientX, y: e.clientY, time: e.timeStamp });
+                const input = (e) => {
+                  if (e.buttons & 1)
+                    data.inputs.push({
+                      x: e.clientX,
+                      y: e.clientY,
+                      time: e.timeStamp,
+                      buttons: e.buttons,
+                      pointerType: e.pointerType,
+                    });
+                };
                 const kind = 'onpointerrawupdate' in window ? 'pointerrawupdate' : 'pointermove';
                 c.addEventListener(kind, input);
                 const o = new MutationObserver(() => {
@@ -273,6 +281,7 @@ try {
               await observer.dispose();
               if (
                 raw.snapshot.editError ||
+                !raw.periods.length ||
                 raw.snapshot.visibleTiles <= 0 ||
                 Math.max(...raw.cpu) > 768 * 1024 ** 2 ||
                 Math.max(...raw.gpu) > 128 * 1024 ** 2 ||
@@ -295,7 +304,7 @@ try {
                 inputElapsedMs: raw.inputs.at(-1)?.time - raw.inputs[0]?.time,
                 changedAcknowledgements: raw.latencies.length,
                 completedAcknowledgements: raw.completeLatencies.length,
-                maxStepMs: Math.max(...raw.steps),
+                maxFramePaintMs: Math.max(...raw.steps),
                 maxPending: Math.max(...raw.pending),
                 raw,
               };
