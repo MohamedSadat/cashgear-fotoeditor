@@ -431,11 +431,13 @@ mod bridge {
             }
             let mut settings: BrushSettings =
                 serde_json::from_str(settings).map_err(|e| JsValue::from_str(&e.to_string()))?;
-            if (settings.clone.is_some() || settings.healing.is_some())
+            if (settings.clone.is_some()
+                || settings.healing.is_some()
+                || settings.retouch.is_some())
                 && (self.selected.quick_mask || self.layered.mask_target)
             {
                 return Err(JsValue::from_str(
-                    "Clone Stamp / healing needs a raster pixel target",
+                    "Retouch brushes need a raster pixel target",
                 ));
             }
             let doc = self

@@ -5,8 +5,10 @@ use serde::Deserialize;
 use std::collections::{HashMap, VecDeque};
 mod clone;
 mod healing;
+mod retouch;
 pub use clone::{CloneAnchor, CloneOptions};
 pub use healing::HealingOptions;
+pub use retouch::{RetouchMode, RetouchOptions, TonalRange};
 const QUEUE_LIMIT: usize = 2048;
 const TILE_BYTES: u64 = (TILE_PIXELS * 4) as u64;
 
@@ -25,6 +27,7 @@ pub struct BrushSettings {
     pub pencil: bool,
     pub clone: Option<CloneOptions>,
     pub healing: Option<HealingOptions>,
+    pub retouch: Option<RetouchOptions>,
     #[serde(skip)]
     pub alpha_lock: bool,
     pub stabilizer: Stabilizer,
@@ -53,6 +56,7 @@ impl Default for BrushSettings {
             pencil: false,
             clone: None,
             healing: None,
+            retouch: None,
             alpha_lock: false,
             stabilizer: Stabilizer::Off,
             strength: 0.35,
@@ -77,7 +81,19 @@ pub enum Stabilizer {
 }
 impl BrushSettings {
     pub fn validate(&self) -> Result<(), String> {
-        if (self.clone.is_some() && self.healing.is_some())
+        if [
+            self.clone.is_some(),
+            self.healing.is_some(),
+            self.retouch.is_some(),
+        ]
+        .into_iter()
+        .filter(|v| *v)
+        .count()
+            > 1
+            || self
+                .retouch
+                .is_some_and(|o| !o.strength.is_finite() || !(0.0..=1.0).contains(&o.strength))
+            || (self.retouch.is_some() && self.eraser)
             || !self.size.is_finite()
             || !(1.0..=2048.0).contains(&self.size)
             || !self.angle.is_finite()
@@ -256,6 +272,7 @@ pub struct StrokeCommand {
     /// Immutable pre-stroke samples; adapters enumerate these for unique residency.
     pub sampled_source: Option<Document>,
     clone_offset: [i32; 2],
+    retouch_previous: Option<[f64; 2]>,
     healing: Option<HealingOptions>,
     patch: Option<healing::HealingPatch>,
     pub applied_time: f64,
@@ -318,8 +335,9 @@ impl StrokeCommand {
         preview.raster_mut().drain_dirty();
         Ok(Self {
             preview,
-            sampled_source: None,
+            sampled_source: settings.retouch.map(|_| base.clone()),
             clone_offset: [0, 0],
+            retouch_previous: None,
             healing: None,
             patch: None,
             applied_time: 0.0,
@@ -489,6 +507,16 @@ impl StrokeCommand {
         if x0 >= x1 || y0 >= y1 {
             return;
         }
+        if self.settings.retouch.is_some() {
+            self.sampled_source = Some(self.preview.clone());
+            self.clone_offset = self.retouch_previous.map_or([0, 0], |previous| {
+                [
+                    (previous[0] - p.x).round() as i32,
+                    (previous[1] - p.y).round() as i32,
+                ]
+            });
+            self.retouch_previous = Some([p.x, p.y]);
+        }
         self.dab = Some(Dab {
             p,
             radius,
@@ -553,7 +581,14 @@ impl StrokeCommand {
             let dab = self.dab.as_mut().unwrap();
             let coord = (dab.x / TILE_SIZE, dab.y / TILE_SIZE);
             if !self.coverage.contains_key(&coord) {
-                let required = (self.coverage.len() as u64 + 1) * TILE_BYTES * 2
+                // Retouch can retain both original output and a distinct prior-dab
+                // source tile alongside coverage and the newly written COW tile.
+                let tile_buffers = if self.settings.retouch.is_some() {
+                    3
+                } else {
+                    2
+                };
+                let required = (self.coverage.len() as u64 + 1) * TILE_BYTES * tile_buffers
                     + (self.queue.capacity() * size_of::<Sample>()) as u64
                     + self.tip.bytes();
                 let required = required + self.patch.as_ref().map_or(0, |p| p.bytes());
@@ -590,7 +625,19 @@ impl StrokeCommand {
                     y1: dab.y % TILE_SIZE + 1,
                 },
             );
-            let changed = if let Some(source) = &self.sampled_source {
+            let changed = if let Some(options) = self.settings.retouch {
+                retouch::stamp_row(
+                    dab,
+                    &self.tip,
+                    &self.settings,
+                    options,
+                    (clip.as_deref(), clip_default),
+                    &mut output,
+                    end,
+                    self.sampled_source.as_ref().unwrap(),
+                    self.clone_offset,
+                )?
+            } else if let Some(source) = &self.sampled_source {
                 clone::stamp_row(
                     dab,
                     &self.tip,
@@ -639,7 +686,9 @@ impl StrokeCommand {
         }
         self.preview.raster_mut().compact_dirty();
         let command = TileCommand::between(&self.base, &self.preview)?;
-        Ok(if let Some(options) = self.healing {
+        Ok(if let Some(options) = self.settings.retouch {
+            command.named(options.mode.label())
+        } else if let Some(options) = self.healing {
             command.named(if options.spot {
                 "Spot Healing"
             } else {

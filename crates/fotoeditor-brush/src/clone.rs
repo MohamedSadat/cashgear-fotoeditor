@@ -97,6 +97,25 @@ impl StrokeCommand {
         let (Some(source), Some(dab)) = (&self.sampled_source, &self.dab) else {
             return;
         };
+        if self.settings.retouch.is_some() {
+            retouch::needed(source, dab, self.clone_offset, visitor);
+            for y in dab.y / TILE_SIZE..=(dab.y1 - 1) / TILE_SIZE {
+                for x in dab.x0 / TILE_SIZE..=(dab.x1 - 1) / TILE_SIZE {
+                    if let Some(t) = self.base.raster().tiles().get(&(x, y)) {
+                        visitor(TileRef::Rgba(t));
+                    }
+                    if let Some(t) = self
+                        .base
+                        .selection
+                        .as_ref()
+                        .and_then(|s| s.tiles().get(&(x, y)))
+                    {
+                        visitor(TileRef::Gray(t));
+                    }
+                }
+            }
+            return;
+        }
         if let Some(patch) = &self.patch {
             patch.needed(source, visitor);
             return;
