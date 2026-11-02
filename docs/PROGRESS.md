@@ -1,5 +1,15 @@
 # Progress
 
+## P9 - M4 started
+
+Started 2026-11-02 on clean main matching fetched origin/main at certified M3
+`2ab9dbd`, without agents/worktrees. Read required phase records and M3 report,
+verified M3 certification and original PDF hashes, and read the full printed P9
+page 17 as extracted text and a newly rendered page. Existing decisions answer
+all product questions. P9-DESIGN.md records M4 behavior and acceptance before
+implementation. M4 remains unaccepted until every recorded gate passes. Stop
+before M5; no `p9-retouch`.
+
 ## P9 - M3 content-aware fill
 
 Started 2026-10-28 at certified M2 `9f000fd`, directly on clean main matching

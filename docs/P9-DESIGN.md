@@ -78,6 +78,67 @@ limits and P8's explicitly accepted save-speed miss (deferred to P12) persist.
 P8's thirteen validated raster PSDs do not close the feather gate. P10 is outside
 this phase. No new license or dependency is assumed by this design.
 
+## M4 design and acceptance (2026-11-02, before implementation)
+
+Starts at certified M3 `2ab9dbdd6820b23196cb1c5b2f1f4b0baab13d11`, clean main
+matching fetched origin/main. Re-read the complete original printed page 17 as
+extracted text and a newly rendered page; its SHA-256 above matches. Preserved
+M3 certification SHA-256 is
+`60c6b6789622908e6e82d9a5ed889bec9f1c1986ab5793f299502979cfccf388`.
+The user explicitly authorized M4 without agents/worktrees. Existing product
+choices resolve all questions; stop before M5 and do not create `p9-retouch`.
+
+- Add Smudge, Blur, Sharpen, Dodge, Burn and Sponge tools. Reuse procedural tip,
+  size/hardness/roundness/angle, spacing, flow/opacity, pressure/tilt curves and
+  stabilizers. Separate retouch strength controls cumulative per-dab mixing.
+  Sample the current raster only. Foreground color has no effect. Mask/Quick
+  Mask targets are explicitly refused; pixel/all locks refuse; alpha is retained,
+  including exact hidden RGB at zero alpha. Selection clips each dab once.
+- Smudge advects the preceding dab's raster toward the new dab, mixed by strength;
+  a stationary first dab does nothing. Blur uses a premultiplied 3x3 binomial
+  kernel; Sharpen adds its high-frequency residual with channel clamping. Each
+  dab reads an immutable snapshot of the preceding preview, so tile order cannot
+  affect the result. Crop-clamped neighbors never sample retained outside pixels.
+  Dodge/Burn apply exposure toward white/black with selectable shadows/midtones/
+  highlights/all tonal weighting. Sponge saturates/desaturates about luminance.
+  Cumulative dabs intentionally differ from ordinary paint's stroke-opacity cap.
+- One named command per stroke, exact undo/redo and sparse absence. Escape,
+  focus loss, overflow, missing backing and budget refusal discard the candidate,
+  preserving committed pixels/history/redo. Hydrate only next-dab source/halo and
+  destination regions. Count retained source generations and COW output/coverage,
+  input/tip buffers, paging, document/history/display and GPU residency.
+- Gradient drag defines start/end in document coordinates, with a visible line
+  before release; Escape/focus loss cancels the gesture. Five shapes: projected
+  linear, distance radial, oriented full-turn angle, absolute projected reflected,
+  and oriented Manhattan-distance diamond. Clamp to endpoint colors. A zero-length
+  drag is refused without mutation. Editor supports 2..32 strictly ordered stops,
+  endpoint stops at 0/1, RGB and alpha, opacity and reversal. Interpolate sRGB in
+  premultiplied temporary color; never let transparent hidden RGB bleed. Apply
+  source-over through selection once; alpha lock preserves target alpha/hidden RGB.
+  Gradient targets raster pixels; explicitly refuse masks/Quick Mask.
+- Ship built-in gradients and editable named reusable multi-stop presets, persisted
+  as bounded validated local UI preferences. Presets do not mutate the document.
+  New/open/recovery retain UI presets; document/project formats stay unchanged.
+  M5 brush-preset import/export remains out of scope. Gradient fills run in bounded
+  Rust tile steps, yielding for cancellation and hydration, one Gradient command.
+- Verify independent numeric kernel/shape/interpolation oracles, cumulative smear,
+  tonal/saturation direction, tile/crop/selection/alpha/locks, cold-source requests,
+  admission/refusal/cancel/no-op redo and exact undo/redo. Browser cases use actual
+  tool/strength/gradient editor/preset/drag controls on both installed browsers/APIs.
+  Inspect realistic photo before/after and gradient transparency/shape captures.
+- Measure first/warm 6000x4000 retouch strokes and gradients on verified hardware
+  Chrome/Edge WebGPU/WebGL2, recording controls/path, latency/completion/cadence,
+  logical CPU/GPU peaks and runtime fingerprints. The roadmap has no distinct M4
+  speed target; disclose observed limits without adding an exception or fps claim.
+- Preserve 768 MiB CPU / 128 MiB GPU, 16384 sides, 128 MiB encoded images, 4 GiB
+  projects and 2,000,000-byte gzip WASM. No new dependency is planned. Run formatting,
+  native/WASM clippy, Cargo tests, TS/ESLint/Prettier/Vitest/licenses/build/size,
+  full installed-browser hardware regression and rebuilt WebView2 on both APIs.
+  Require exact-final-head CI/deployment, downloaded artifact inspection, hosted
+  byte equality and relevant hosted hardware tests with zero failures, skips,
+  retries, flaky cases or global errors. Only then write immutable certification
+  and shipped/deferred/performance/next-M5 report. Inherited limits remain unchanged.
+
 ## M3 design and acceptance (2026-10-28, before implementation)
 
 Starts on clean main at certified M2 `9f000fd603d6a5394dbc1704d80ae9b377b35766`,

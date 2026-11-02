@@ -1,5 +1,17 @@
 # Decisions
 
+## 2026-11-02 - P9 M4 scope and engineering choices
+
+- The user explicitly authorized all of M4 on main without agents/worktrees,
+  starting at certified M3 `2ab9dbd`, then stop before M5 without `p9-retouch`.
+- Existing product choices persist. P9-DESIGN.md records behavior and acceptance
+  before implementation: cumulative current-raster retouch, immutable per-dab
+  sampling, preserved alpha, five gradient shapes and editable persisted multi-stop
+  UI presets. These are engineering defaults within the selected roadmap scope.
+- No new speed waiver, license, dependency or budget increase is assumed. Preserve
+  M3's immutable evidence and classifications, M1's approved P12 clone deferral and
+  all inherited P5/Ink/P6/P7/P8 boundaries.
+
 ## 2026-10-28 - P9 M3 scope and engineering choices
 
 - The user explicitly authorized complete M3 content-aware fill on main without
