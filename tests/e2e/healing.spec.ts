@@ -306,7 +306,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
     const before = await exported(page),
       base = (await state(page)).history.undo;
     await mkdir('bench/results', { recursive: true });
-    const prefix = `bench/results/p9-m2-portrait-${testInfo.project.name}-${backend}`;
+    const prefix = `bench/results/${process.env.E2E_EVIDENCE_PREFIX ? process.env.E2E_EVIDENCE_PREFIX + '-m2' : 'p9-m2'}-portrait-${testInfo.project.name}-${backend}`;
     await writeFile(prefix + '-before.png', before);
     const original = PNG.sync.read(before);
     for (const tool of ['Healing Brush', 'Spot Healing']) {

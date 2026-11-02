@@ -58,6 +58,33 @@ fn cold_halo_and_selection_pause_without_allocating_and_unrelated_pages_stay_col
     assert!(j.done());
     assert_eq!(unrelated.resident_bytes(), 0);
 }
+
+#[test]
+fn retouch_reserves_prior_dab_cow_capacity_before_writing() {
+    let mut d = Document::blank(8, 8, 72.0).unwrap();
+    d.raster_mut().write(4, 4, Rgba8([80, 50, 20, 128]));
+    let ids: Vec<_> = d.raster().tiles().values().map(|t| t.id()).collect();
+    let mut j = StrokeCommand::new(&d, settings(RetouchMode::Dodge), 262144).unwrap();
+    j.push(Sample {
+        x: 4.5,
+        y: 4.5,
+        pressure: 1.0,
+        ..Default::default()
+    })
+    .unwrap();
+    assert!(j.step(262144).unwrap_err().contains("budget"));
+    assert!(j.coverage.is_empty());
+    assert_eq!(
+        j.preview
+            .raster()
+            .tiles()
+            .values()
+            .map(|t| t.id())
+            .collect::<Vec<_>>(),
+        ids
+    );
+    assert_eq!(j.preview.raster().sample(4, 4), d.raster().sample(4, 4));
+}
 fn options(mode: RetouchMode) -> RetouchOptions {
     RetouchOptions {
         mode,

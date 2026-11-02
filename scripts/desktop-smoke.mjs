@@ -1240,6 +1240,111 @@ try {
       exactRedo: true,
       pixel: [...filled.data.subarray(fillAt, fillAt + 4)],
     };
+    result.retouch = [];
+    for (const mode of ['smudge', 'blur', 'sharpen', 'dodge', 'burn', 'sponge']) {
+      const baseline = await page.evaluate(async () => {
+        const a = window.__fotoeditor;
+        await a.newDocument(64, 64, 300);
+        await a.selectionAction({ kind: 'fill', color: [100, 120, 80, 255] });
+        await a.selectionAction({
+          kind: 'shape',
+          shape: { kind: 'rectangle', x0: 20, y0: 0, x1: 33, y1: 64 },
+          mode: 'new',
+          antialias: false,
+        });
+        await a.selectionAction({ kind: 'fill', color: [180, 60, 90, 255] });
+        const s = await a.selectionAction({ kind: 'none' });
+        await a.interact([{ kind: 'actual', x: 0, y: 0, amount: 0 }]);
+        return s.history.undo;
+      });
+      await page.waitForFunction((n) => {
+        const s = JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot);
+        return s.history.undo === n && !s.operation;
+      }, baseline);
+      const before = Buffer.from(await exportedPng());
+      await page.getByRole('combobox', { name: 'Retouch tool' }).selectOption(mode);
+      await page.getByRole('combobox', { name: 'Brush preset' }).selectOption('Hard round');
+      const box = await page.getByTestId('gpu-canvas').boundingBox(),
+        x = box.x + box.width / 2,
+        y = box.y + box.height / 2;
+      if (mode === 'smudge') {
+        await page.mouse.move(x - 3, y + 0.5);
+        await page.mouse.down();
+        await page.mouse.move(x + 10, y + 0.5, { steps: 5 });
+        await page.mouse.up();
+      } else await page.mouse.click(x + 0.5, y + 0.5);
+      await page.waitForFunction((n) => {
+        const s = JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot);
+        return s.history.undo === n + 1 && !s.painting && !s.operation;
+      }, baseline);
+      const after = Buffer.from(await exportedPng());
+      expect(after.equals(before), mode + ' changes samples').toBe(false);
+      await page.getByRole('button', { name: 'Undo', exact: true }).click();
+      await page.waitForFunction(
+        (n) =>
+          JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot).history
+            .undo === n,
+        baseline,
+      );
+      expect(Buffer.from(await exportedPng()).equals(before), mode + ' exact undo').toBe(true);
+      await page.getByRole('button', { name: 'Redo', exact: true }).click();
+      await page.waitForFunction(
+        (n) =>
+          JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot).history
+            .undo ===
+          n + 1,
+        baseline,
+      );
+      expect(Buffer.from(await exportedPng()).equals(after), mode + ' exact redo').toBe(true);
+      result.retouch.push({
+        mode,
+        oneCommand: true,
+        changed: true,
+        exactUndo: true,
+        exactRedo: true,
+      });
+    }
+    result.gradients = [];
+    for (const shape of ['linear', 'radial', 'angle', 'reflected', 'diamond']) {
+      const record = await page.evaluate(async (shape) => {
+        const a = window.__fotoeditor;
+        await a.newDocument(64, 64, 300);
+        const digest = async () =>
+          Array.from(
+            new Uint8Array(await crypto.subtle.digest('SHA-256', await a.exportPng())),
+          ).join(',');
+        const before = await digest();
+        const s = await a.selectionAction({
+          kind: 'gradient',
+          gradient: {
+            shape,
+            start: [16.5, 32.5],
+            end: [48.5, 32.5],
+            stops: [
+              { position: 0, color: [255, 0, 0, 0] },
+              { position: 0.5, color: [0, 0, 255, 128] },
+              { position: 1, color: [0, 255, 0, 255] },
+            ],
+            opacity: 1,
+            reverse: false,
+          },
+        });
+        const after = await digest();
+        await a.historyJump(0);
+        const exactUndo = before === (await digest());
+        await a.historyJump(1);
+        return {
+          shape,
+          oneCommand: s.history.undo === 1,
+          changed: before !== after,
+          exactUndo,
+          exactRedo: after === (await digest()),
+        };
+      }, shape);
+      for (const key of ['oneCommand', 'changed', 'exactUndo', 'exactRedo'])
+        expect(record[key], shape + ' ' + key).toBe(true);
+      result.gradients.push(record);
+    }
     result.software = process.env.GPU_TEST_SOFTWARE === '1';
     await mkdir(join(root, 'bench/results'), { recursive: true });
     await page.screenshot({ path: join(root, 'bench/results/desktop-p4-' + backend + '.png') });

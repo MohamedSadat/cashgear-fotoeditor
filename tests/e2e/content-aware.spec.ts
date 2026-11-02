@@ -320,7 +320,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
           ).toBe(true);
     }
     await mkdir('bench/results', { recursive: true });
-    const prefix = `bench/results/p9-m3-portrait-${info.project.name}-${backend}`;
+    const prefix = `bench/results/${process.env.E2E_EVIDENCE_PREFIX ? process.env.E2E_EVIDENCE_PREFIX + '-m3' : 'p9-m3'}-portrait-${info.project.name}-${backend}`;
     await writeFile(prefix + '-before.png', before);
     await writeFile(prefix + '-after.png', after);
     await page.screenshot({ path: prefix + '-ui.png' });
