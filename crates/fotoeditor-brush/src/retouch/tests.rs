@@ -2,6 +2,50 @@ use super::*;
 use fotoeditor_core::{CanvasRect, History, TileSurface, CPU_BUDGET};
 use std::sync::Arc;
 #[test]
+fn separated_smudge_source_regions_do_not_request_the_gap_or_unused_tonal_neighbors() {
+    use fotoeditor_core::{TileBacking, TileHandle};
+    let mut d = Document::blank(16384, 16, 72.0).unwrap();
+    let backing = TileBacking {
+        store: 1,
+        offset: 0,
+        length: (TILE_PIXELS * 4) as u32,
+        checksum: 0,
+    };
+    let mut ids = Vec::new();
+    for (index, x) in [0, 31, 63].into_iter().enumerate() {
+        let t = TileHandle::paged(TileBacking {
+            offset: index as u64 * u64::from(backing.length),
+            ..backing
+        })
+        .unwrap();
+        ids.push(t.id());
+        d.raster_mut().insert_handle((x, 0), t).unwrap();
+    }
+    let mut j = StrokeCommand::new(&d, settings(RetouchMode::Smudge), CPU_BUDGET).unwrap();
+    // State after pressure-zero samples skipped a long part of the path.
+    j.retouch_previous = Some([4.5, 4.5]);
+    j.begin_dab(Sample {
+        x: 16380.5,
+        y: 4.5,
+        pressure: 1.0,
+        ..Default::default()
+    });
+    let mut needed = Vec::new();
+    j.clone_needed(&mut |t| needed.push(t.id()));
+    needed.sort();
+    needed.dedup();
+    let mut endpoints = vec![ids[0], ids[2]];
+    endpoints.sort();
+    assert_eq!(needed, endpoints);
+    assert!(!needed.contains(&ids[1]));
+    j.settings.retouch.as_mut().unwrap().mode = RetouchMode::Dodge;
+    needed.clear();
+    j.clone_needed(&mut |t| needed.push(t.id()));
+    needed.sort();
+    needed.dedup();
+    assert_eq!(needed, vec![ids[2]]);
+}
+#[test]
 fn cold_halo_and_selection_pause_without_allocating_and_unrelated_pages_stay_cold() {
     use fotoeditor_core::{Residency, TileBacking, TileHandle, TilePager};
     let mut d = Document::blank(16384, 16384, 72.0).unwrap();

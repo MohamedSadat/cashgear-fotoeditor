@@ -47,18 +47,47 @@ pub(super) fn needed(
     source: &Document,
     dab: &Dab,
     offset: [i32; 2],
+    mode: RetouchMode,
     visit: &mut dyn FnMut(TileRef<'_>),
 ) {
+    let halo = i64::from(matches!(mode, RetouchMode::Blur | RetouchMode::Sharpen));
+    visit_region(
+        source,
+        [
+            i64::from(dab.x0) - halo,
+            i64::from(dab.y) - halo,
+            i64::from(dab.x1) + halo,
+            i64::from(dab.y1) + halo,
+        ],
+        visit,
+    );
+    if mode == RetouchMode::Smudge && offset != [0, 0] {
+        // Two disjoint regions, never the bounding rectangle between them.
+        // Pressure-zero dabs can leave the previous sampled center far away.
+        visit_region(
+            source,
+            [
+                i64::from(dab.x0) + i64::from(offset[0]),
+                i64::from(dab.y) + i64::from(offset[1]),
+                i64::from(dab.x1) + i64::from(offset[0]),
+                i64::from(dab.y1) + i64::from(offset[1]),
+            ],
+            visit,
+        );
+    }
+}
+fn visit_region(source: &Document, rect: [i64; 4], visit: &mut dyn FnMut(TileRef<'_>)) {
     let bounds = source.canvas_rect();
-    // Include unshifted destination, shifted smear source and blur's one-pixel halo.
-    let x0 = (i64::from(dab.x0) + i64::from(offset[0].min(0)) - 1).max(i64::from(bounds.x));
-    let x1 = (i64::from(dab.x1) + i64::from(offset[0].max(0)) + 1)
-        .min(i64::from(bounds.x + bounds.width));
-    let y0 = (i64::from(dab.y) + i64::from(offset[1].min(0)) - 1).max(i64::from(bounds.y));
-    let y1 = (i64::from(dab.y1) + i64::from(offset[1].max(0)) + 1)
-        .min(i64::from(bounds.y + bounds.height));
-    for y in y0 as u32 / TILE_SIZE..=(y1 as u32 - 1) / TILE_SIZE {
-        for x in x0 as u32 / TILE_SIZE..=(x1 as u32 - 1) / TILE_SIZE {
+    // Match the sampler's crop-clamped border behavior, including a source
+    // rectangle entirely beyond an edge.
+    let x0 = rect[0].clamp(i64::from(bounds.x), i64::from(bounds.x + bounds.width - 1)) as u32;
+    let x1 =
+        (rect[2] - 1).clamp(i64::from(bounds.x), i64::from(bounds.x + bounds.width - 1)) as u32;
+    let y0 = rect[1].clamp(i64::from(bounds.y), i64::from(bounds.y + bounds.height - 1)) as u32;
+    let y1 =
+        (rect[3] - 1).clamp(i64::from(bounds.y), i64::from(bounds.y + bounds.height - 1)) as u32;
+    for y in y0 / TILE_SIZE..=y1 / TILE_SIZE {
+        for x in x0 / TILE_SIZE..=x1 / TILE_SIZE {
             if let Some(t) = source.raster().tiles().get(&(x, y)) {
                 visit(TileRef::Rgba(t));
             }
