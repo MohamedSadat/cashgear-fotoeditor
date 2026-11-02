@@ -19,3 +19,12 @@ contains actual visible skin blemishes; none is injected into this fixture.
 Retouched outputs are altered verification images, not original photographs.
 Coordinates, settings, numerical evidence and inspected before/after crops are
 recorded with the M2 report and under `bench/results/p9-m2-*`.
+
+## M4 performance derivative
+
+`cargo run --release -p fotoeditor-io --example retouch_fixture` creates the
+ignored `bench/results/fixtures/retouch-photo-6000x4000.png` from this unchanged
+source. Rust crops `[0,600,1905,1270]` and enlarges to 6000x4000 with Lanczos3,
+preserving aspect ratio. The performance report records both hashes. The
+derivative retains the original public-domain provenance above; it is a
+photographic workload, separate from the ordinary procedural dense fixture.
