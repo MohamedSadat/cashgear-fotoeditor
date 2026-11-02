@@ -43,6 +43,9 @@ const report = {
   results: [],
 };
 await mkdir('bench/results', { recursive: true });
+report.method +=
+  ' Normal autosave stays enabled. Hash exports and exact Undo outside timed edits wait for worker admission; measured strokes/gradients are never retried.';
+report.outsideTimingAdmissionWaits = [];
 const save = () => writeFile(out, JSON.stringify(report, null, 2) + '\n');
 await save();
 const server = process.env.PERF_BASE_URL
@@ -74,13 +77,39 @@ async function idle(page, count) {
   }, count ?? null);
 }
 async function digest(page) {
-  return page.evaluate(async () =>
-    Array.from(
-      new Uint8Array(await crypto.subtle.digest('SHA-256', await window.__fotoeditor.exportPng())),
-    )
-      .map((v) => v.toString(16).padStart(2, '0'))
-      .join(''),
+  return outsideTiming(page, 'export hash', () =>
+    page.evaluate(async () =>
+      Array.from(
+        new Uint8Array(
+          await crypto.subtle.digest('SHA-256', await window.__fotoeditor.exportPng()),
+        ),
+      )
+        .map((v) => v.toString(16).padStart(2, '0'))
+        .join(''),
+    ),
   );
+}
+async function outsideTiming(page, label, action) {
+  const deadline = Date.now() + 60000;
+  for (;;) {
+    await idle(page);
+    try {
+      return await action();
+    } catch (error) {
+      // requireIdle rejects before any export/edit work or history mutation.
+      if (
+        !String(error).includes('Finish or cancel the current operation first') ||
+        Date.now() >= deadline
+      )
+        throw error;
+      report.outsideTimingAdmissionWaits.push({
+        label,
+        at: new Date().toISOString(),
+        reason: String(error),
+      });
+      await delay(50);
+    }
+  }
 }
 async function range(page, name, value) {
   await page.getByRole('slider', { name, exact: true }).evaluate((e, v) => {
@@ -174,6 +203,7 @@ try {
               cx = box.x + box.width / 2,
               cy = box.y + box.height / 2;
             for (let trial = 0; trial < 4; trial++) {
+              await idle(page, baseline);
               const observer = await page.evaluateHandle(() => {
                 const c = document.querySelector('[data-testid="gpu-canvas"]');
                 const s = JSON.parse(c.dataset.snapshot);
@@ -313,7 +343,9 @@ try {
                 await page.screenshot({
                   path: `bench/results/p9-m4-performance-${channel}-${backend}-${tool}.png`,
                 });
-              await page.evaluate((n) => window.__fotoeditor.historyJump(n), baseline);
+              await outsideTiming(page, 'Undo restoration', () =>
+                page.evaluate((n) => window.__fotoeditor.historyJump(n), baseline),
+              );
               await idle(page, baseline);
             }
             const restoredHash = await digest(page);
