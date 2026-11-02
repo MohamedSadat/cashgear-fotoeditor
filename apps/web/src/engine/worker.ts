@@ -1372,6 +1372,7 @@ const api: EngineApi = {
   },
   async selectionAction(action) {
     const e = requireIdle();
+    editError = undefined;
     busy = true;
     operation =
       action.kind === 'content-aware'

@@ -431,7 +431,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       }
       if (modifier && ['KeyZ', 'KeyY'].includes(event.code)) {
         event.preventDefault();
-        if (selectionDrag || polygon.length) {
+        if (selectionDrag || gradientDrag || polygon.length) {
           clearSelectionGesture();
           return;
         }
@@ -488,6 +488,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
         if (
           strokePointer !== undefined ||
           selectionDrag ||
+          gradientDrag ||
           polygon.length ||
           transform.dragging() ||
           crop.dragging()
