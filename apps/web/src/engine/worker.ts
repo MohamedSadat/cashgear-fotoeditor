@@ -1373,7 +1373,12 @@ const api: EngineApi = {
   async selectionAction(action) {
     const e = requireIdle();
     busy = true;
-    operation = action.kind === 'content-aware' ? 'Content-aware fill…' : 'Updating selection…';
+    operation =
+      action.kind === 'content-aware'
+        ? 'Content-aware fill…'
+        : action.kind === 'gradient'
+          ? 'Applying gradient…'
+          : 'Updating selection…';
     const token = beginJob();
     const start = performance.now();
     let kernelMs = 0;
@@ -1382,7 +1387,7 @@ const api: EngineApi = {
       gpuPeakBytes = 0,
       maxStepMs = 0;
     const probe =
-      action.kind === 'content-aware'
+      action.kind === 'content-aware' || action.kind === 'gradient'
         ? () => {
             const m = snapshot().memory;
             cpuPeakBytes = Math.max(cpuPeakBytes, m.document + m.history + m.temporary);
@@ -2278,7 +2283,7 @@ const api: EngineApi = {
                 busy = false;
               }
             }
-            if (e.quick_mask_enabled() || e.active_cold()) {
+            if (e.quick_mask_enabled() || (!input.brush?.retouch && e.active_cold())) {
               busy = true;
               try {
                 await pages.hydrate(e, e.quick_mask_enabled() ? 'selection-mask' : 'active');

@@ -1438,3 +1438,23 @@ select {
 .clone-controls select {
   margin-top: 0;
 }
+.gradient-stop {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr 24px;
+  gap: 4px;
+  align-items: end;
+}
+.gradient-stop input {
+  width: 100%;
+  min-width: 0;
+}
+.gradient-strip {
+  height: 24px;
+  border: 1px solid #808080;
+  margin: 8px 0;
+}
+.rail select {
+  width: 48px;
+  font-size: 10px;
+  padding: 2px;
+}

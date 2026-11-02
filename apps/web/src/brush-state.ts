@@ -97,6 +97,13 @@ interface BrushState {
     | 'clone'
     | 'healing'
     | 'spot'
+    | 'smudge'
+    | 'blur'
+    | 'sharpen'
+    | 'dodge'
+    | 'burn'
+    | 'sponge'
+    | 'gradient'
     | 'eraser'
     | 'eyedropper'
     | 'rectangle'
@@ -112,6 +119,9 @@ interface BrushState {
   sampledSerial: number;
   cloneAligned: boolean;
   cloneAllLayers: boolean;
+  retouchStrength: number;
+  tonalRange: 'all' | 'shadows' | 'midtones' | 'highlights';
+  spongeSaturate: boolean;
   setColor: (color: Rgba) => void;
   swap: () => void;
 }
@@ -143,6 +153,9 @@ export const useBrush = create<BrushState>((set) => ({
   sampledSerial: 0,
   cloneAligned: true,
   cloneAllLayers: false,
+  retouchStrength: 0.5,
+  tonalRange: 'all',
+  spongeSaturate: false,
   setColor: (color) =>
     set((state) => ({
       primary: color,

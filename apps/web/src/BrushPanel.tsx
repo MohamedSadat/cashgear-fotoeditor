@@ -1,6 +1,7 @@
 import { memo, useState } from 'react';
 import { hex, parseHex, presets, setBrush, useBrush } from './brush-state';
 import type { BrushSettings, Curve, Rgba } from './brush-state';
+import { GradientPanel } from './GradientPanel';
 
 export function rgbToHsv(rgb: Rgba) {
   const [r, g, b] = rgb.map((c) => c / 255);
@@ -64,6 +65,60 @@ export const BrushPanel = memo(function BrushPanel() {
   return (
     <div className="brush-panel">
       <span className="section-eyebrow">BRUSH & COLOR</span>
+      {tool === 'gradient' && <GradientPanel />}
+      {['smudge', 'blur', 'sharpen', 'dodge', 'burn', 'sponge'].includes(tool) && (
+        <fieldset>
+          <legend>{tool[0].toUpperCase() + tool.slice(1)}</legend>
+          <p>
+            Current layer. Strength, flow and opacity accumulate with each dab. Alpha is preserved.
+          </p>
+          <label>
+            Retouch strength{' '}
+            <input
+              aria-label="Retouch strength"
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={useBrush.getState().retouchStrength}
+              onChange={(e) => useBrush.setState({ retouchStrength: e.target.valueAsNumber })}
+            />
+          </label>
+          {['dodge', 'burn'].includes(tool) && (
+            <label>
+              Tonal range{' '}
+              <select
+                aria-label="Tonal range"
+                value={useBrush.getState().tonalRange}
+                onChange={(e) =>
+                  useBrush.setState({
+                    tonalRange: e.target.value as 'all' | 'shadows' | 'midtones' | 'highlights',
+                  })
+                }
+              >
+                {['all', 'shadows', 'midtones', 'highlights'].map((r) => (
+                  <option key={r}>{r}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          {tool === 'sponge' && (
+            <label>
+              Sponge mode{' '}
+              <select
+                aria-label="Sponge mode"
+                value={useBrush.getState().spongeSaturate ? 'saturate' : 'desaturate'}
+                onChange={(e) =>
+                  useBrush.setState({ spongeSaturate: e.target.value === 'saturate' })
+                }
+              >
+                <option value="desaturate">Desaturate</option>
+                <option value="saturate">Saturate</option>
+              </select>
+            </label>
+          )}
+        </fieldset>
+      )}
       {['clone', 'healing', 'spot'].includes(tool) && (
         <fieldset className="clone-controls">
           <legend>

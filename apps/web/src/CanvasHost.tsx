@@ -10,6 +10,7 @@ import { bindCropInteractions } from './crop-interaction';
 import { cancelTransform } from './transform-state';
 import { evaluateCurve, setBrush, useBrush } from './brush-state';
 import type { BrushSettings } from './brush-state';
+import { useGradient } from './gradient-state';
 import {
   useSelection,
   performSelection,
@@ -82,6 +83,14 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
         }
       | undefined;
     let polygon: [number, number][] = [];
+    let gradientDrag:
+      | {
+          pointer: number;
+          start: [number, number];
+          revision: number;
+          settings: ReturnType<typeof useGradient.getState>['settings'];
+        }
+      | undefined;
     let gestureRevision: number | undefined;
     let polygonMode: ReturnType<typeof selectionMode> = 'new';
     const isSelecting = () =>
@@ -90,6 +99,13 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
         'clone',
         'healing',
         'spot',
+        'smudge',
+        'blur',
+        'sharpen',
+        'dodge',
+        'burn',
+        'sponge',
+        'gradient',
         'eraser',
         'eyedropper',
         'move',
@@ -206,6 +222,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       );
     };
     const clearSelectionGesture = () => {
+      gradientDrag = undefined;
       selectionDrag = undefined;
       polygon = [];
       gestureRevision = undefined;
@@ -272,6 +289,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
         cloneMarker.style.top = screen[1] + 'px';
       }
       outline.hidden =
+        brush.tool === 'gradient' ||
         !lastScreen ||
         !snapshot?.document ||
         space ||
@@ -403,7 +421,9 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
                     : 'lasso'
                   : event.code === 'KeyW'
                     ? 'wand'
-                    : 'bucket',
+                    : event.shiftKey
+                      ? 'gradient'
+                      : 'bucket',
           });
           refreshOutline();
           return;
@@ -509,6 +529,16 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
         const rect = canvas.getBoundingClientRect();
         const x = event.clientX - rect.left,
           y = event.clientY - rect.top;
+        if (brush.tool === 'gradient') {
+          gradientDrag = {
+            pointer: event.pointerId,
+            start: documentPoint(x, y),
+            revision: useWorkspace.getState().snapshot!.revision,
+            settings: structuredClone(useGradient.getState().settings),
+          };
+          canvas.setPointerCapture(event.pointerId);
+          return;
+        }
         if (isSelecting()) {
           const p = documentPoint(x, y),
             settings = useSelection.getState();
@@ -596,6 +626,16 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
             ...brush.settings,
             color: brush.primary,
             eraser: brush.tool === 'eraser' || event.button === 5,
+            ...(['smudge', 'blur', 'sharpen', 'dodge', 'burn', 'sponge'].includes(brush.tool)
+              ? {
+                  retouch: {
+                    mode: brush.tool as 'smudge' | 'blur' | 'sharpen' | 'dodge' | 'burn' | 'sponge',
+                    strength: brush.retouchStrength,
+                    range: brush.tonalRange,
+                    saturate: brush.spongeSaturate,
+                  },
+                }
+              : {}),
             ...(brush.tool === 'clone'
               ? { clone: { aligned: brush.cloneAligned, allLayers: brush.cloneAllLayers } }
               : {}),
@@ -631,6 +671,11 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       }
       lastScreen = [event.clientX - rect.left, event.clientY - rect.top];
       refreshOutline();
+      if (gradientDrag?.pointer === event.pointerId)
+        drawGesture([
+          gradientDrag.start,
+          documentPoint(event.clientX - rect.left, event.clientY - rect.top),
+        ]);
       if ((selectionDrag || polygon.length) && !gestureCurrent()) return;
       if (selectionDrag?.pointer === event.pointerId) {
         const p = documentPoint(event.clientX - rect.left, event.clientY - rect.top);
@@ -695,6 +740,15 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
     });
     canvas.addEventListener('pointerup', (event) => {
       if (crop.up(event) || transform.up(event)) return;
+      if (gradientDrag?.pointer === event.pointerId) {
+        const g = gradientDrag;
+        const rect = canvas.getBoundingClientRect();
+        const end = documentPoint(event.clientX - rect.left, event.clientY - rect.top);
+        clearSelectionGesture();
+        if (g.revision === useWorkspace.getState().snapshot?.revision)
+          select({ kind: 'gradient', gradient: { ...g.settings, start: g.start, end } });
+        return;
+      }
       drag = undefined;
       if (selectionDrag?.pointer === event.pointerId) {
         if (!gestureCurrent()) return;
@@ -752,7 +806,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
     canvas.addEventListener('lostpointercapture', () => {
       if (crop.dragging()) crop.cancelDrag();
       if (transform.dragging()) transform.cancelDrag();
-      if (selectionDrag) clearSelectionGesture();
+      if (selectionDrag || gradientDrag) clearSelectionGesture();
       drag = undefined;
       // Normal pointer release also loses capture; keep its pending solver job.
       cancelStroke();

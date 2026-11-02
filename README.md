@@ -58,6 +58,19 @@ round, airbrush and pixel-pencil presets, HSV/hex/recent colors, dab settings,
 both stabilizers, and editable pressure/tilt curves. On narrow windows, use
 Brush settings to open the panel. Image brush tips and textures remain P9.
 
+The rail's Retouch selector offers Smudge, Blur, Sharpen, Dodge, Burn and Sponge.
+These use the current raster, retain its alpha and accumulate strength/flow/opacity
+per dab. Use a low strength and soft tip for subtle exposure or saturation work.
+Dodge/Burn offer tonal ranges; Sponge can saturate or desaturate. Return to layer
+pixels before retouching a mask or Quick Mask. Each stroke is one exact undo step.
+
+Shift+G selects Gradient. Drag from its start to end; Escape cancels the gesture.
+The editor offers linear, radial, angle, reflected and diamond shapes, 2–32 RGBA
+stops, opacity and reversal. Save a named gradient to reuse it across documents
+and browser restarts (up to 32 presets within 64 KiB browser storage). Gradients
+respect selection, crop and alpha lock and apply as one undoable command. M5 image
+tips, brush-preset import/export and symmetry remain outside M4.
+
 Every stroke uses a bounded temporary preview and one exact COW tile command.
 Flow accumulates per dab; opacity caps the complete stroke. The inspector's History
 button opens the history panel: click a state to jump, or configure memory/step

@@ -497,6 +497,34 @@ export function App() {
               {t === 'healing' ? 'J' : 'J+'}
             </button>
           ))}
+          <select
+            aria-label="Retouch tool"
+            value={
+              ['smudge', 'blur', 'sharpen', 'dodge', 'burn', 'sponge'].includes(tool) ? tool : ''
+            }
+            onChange={(e) =>
+              useBrush.setState({
+                tool: e.target.value as 'smudge' | 'blur' | 'sharpen' | 'dodge' | 'burn' | 'sponge',
+              })
+            }
+          >
+            <option value="" disabled>
+              Retouch
+            </option>
+            {(['smudge', 'blur', 'sharpen', 'dodge', 'burn', 'sponge'] as const).map((t) => (
+              <option key={t} value={t}>
+                {t[0].toUpperCase() + t.slice(1)}
+              </option>
+            ))}
+          </select>
+          <button
+            aria-label="Gradient"
+            title="Gradient · Shift+G"
+            aria-pressed={tool === 'gradient'}
+            onClick={() => useBrush.setState({ tool: 'gradient' })}
+          >
+            G+
+          </button>
           {(
             [
               'brush',

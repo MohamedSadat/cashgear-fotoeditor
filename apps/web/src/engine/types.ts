@@ -158,6 +158,12 @@ export interface Interaction {
     eraser: boolean;
     clone?: { aligned: boolean; allLayers: boolean };
     healing?: { spot: boolean; aligned: boolean; allLayers: boolean };
+    retouch?: {
+      mode: 'smudge' | 'blur' | 'sharpen' | 'dodge' | 'burn' | 'sponge';
+      strength: number;
+      range: 'all' | 'shadows' | 'midtones' | 'highlights';
+      saturate: boolean;
+    };
   };
   sample?: [number, number, number, number, number, number];
 }
@@ -346,6 +352,10 @@ export interface WandOptions {
   color?: Rgba;
 }
 export type SelectionAction =
+  | {
+      kind: 'gradient';
+      gradient: GradientSettings & { start: [number, number]; end: [number, number] };
+    }
   | { kind: 'all' | 'none' }
   | { kind: 'shape'; shape: SelectionShape; mode: SelectionMode; antialias: boolean }
   | {
@@ -359,6 +369,12 @@ export type SelectionAction =
   | { kind: 'content-aware'; allLayers: boolean }
   | { kind: 'copy' | 'cut'; allLayers: boolean }
   | { kind: 'paste'; inPlace: boolean };
+export interface GradientSettings {
+  shape: 'linear' | 'radial' | 'angle' | 'reflected' | 'diamond';
+  stops: { position: number; color: Rgba }[];
+  opacity: number;
+  reverse: boolean;
+}
 export interface LayerProperties {
   visible: boolean;
   opacity: number;
