@@ -53,8 +53,21 @@ pub struct FillJob {
     next: u32,
     available: u64,
     label: &'static str,
+    gradient: Option<crate::Gradient>,
 }
 impl FillJob {
+    pub fn gradient(
+        document: &Document,
+        layer: LayerId,
+        gradient: crate::Gradient,
+        available: u64,
+    ) -> Result<Self, String> {
+        gradient.validate()?;
+        let mut job = Self::new(document, layer, None, [0; 4], false, available)?;
+        job.gradient = Some(gradient);
+        job.label = "Gradient";
+        Ok(job)
+    }
     pub fn named(mut self, label: &'static str) -> Self {
         self.label = label;
         self
@@ -89,6 +102,7 @@ impl FillJob {
             next: 0,
             available,
             label: if clear { "Clear selection" } else { "Fill" },
+            gradient: None,
         })
     }
     fn coord(&self) -> TileCoord {
@@ -186,7 +200,12 @@ impl FillJob {
                     .map_or_else(|| region.map_or(255, |s| s.default.0), |t| t.pixels[i].0);
                 let after = fill_sample(
                     pixels[i],
-                    self.color,
+                    self.gradient.as_ref().map_or(self.color, |g| {
+                        g.sample([
+                            f64::from(c.0 * TILE_SIZE + x) + 0.5,
+                            f64::from(c.1 * TILE_SIZE + y) + 0.5,
+                        ])
+                    }),
                     ((u16::from(a) * u16::from(b) + 127) / 255) as u8,
                     self.clear,
                     self.alpha_lock,

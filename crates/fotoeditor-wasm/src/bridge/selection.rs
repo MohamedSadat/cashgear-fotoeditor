@@ -550,6 +550,26 @@ impl Engine {
                     .map_err(js)?,
                 )
             }
+            "gradient" => {
+                self.selected.fill_target = FillTarget::Pixels;
+                if self.selected.quick_mask || self.layered.mask_target {
+                    return Err(js("Return to layer pixels before applying a gradient"));
+                }
+                let target = self
+                    .layered
+                    .active
+                    .or_else(|| doc.layers.first().map(|l| l.id))
+                    .ok_or("Choose a raster layer")?;
+                Job::Fill(
+                    FillJob::gradient(
+                        doc,
+                        target,
+                        serde_json::from_value(a["gradient"].clone()).map_err(js)?,
+                        available,
+                    )
+                    .map_err(js)?,
+                )
+            }
             "fill" => Job::Fill(self.fill_candidate(
                 None,
                 serde_json::from_value(a["color"].clone()).map_err(js)?,
