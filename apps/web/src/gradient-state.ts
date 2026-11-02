@@ -66,7 +66,7 @@ export function validGradient(value: unknown): value is GradientSettings {
   );
 }
 export function readGradientPresets(text: string | null): GradientPreset[] {
-  if (!text || text.length > 65536) return [];
+  if (!text || text.length > 65536 || new TextEncoder().encode(text).byteLength > 65536) return [];
   try {
     const p: unknown = JSON.parse(text);
     return Array.isArray(p) &&
@@ -113,7 +113,7 @@ export function saveGradient(name: string) {
   }
   presets.push({ name: clean, settings: structuredClone(state.settings) });
   const encoded = JSON.stringify(presets);
-  if (encoded.length > 65536) {
+  if (new TextEncoder().encode(encoded).byteLength > 65536) {
     useGradient.setState({
       notice: 'Gradient presets exceed their 64 KiB limit. Delete one first.',
     });
