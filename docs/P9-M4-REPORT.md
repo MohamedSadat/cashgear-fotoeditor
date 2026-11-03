@@ -143,13 +143,13 @@ photo-retouch quality or a new Photoshop-reference comparison.
 
 ## Hardware measurements
 
-All 44 hardware configurations complete: **176 successful calls**, each configuration's exported before/after SHA-256 matching after four exact Undo restorations. Warm scripted strokes take **478.31–820.61 ms**; full-image gradients take **3.33–6.67 s**. There is no distinct M4 speed target in the roadmap. These are measured limits, with no real-time claim, new speed exception or new deferral.
+All 44 hardware configurations complete: **176 successful calls**, each configuration's exported before/after SHA-256 matching after four exact Undo restorations. Warm scripted strokes take **498.50–693.74 ms**; full-image gradients take **3.21–6.03 s**. There is no distinct M4 speed target in the roadmap. These are measured limits, with no real-time claim, new speed exception or new deferral.
 
-Windows 10 Pro; Xeon E5-2680 v3 at 2.50 GHz; 34,276,601,856 bytes RAM; NVIDIA GTX 1650/Turing, driver 27.21.14.5751. Chrome 156.0.8078.79 and Edge 156.0.4314.58, non-fallback NVIDIA WebGPU and NVIDIA ANGLE/D3D11 WebGL2, 1280x850 / DPR 1. Serial hardware runs, no Codex builds/tests during timing. This is a shared machine, not a dedicated-host claim.
+Windows 10 Pro; Xeon E5-2680 v3 at 2.50 GHz; 34,276,601,856 bytes RAM; NVIDIA GTX 1650/Turing, driver 27.21.14.5751. Chrome 156.0.8078.80 and Edge 156.0.4314.58, non-fallback NVIDIA WebGPU and NVIDIA ANGLE/D3D11 WebGL2, 1280x850 / DPR 1. Serial hardware runs, no Codex builds/tests during timing. This is a shared machine, not a dedicated-host claim.
 
 The photographic fixture is 28,727,686 PNG bytes, SHA-256 `9d3b70d5edb0cdf9939b0bc4cc57f6071128b125744b322e99fbeba577e66478`. Rust crops the unchanged licensed portrait to [0,600,1905,1270], then enlarges with Lanczos3 to 6000x4000 without aspect distortion. This is an enlarged photograph, not a native 24 MP camera capture. The normal populated document is shown at 100%; no diagnostic texture. Current raster, no selection/mask/crop/locks.
 
-Retouch uses a 200 px soft round, flow/opacity 1, spacing 0.1, strength 0.5, mouse pressure 1, stabilizer off. Twelve native Playwright mouse moves cover a 240 px horizontal path with a 20 px sine deviation; the requested wait is 20 ms between moves. Actual warm intermove delivery spans 18.82–28.54 Hz, not an assumed 50/120 Hz stream. Dodge/Burn use All; Sponge desaturates. Gradient controls show Sunset, opacity 0.8; endpoints [2900.5,2000.5]..[3100.5,2000.5], three opaque RGBA stops at 0/0.5/1. Every shape processes the full canvas.
+Retouch uses a 200 px soft round, flow/opacity 1, spacing 0.1, strength 0.5, mouse pressure 1, stabilizer off. Twelve native Playwright mouse moves cover a 240 px horizontal path with a 20 px sine deviation; the requested wait is 20 ms between moves. Actual warm intermove delivery spans 20.29–27.19 Hz, not an assumed 50/120 Hz stream. Dodge/Burn use All; Sponge desaturates. Gradient controls show Sunset, opacity 0.8; endpoints [2900.5,2000.5]..[3100.5,2000.5], three opaque RGBA stops at 0/0.5/1. Every shape processes the full canvas.
 
 Each browser/API has a fresh context. One first and three warm calls per tool/shape; shared kernels/OS/file caches may already be warm. There is no disk-cold claim. The measured wall interval includes input/automation, worker/cooperative processing, committed presentation and persistence. Opening, control changes, hash exports and Undo are outside timing. Normal autosave stays enabled; outside-timing operations wait for admission. The final run records 0 refused outside-timing RPC admissions, and never retries a measured stroke/gradient.
 
@@ -157,30 +157,30 @@ Values are **milliseconds: first / warm p50 / warm p95**. With three warm calls,
 
 | Tool      | Chrome WebGPU               | Chrome WebGL2               | Edge WebGPU                 | Edge WebGL2                 |
 | --------- | --------------------------- | --------------------------- | --------------------------- | --------------------------- |
-| smudge    | 567.87 / 560.88 / 593.99    | 523.27 / 544.35 / 594.52    | 549.14 / 555.98 / 560.30    | 566.65 / 577.89 / 595.21    |
-| blur      | 620.12 / 592.64 / 677.97    | 641.47 / 610.88 / 655.87    | 536.00 / 611.78 / 659.24    | 652.96 / 606.83 / 713.73    |
-| sharpen   | 642.13 / 624.12 / 624.28    | 606.25 / 641.49 / 677.38    | 632.52 / 592.53 / 628.26    | 613.26 / 796.12 / 820.61    |
-| dodge     | 616.95 / 561.82 / 576.59    | 580.06 / 590.69 / 593.20    | 545.01 / 511.35 / 561.83    | 537.73 / 576.99 / 595.00    |
-| burn      | 579.98 / 573.93 / 610.92    | 591.45 / 557.29 / 562.77    | 584.17 / 524.60 / 594.51    | 542.03 / 541.52 / 612.13    |
-| sponge    | 533.80 / 578.54 / 593.46    | 580.36 / 529.79 / 560.20    | 523.72 / 544.51 / 545.72    | 562.69 / 692.72 / 721.39    |
-| linear    | 3325.35 / 3347.69 / 4527.25 | 5015.31 / 3543.00 / 6667.88 | 3609.85 / 3566.95 / 4749.38 | 3755.80 / 4027.35 / 6149.05 |
-| radial    | 6026.91 / 5916.24 / 6013.40 | 6180.79 / 6461.60 / 6481.00 | 6320.26 / 6245.94 / 6330.80 | 6206.72 / 6030.01 / 6228.43 |
-| angle     | 4953.43 / 5030.37 / 5165.79 | 5282.69 / 5443.74 / 5513.17 | 6510.43 / 6409.60 / 6457.97 | 5264.12 / 5348.84 / 5416.44 |
-| reflected | 3645.46 / 3832.17 / 3863.03 | 3709.79 / 3725.44 / 3728.48 | 3768.33 / 3708.98 / 3892.58 | 3800.00 / 3732.35 / 3958.93 |
-| diamond   | 3607.50 / 3615.73 / 3731.19 | 3442.86 / 3782.20 / 3849.73 | 3676.91 / 4718.98 / 5253.14 | 3742.01 / 3799.18 / 3929.57 |
+| smudge    | 613.87 / 527.54 / 544.87    | 651.68 / 576.36 / 626.91    | 570.87 / 534.88 / 540.48    | 572.63 / 557.60 / 594.02    |
+| blur      | 587.21 / 661.73 / 691.83    | 646.23 / 609.38 / 676.97    | 620.32 / 627.45 / 643.79    | 562.14 / 594.73 / 626.96    |
+| sharpen   | 646.69 / 626.17 / 644.12    | 621.78 / 661.37 / 676.61    | 681.45 / 678.35 / 693.74    | 630.47 / 658.67 / 659.39    |
+| dodge     | 627.59 / 561.22 / 576.41    | 512.59 / 542.78 / 578.01    | 601.32 / 573.68 / 595.86    | 611.69 / 593.50 / 610.59    |
+| burn      | 586.65 / 575.14 / 627.66    | 547.04 / 590.39 / 627.54    | 580.13 / 593.59 / 621.13    | 630.51 / 621.30 / 643.36    |
+| sponge    | 575.56 / 560.72 / 576.80    | 597.92 / 612.09 / 642.91    | 572.63 / 593.15 / 609.20    | 613.41 / 610.29 / 626.97    |
+| linear    | 3566.88 / 3380.55 / 4363.58 | 3512.40 / 3413.96 / 3864.61 | 3383.06 / 3332.77 / 3930.11 | 3154.96 / 3297.13 / 4030.66 |
+| radial    | 5782.95 / 5798.13 / 6029.73 | 5615.15 / 5931.38 / 5947.62 | 5703.09 / 5714.04 / 5797.67 | 5584.67 / 5780.49 / 6014.10 |
+| angle     | 4814.52 / 4781.36 / 4797.19 | 4682.57 / 4660.54 / 4696.33 | 4793.74 / 4882.79 / 4944.95 | 4829.19 / 4631.02 / 4652.43 |
+| reflected | 3460.08 / 3494.79 / 3526.86 | 3526.82 / 3311.69 / 3443.75 | 3366.89 / 3380.77 / 3477.38 | 3419.28 / 3347.95 / 3497.93 |
+| diamond   | 3372.39 / 3346.48 / 3412.91 | 3290.04 / 3382.29 / 3581.62 | 3558.61 / 3446.55 / 3613.92 | 3333.24 / 3313.10 / 3346.91 |
 
 Warm retouch acknowledgement and presentation distributions, in milliseconds, aggregate all six tools within each browser/API. They measure observed input-time acknowledgements during active painting. Final completion is measured separately by each complete wall interval above. Unchanged preview frames do not establish distinct pixel-update throughput. Worker frame-paint time includes hydration, processing, composition and persistence; it is not a Rust-kernel-only step time.
 
 | Browser / API   | Changed acknowledgement p50 / p95 / p99 | Completed acknowledgement p50 / p95 / p99 | Presentation gap p50 / p95 / p99 |
 | --------------- | --------------------------------------- | ----------------------------------------- | -------------------------------- |
-| chrome / WebGPU | 25.57 / 65.69 / 87.74                   | 25.57 / 65.69 / 87.74                     | 19.79 / 53.18 / 78.56            |
-| chrome / WebGL2 | 28.11 / 89.92 / 98.11                   | 28.11 / 89.92 / 98.11                     | 19.73 / 66.43 / 101.21           |
-| msedge / WebGPU | 26.34 / 74.84 / 82.48                   | 26.34 / 74.84 / 82.48                     | 19.39 / 53.15 / 92.00            |
-| msedge / WebGL2 | 30.22 / 116.70 / 136.82                 | 30.22 / 116.70 / 136.82                   | 23.52 / 98.70 / 118.33           |
+| chrome / WebGPU | 24.43 / 92.93 / 106.82                  | 24.43 / 92.93 / 106.82                    | 19.37 / 67.81 / 96.92            |
+| chrome / WebGL2 | 26.30 / 90.47 / 109.50                  | 26.40 / 90.47 / 109.50                    | 23.07 / 72.49 / 101.36           |
+| msedge / WebGPU | 24.81 / 87.06 / 102.35                  | 24.81 / 87.06 / 102.35                    | 19.60 / 64.50 / 100.08           |
+| msedge / WebGL2 | 29.01 / 86.99 / 105.99                  | 29.01 / 86.99 / 105.99                    | 26.04 / 64.78 / 99.46            |
 
 Observed retouch frame-fence logical CPU peaks reach **102.67 MiB**. These samples are not exhaustive intra-step peaks: the fixed path can touch at most six tiles, whose entire conservative coverage/output/prior-source reservation is at most 4.5 MiB, plus bounded queue/tip capacity and separately admitted paging/display buffers. Gradient worker probes cover cooperative slices, the ready candidate and composition; their CPU peak is **288.51 MiB**, plus at most the separately admitted 2.25 MiB synchronous compositor allowance. Maximum GPU residency is **32.11 MiB**. Admission, conservative reservations and unique generation accounting enforce 768/128 MiB even between observations. These are logical capacities, not process/driver physical memory measurements.
 
-Raw data, per-trial percentiles/input traces, current assets and 44 ordinary-view captures are in `bench/results/p9-m4-performance*`. Reproduce with `pnpm bench:retouch`. Measured processing assets are fingerprinted at `6601524dbae56868a4ae1dc0f2fd48fb71a3ae3b`; subsequent report-only commits preserve them. The superseded matrices are retained separately and are not combined with this one.
+Raw data, per-trial percentiles/input traces, current assets and 44 ordinary-view captures are in `bench/results/p9-m4-performance*`. Reproduce with `pnpm bench:retouch`. Measured processing assets are fingerprinted at `e476b92b2310de0326dddbcd93209e4c68a3dfed`; subsequent report-only commits preserve them. The superseded matrices are retained separately and are not combined with this one.
 
 ## Verification and certification
 
@@ -189,8 +189,8 @@ oracles, immutable cumulative smudge, tile/crop/alpha/selection, locks, bounded
 cold source/halo requests, disjoint hydration, preallocation refusal, no-op redo,
 discarded candidates and exact command undo/redo. Native/WASM clippy and Rust
 formatting pass. TypeScript, ESLint, Prettier, eighteen Vitest cases and 459
-approved license expressions pass. Windows production WASM is 4,518,624 bytes /
-gzip9 1,670,556, below its unchanged 2,000,000-byte gate. Linux deployment bytes
+approved license expressions pass. Windows production WASM is 4,519,376 bytes /
+gzip9 1,670,671, below its unchanged 2,000,000-byte gate. Linux deployment bytes
 and hashes are recorded separately in final certification.
 
 The clean 64-case focused installed-browser run passes once per case on both
@@ -204,6 +204,18 @@ both software WebView2 APIs, hosted runtime byte equality and 156 relevant
 hosted hardware cases. The immutable certificate records actual completion,
 run/artifact identities, counts, hashes, runtime fingerprints and driver events.
 No passing subset substitutes for the full matrix.
+
+The first final-head CI candidate failed an existing exact filter-preview
+screenshot comparison on D3D11 WARP: one blurred pixel differed between rows of
+an otherwise identical three-row fixture. The committed viewport now resolves
+nearest atlas samples from fragment screen/document coordinates with integer
+texture loads, avoiding interpolated UV ties between its two triangles. The
+regression requires identical rows, retains exact preview-to-commit equality and
+saves both PNGs. No tolerance or deadline was relaxed. That failed CI run and the
+preceding runtime's complete hardware/hosted/timing evidence remain separate;
+acceptance uses new complete matrices on the corrected runtime. CI explicitly
+uses zero retries and stops a failed matrix promptly; partial matrices never pass
+the strict coverage verifier.
 
 Early harness/product investigations are retained in
 `bench/results/p9-m4-attempts.json`: initial snapshot readiness, implicit active

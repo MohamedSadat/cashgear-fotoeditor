@@ -19,16 +19,24 @@ All 220 Rust tests, native/WASM clippy, TypeScript, ESLint, formatting, eighteen
 Vitest cases and 459 license expressions pass. The clean 64-case focused browser
 matrix passes once per case without skips/retries/flaky/global errors. Rebuilt
 WebView2 passes all six brushes and five gradients on both actual NVIDIA APIs,
-plus retained broad smoke. Final Windows WASM is 4,518,624 bytes / gzip9 1,670,556
+plus retained broad smoke. Final Windows WASM is 4,519,376 bytes / gzip9 1,670,671
 against the unchanged 2,000,000-byte gate.
 
 The complete photographic 6000x4000 timing matrix has 44 configurations and 176
 successful calls, with exact hash restoration. Warm scripted 12-move strokes take
-478.31–820.61 ms; full-image gradients 3.33–6.67 s. Observed retouch frame-fence
+498.50–693.74 ms; full-image gradients 3.21–6.03 s. Observed retouch frame-fence
 CPU peak is 102.67 MiB; gradient worker peak 288.51 MiB plus its admitted 2.25 MiB
 compositor allowance; maximum GPU is 32.11 MiB. Input delivery, acknowledgement
 latencies, intra-step observation bounds and visual limits are disclosed in
 [P9-M4-REPORT.md](P9-M4-REPORT.md). No real-time claim or new speed waiver.
+
+The first final-head CI candidate failed exact filter preview/commit equality
+on D3D11 WARP. Nearest atlas samples now use fragment screen/document mapping
+and integer texture loads, removing a per-triangle UV boundary discrepancy.
+The regression keeps exact equality, checks all three identical fixture rows
+and retains both PNGs. Four hardware and three software focused cases pass.
+The earlier complete matrices are supplementary; final acceptance requires
+fresh complete matrices on the corrected viewport runtime. CI uses zero retries.
 
 Final acceptance is gated on the complete 696-case installed-browser hardware
 matrix, exact-final-head CI/deployment, downloaded 518-case software and both
