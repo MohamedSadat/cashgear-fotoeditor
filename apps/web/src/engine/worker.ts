@@ -951,6 +951,19 @@ async function runTransformPreview(update: TransformUpdate) {
   }
 }
 const api: EngineApi = {
+  async brushImage(file) {
+    if (busy || requireEngine().painting()) throw new Error('Finish the current operation first');
+    if (file.size > 4 * 1024 * 1024) throw new Error('Brush images must be at most 4 MiB');
+    busy = true;
+    try {
+      external(file.size * 3 + 2 * 1024 * 1024);
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      return JSON.parse(requireEngine().brush_image(bytes));
+    } finally {
+      external(0);
+      busy = false;
+    }
+  },
   diagnosticProjectSaveFault(fault) {
     if (!diagnostic) throw new Error('Project diagnostics are disabled');
     projectSaveFault = fault;

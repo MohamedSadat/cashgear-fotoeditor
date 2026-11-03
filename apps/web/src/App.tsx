@@ -735,7 +735,7 @@ export function App() {
               Recovery
             </button>
           </nav>
-          <BrushPanel />
+          <BrushPanel api={engineApi} />
           <div className="section-divider" />
           <TransformPanel
             api={engineApi}

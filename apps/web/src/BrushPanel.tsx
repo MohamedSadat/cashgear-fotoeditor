@@ -2,6 +2,9 @@ import { memo, useState } from 'react';
 import { hex, parseHex, presets, setBrush, useBrush } from './brush-state';
 import type { BrushSettings, Curve, Rgba } from './brush-state';
 import { GradientPanel } from './GradientPanel';
+import { AdvancedBrushPanel } from './AdvancedBrushPanel';
+import { applyBrushPreset, useBrushPresets } from './brush-presets';
+import type { EngineApi } from './engine/types';
 
 export function rgbToHsv(rgb: Rgba) {
   const [r, g, b] = rgb.map((c) => c / 255);
@@ -31,7 +34,8 @@ export function hsvToRgb(h: number, s: number, v: number, alpha = 255): Rgba {
               : [c, 0, x];
   return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255), alpha];
 }
-export const BrushPanel = memo(function BrushPanel() {
+export const BrushPanel = memo(function BrushPanel({ api }: { api?: EngineApi }) {
+  const savedBrushes = useBrushPresets((s) => s.presets);
   const {
     settings,
     primary,
@@ -272,13 +276,17 @@ export const BrushPanel = memo(function BrushPanel() {
         <select
           aria-label="Brush preset"
           defaultValue="Hard round"
-          onChange={(e) => setBrush(presets[e.target.value])}
+          onChange={(e) => applyBrushPreset(e.target.value)}
         >
           {Object.keys(presets).map((p) => (
             <option key={p}>{p}</option>
           ))}
+          {savedBrushes.map((p) => (
+            <option key={p.name}>{p.name}</option>
+          ))}
         </select>
       </label>
+      <AdvancedBrushPanel api={api} />
       {sliders.map(([key, label, min, max, step]) => (
         <label className="brush-slider" key={key}>
           {label}

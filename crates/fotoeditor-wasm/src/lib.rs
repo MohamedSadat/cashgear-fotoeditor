@@ -423,12 +423,26 @@ mod bridge {
                 .select([x, y], doc.canvas_rect())
                 .map_err(|e| JsValue::from_str(&e))
         }
+        pub fn brush_image(&self, bytes: &[u8]) -> Result<String, JsValue> {
+            let image = fotoeditor_io::decode_brush_image(bytes, self.residency())
+                .map_err(|e| JsValue::from_str(&e))?;
+            serde_json::to_string(&image).map_err(|e| JsValue::from_str(&e.to_string()))
+        }
         pub fn stroke_begin(&mut self, settings: &str, x: f64, y: f64) -> Result<(), JsValue> {
             self.preview_cancel();
             self.layered.invalidate_memory();
             if self.stroke.is_some() {
                 return Err(JsValue::from_str("Finish the current stroke first"));
             }
+            if settings.len() > 1_100_000 {
+                return Err(JsValue::from_str(
+                    "Brush settings exceed their bounded asset limit",
+                ));
+            }
+            let decode_reserve = settings.len() as u64 * 4 + 16384;
+            self.residency()
+                .check_cpu(decode_reserve)
+                .map_err(|e| JsValue::from_str(&e))?;
             let mut settings: BrushSettings =
                 serde_json::from_str(settings).map_err(|e| JsValue::from_str(&e.to_string()))?;
             if (settings.clone.is_some()
@@ -445,8 +459,9 @@ mod bridge {
                 .as_ref()
                 .ok_or_else(|| JsValue::from_str("Create or open a document first"))?;
             let r = self.residency();
-            let available = fotoeditor_core::CPU_BUDGET
-                .saturating_sub(r.document + r.history + r.temporary + DISPLAY_SCRATCH);
+            let available = fotoeditor_core::CPU_BUDGET.saturating_sub(
+                r.document + r.history + r.temporary + DISPLAY_SCRATCH + decode_reserve,
+            );
             let target = self
                 .layered
                 .active

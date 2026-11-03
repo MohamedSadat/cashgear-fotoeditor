@@ -153,8 +153,9 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
     const drawGeometry = () => {
       const s = useWorkspace.getState().snapshot;
       const prefs = useGeometry.getState();
+      const { symmetry, tool } = useBrush.getState();
       const d = s?.document;
-      const key = JSON.stringify([d, s?.view, prefs]);
+      const key = JSON.stringify([d, s?.view, prefs, symmetry, tool]);
       if (key === geometryKey) return;
       geometryKey = key;
       geometrySvg.replaceChildren();
@@ -166,8 +167,47 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
         const node = document.createElementNS(geometrySvg.namespaceURI, 'path');
         node.setAttribute('d', 'M' + screenPoint(a).join(' ') + ' L' + screenPoint(b).join(' '));
         node.setAttribute('class', kind);
+        if (kind === 'symmetry-axis')
+          node.setAttribute('clip-path', `url(#symmetry-clip-${generation})`);
         geometrySvg.appendChild(node);
       };
+      if (['brush', 'eraser'].includes(tool) && symmetry.mode !== 'off') {
+        const defs = document.createElementNS(geometrySvg.namespaceURI, 'defs');
+        const clip = document.createElementNS(geometrySvg.namespaceURI, 'clipPath');
+        clip.setAttribute('id', `symmetry-clip-${generation}`);
+        const polygon = document.createElementNS(geometrySvg.namespaceURI, 'polygon');
+        polygon.setAttribute(
+          'points',
+          (
+            [
+              [x0, y0],
+              [x0 + d.width, y0],
+              [x0 + d.width, y0 + d.height],
+              [x0, y0 + d.height],
+            ] as [number, number][]
+          )
+            .map((p) => screenPoint(p).join(','))
+            .join(' '),
+        );
+        clip.appendChild(polygon);
+        defs.appendChild(clip);
+        geometrySvg.appendChild(defs);
+        const center: [number, number] = symmetry.center ?? [x0 + d.width / 2, y0 + d.height / 2];
+        const radius = 32768;
+        if (['vertical', 'both'].includes(symmetry.mode))
+          line([center[0], center[1] - radius], [center[0], center[1] + radius], 'symmetry-axis');
+        if (['horizontal', 'both'].includes(symmetry.mode))
+          line([center[0] - radius, center[1]], [center[0] + radius, center[1]], 'symmetry-axis');
+        if (symmetry.mode === 'radial')
+          for (let i = 0; i < symmetry.sectors; i++) {
+            const angle = (i * 2 * Math.PI) / symmetry.sectors;
+            line(
+              center,
+              [center[0] + Math.cos(angle) * radius, center[1] + Math.sin(angle) * radius],
+              'symmetry-axis',
+            );
+          }
+      }
       if (prefs.showGuides)
         for (const g of d.guides ?? []) {
           if (g.axis === 'vertical' && g.position >= x0 && g.position <= x0 + d.width)
@@ -328,6 +368,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       )
         void cancelTransform(client.api, false);
       refreshOutline();
+      drawGeometry();
     });
     function key(event: KeyboardEvent) {
       if (event.type === 'keyup') {
@@ -625,6 +666,19 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
           sample: lastSample,
           brush: {
             ...brush.settings,
+            ...(['brush', 'eraser'].includes(brush.tool)
+              ? {
+                  symmetry: {
+                    ...brush.symmetry,
+                    center: brush.symmetry.center ?? [
+                      (useWorkspace.getState().snapshot!.document!.originX ?? 0) +
+                        useWorkspace.getState().snapshot!.document!.width / 2,
+                      (useWorkspace.getState().snapshot!.document!.originY ?? 0) +
+                        useWorkspace.getState().snapshot!.document!.height / 2,
+                    ],
+                  },
+                }
+              : {}),
             color: brush.primary,
             eraser: brush.tool === 'eraser' || event.button === 5,
             ...(['smudge', 'blur', 'sharpen', 'dodge', 'burn', 'sponge'].includes(brush.tool)

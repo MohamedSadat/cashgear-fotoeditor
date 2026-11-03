@@ -1458,3 +1458,37 @@ select {
   font-size: 10px;
   padding: 2px;
 }
+.symmetry-axis {
+  stroke: #f6b76b;
+  stroke-width: 1;
+  stroke-dasharray: 6 4;
+  fill: none;
+  pointer-events: none;
+}
+.advanced-brush {
+  margin: 10px 0;
+  padding: 8px;
+  border: 1px solid var(--border, #343b47);
+  border-radius: 6px;
+}
+.advanced-brush summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.advanced-brush input[type='file'] {
+  max-width: 100%;
+  min-width: 0;
+  font-size: 11px;
+}
+.advanced-brush label {
+  flex-wrap: wrap;
+}
+.advanced-brush input[type='number'],
+.advanced-brush input:not([type]) {
+  min-width: 0;
+  max-width: 100%;
+}
+.advanced-brush p {
+  font-size: 11px;
+  line-height: 1.5;
+}

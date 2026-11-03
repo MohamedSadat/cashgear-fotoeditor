@@ -1,5 +1,5 @@
 export type BackendPreference = 'auto' | 'webgl2';
-import type { BrushSettings, Rgba } from '../brush-state';
+import type { BrushSettings, Rgba, CoverageImage, PaintingSymmetry } from '../brush-state';
 export type Backend = 'WebGPU' | 'WebGL2';
 export interface PhysicalSize {
   width: number;
@@ -156,6 +156,7 @@ export interface Interaction {
   brush?: BrushSettings & {
     color: Rgba;
     eraser: boolean;
+    symmetry?: Omit<PaintingSymmetry, 'center'> & { center: [number, number] };
     clone?: { aligned: boolean; allLayers: boolean };
     healing?: { spot: boolean; aligned: boolean; allLayers: boolean };
     retouch?: {
@@ -168,6 +169,7 @@ export interface Interaction {
   sample?: [number, number, number, number, number, number];
 }
 export interface EngineApi {
+  brushImage(file: File): Promise<CoverageImage>;
   diagnosticProjectSaveFault(fault: 'pause-after-write' | 'quota'): void | Promise<void>;
   diagnosticExportBudget(): void | Promise<void>;
   exportImage(options: ImageExportOptions): Promise<File>;

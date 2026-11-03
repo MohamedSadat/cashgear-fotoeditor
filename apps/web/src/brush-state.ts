@@ -1,6 +1,16 @@
 import { create } from 'zustand';
 export type Rgba = [number, number, number, number];
 export type Curve = [number, number, number, number, number];
+export interface CoverageImage {
+  width: number;
+  height: number;
+  coverage: string;
+}
+export interface PaintingSymmetry {
+  mode: 'off' | 'vertical' | 'horizontal' | 'both' | 'radial';
+  center: [number, number] | null;
+  sectors: number;
+}
 export function evaluateCurve(points: Curve, input: number) {
   const x = Math.max(0, Math.min(1, input)) * 4,
     i = Math.min(3, Math.floor(x));
@@ -14,6 +24,15 @@ export interface BrushSettings {
   spacing: number;
   roundness: number;
   angle: number;
+  tipImage: CoverageImage | null;
+  texture: CoverageImage | null;
+  textureDepth: number;
+  textureScale: number;
+  scatter: number;
+  sizeJitter: number;
+  angleJitter: number;
+  opacityJitter: number;
+  seed: number;
   pencil: boolean;
   stabilizer: 'off' | 'pulled' | 'weighted';
   strength: number;
@@ -34,6 +53,15 @@ export const defaults: BrushSettings = {
   spacing: 0.1,
   roundness: 1,
   angle: 0,
+  tipImage: null,
+  texture: null,
+  textureDepth: 1,
+  textureScale: 64,
+  scatter: 0,
+  sizeJitter: 0,
+  angleJitter: 0,
+  opacityJitter: 0,
+  seed: 1,
   pencil: false,
   stabilizer: 'off',
   strength: 0.35,
@@ -122,6 +150,7 @@ interface BrushState {
   retouchStrength: number;
   tonalRange: 'all' | 'shadows' | 'midtones' | 'highlights';
   spongeSaturate: boolean;
+  symmetry: PaintingSymmetry;
   setColor: (color: Rgba) => void;
   swap: () => void;
 }
@@ -156,6 +185,7 @@ export const useBrush = create<BrushState>((set) => ({
   retouchStrength: 0.5,
   tonalRange: 'all',
   spongeSaturate: false,
+  symmetry: { mode: 'off', center: null, sectors: 6 },
   setColor: (color) =>
     set((state) => ({
       primary: color,
