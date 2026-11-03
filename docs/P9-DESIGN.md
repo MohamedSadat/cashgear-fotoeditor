@@ -112,8 +112,8 @@ defaults make the remaining roadmap behavior testable before coding.
   and Quick Mask painting, replicate each jittered dab and its oriented image
   shape in Rust. At a coincident center, distinct oriented shapes form a maximum-
   coverage union before flow accumulates once; identical round coverage is
-  deduplicated. Bounded orientation arrays are included in admission. Retouch tools retain their
-  explicitly displayed single-path sampling behavior; symmetry is a painting
+  deduplicated. Bounded orientation arrays are included in admission. Retouch
+  tools retain their explicitly displayed single-path sampling behavior; symmetry is a painting
   option, not a change to clone/healing source mapping. One stroke is one command.
 - Named CashGear presets capture tip/texture, brush shape/dynamics, scatter/jitter
   and seed; foreground color, active tool and document-relative symmetry center

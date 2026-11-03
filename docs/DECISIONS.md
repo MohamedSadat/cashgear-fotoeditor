@@ -1,5 +1,17 @@
 # Decisions
 
+## 2026-11-03 - P9 phase performance regression remains unresolved
+
+- The complete corrected-source current-layer Clone Stamp matrix measures
+  56.65-57.84 presentation fps across installed Chrome/Edge and both NVIDIA APIs.
+  Its 60 fps gate remains open. Changed-input acknowledgements are separate.
+- The existing user-approved P12 exception covers all-visible sampling only;
+  that mode now measures 26.39-30.91 fps. It does not extend to current-layer
+  speed. A user decision about this additional miss has been requested but has
+  not been received. No new exception or acceptance is recorded.
+- Continue independent phase-wide verification. Publish no `p9-retouch` until
+  the performance gate is met or explicitly resolved and all other gates pass.
+
 ## 2026-11-03 - P9 M5 authorization and engineering contract
 
 - The user explicitly authorizes complete M5 and remaining P9 acceptance after

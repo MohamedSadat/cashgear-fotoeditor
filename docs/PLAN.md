@@ -396,3 +396,9 @@ and radial symmetry, editable multi-stop gradients. See DECISIONS.md.
 - Tag/push `p9-retouch` only after all milestones and acceptance gates pass.
   Report shipped/deferred work, hardware measurements and proposed P10, then stop.
   Existing P5/Ink/P6/P7 and accepted P8/P12 limits retain their status.
+
+M5's complete corrected-source phase regression on 2026-11-03 measures current-
+layer Clone Stamp at 56.65-57.84 presentation fps. That 60 fps gate remains open;
+M1's existing exception covers all-visible sampling only. No additional speed
+exception has been approved. Complete all independent verification, then require
+the target or an explicit user decision before `p9-retouch`. See P9-REPORT.md.

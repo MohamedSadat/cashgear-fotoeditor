@@ -1,6 +1,6 @@
 # Progress
 
-## P9 - M5 advanced painting started
+## P9 - M5 advanced painting implemented; phase verification in progress
 
 Started 2026-11-03 at the user's explicit request, directly on clean main matching
 fetched origin/main at accepted M4 `7d4f283`, without agents/worktrees. Read the
@@ -9,9 +9,37 @@ M3/M4 certificate hashes, and read the complete printed page 17 as text and a
 newly rendered page. Existing decisions resolve the phase questions.
 P9-DESIGN.md records M5 behavior and acceptance before implementation.
 
-Image tips, scatter/jitter/texture, CashGear presets, mirror/radial painting and
-phase-wide acceptance remain in progress. No P9 completion claim or tag yet.
-Inherited limits/deferrals and immutable accepted evidence remain unchanged.
+M5 implements bounded PNG/JPEG/WebP coverage tips, repeatable scatter and
+size/angle/opacity jitter, repeating texture, self-contained CashGear brush
+libraries and mirror/radial Brush/Eraser painting including masks/Quick Mask.
+Coincident asymmetric orientations form a maximum-coverage union before flow;
+their fixed arrays and queued asset strings are included in admission. Retouch
+keeps its existing single-path sampling contract. No dependency/schema change.
+
+All 232 Rust tests, native/WASM clippy, Rust formatting, TypeScript, ESLint,
+Prettier, 22 Vitest cases and 459 license expressions pass. The corrected source
+passes 96 focused installed-browser hardware cases and 42 focused software cases
+once each, without skips/retries/flaky/global errors. Rebuilt WebView2 passes
+both actual NVIDIA APIs and the new coincident-union/image/preset/symmetry
+checks alongside retained broad smoke. Windows WASM is 4,543,901 raw bytes /
+gzip9 1,679,500, below its unchanged 2,000,000-byte cap.
+
+The complete corrected-source photographic matrix contains 16 configurations /
+64 successful strokes with exact exported-hash restoration. Warm 12-move strokes
+take 516.00-599.14 ms; observed logical CPU/GPU peaks are 102.25/32.11 MiB.
+Complete Clone Stamp regressions measure current-layer 56.65-57.84 presentation
+fps and all-visible 26.39-30.91 fps. Changed-input acknowledgements are reported
+separately in [P9-REPORT.md](P9-REPORT.md). The current-layer 60 fps gate is OPEN:
+the existing P12 exception covers all-visible sampling only. An additional
+performance decision is pending; no waiver is inferred.
+
+Final acceptance requires the entire corrected-source 752-case hardware matrix,
+exact-final-head remote CI/deployment and downloaded artifacts (expected 560
+software cases plus both WebView2 APIs), hosted byte equality/hardware cases,
+fresh portrait inspection and the remaining performance gate. Immutable
+certification records actual completion and run/artifact identities. No P9
+completion claim/tag or P10 work. Inherited limits/deferrals and accepted M3/M4
+evidence remain unchanged; all 520 listed raw artifact hashes were verified.
 
 ## P9 - M4 retouch brushes and gradients locally verified
 
