@@ -6,7 +6,9 @@ import { resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import os from 'node:os';
 const base = process.env.PERF_BASE_URL ?? 'http://127.0.0.1:4188';
-const out = process.env.RETOUCH_REPORT ?? 'bench/results/p9-m4-performance.json';
+const advanced = process.env.ADVANCED_BRUSH_BENCH === '1';
+const out =
+  process.env.RETOUCH_REPORT ?? `bench/results/${advanced ? 'p9-m5' : 'p9-m4'}-performance.json`;
 const hash = (b) => createHash('sha256').update(b).digest('hex');
 const fixturePath = 'bench/results/fixtures/retouch-photo-6000x4000.png';
 const fixture = await readFile(fixturePath);
@@ -42,6 +44,18 @@ const report = {
     'Serial installed hardware Chrome/Edge, actual non-fallback WebGPU/WebGL2; normal populated 6000x4000 document at 100%, 1280x850 DPR1. Fresh context per browser/API, first plus three warm calls per tool/shape; shared kernels/OS/file caches may be warm. Current raster, no selection/mask/crop/locks. Retouch: 200px soft round, flow/opacity1, spacing0.1, strength0.5, pressure size enabled with mouse pressure1, stabilizer off; native Playwright mouse path 240px in 12 moves, requested 20ms between moves, actual delivery recorded. API-to-observed-commit includes input/worker/presentation/persistence. Snapshot observer measures presentation gaps and distinct changed/completed input acknowledgements, not per-pixel throughput or a 60fps claim. Retouch CPU/GPU peaks are observed frame snapshots, not exhaustive intra-step peaks; conservative reservation bounds and unobserved COW work are reported separately. Gradients: full canvas, endpoints [2900.5,2000.5]..[3100.5,2000.5], three RGBA stops, opacity0.8; worker probes cover cooperative slices/before commit/composition, plus at most 2.25MiB separately admitted synchronous compositor scratch. Exact exported SHA-256 before/after all four undo-restored calls. No builds/tests run during timing; shared machine, no dedicated-host claim. No M4 speed threshold exists.',
   results: [],
 };
+if (advanced) {
+  report.method =
+    'Serial installed Chrome/Edge with actual non-fallback hardware WebGPU/WebGL2; normal populated photographic 6000x4000 document at 100 percent, 1280x850 DPR1. Fresh context per browser/API; first plus three warm native-input strokes per configuration, shared kernels/OS/file caches may already be warm. Brush 200px, flow/opacity1, spacing0.1, mouse pressure1, stabilizer off, no selection/mask/crop/locks. Image: original asymmetric leaf PNG. Texture-jitter: same tip plus original grain PNG, scatter0.35, size jitter0.3, angle jitter0.7, opacity jitter0.25, texture depth0.8, period32px, seed71. Mirror: leaf plus both axes; Radial: leaf plus eight sectors, canvas center [3000,2000]. Native Playwright path 240px / 12 moves, requested 20ms between moves; actual input delivery retained. Wall completion includes automation/input, worker processing, presentation and persistence. Snapshot observer records distinct changed/completed-input acknowledgements and presentation gaps, not per-pixel throughput. Logical CPU/GPU peaks are observed frame fences, not exhaustive intra-step peaks; conservative capacity/admission bounds are reported separately. Every trial is undone exactly; exported SHA-256 equality verifies restoration after all four trials. Normal autosave stays enabled. No builds/tests during timing; shared machine, no dedicated-host claim. No distinct M5 speed target exists.';
+  report.brushAssets = Object.fromEntries(
+    await Promise.all(
+      ['brush-leaf.png', 'brush-texture.png'].map(async (n) => [
+        n,
+        hash(await readFile('bench/results/fixtures/' + n)),
+      ]),
+    ),
+  );
+}
 await mkdir('bench/results', { recursive: true });
 report.method +=
   ' Normal autosave stays enabled. Hash exports and exact Undo outside timed edits wait for worker admission; measured strokes/gradients are never retried.';
@@ -176,10 +190,50 @@ try {
           });
           for (const tool of (
             process.env.RETOUCH_TOOLS ??
-            'smudge,blur,sharpen,dodge,burn,sponge,linear,radial,angle,reflected,diamond'
+            (advanced
+              ? 'image,texture-jitter,mirror,radial'
+              : 'smudge,blur,sharpen,dodge,burn,sponge,linear,radial,angle,reflected,diamond')
           ).split(',')) {
-            const gradient = ['linear', 'radial', 'angle', 'reflected', 'diamond'].includes(tool);
-            if (!gradient) {
+            const gradient =
+              !advanced && ['linear', 'radial', 'angle', 'reflected', 'diamond'].includes(tool);
+            if (advanced) {
+              await page.getByRole('button', { name: 'Brush', exact: true }).click();
+              await page.getByRole('combobox', { name: 'Brush preset' }).selectOption('Hard round');
+              await range(page, 'Brush size', 200);
+              const detail = page.locator('.advanced-brush');
+              if (!(await detail.evaluate((el) => el.open)))
+                await detail.locator('summary').click();
+              await page
+                .getByLabel('Image tip file', { exact: true })
+                .setInputFiles(resolve('bench/results/fixtures/brush-leaf.png'));
+              await expect(
+                page.getByRole('status', { name: 'Brush library status' }),
+              ).toContainText('Image tip loaded');
+              await page
+                .getByRole('combobox', { name: 'Painting symmetry' })
+                .selectOption(tool === 'mirror' ? 'both' : tool === 'radial' ? 'radial' : 'off');
+              if (tool === 'radial')
+                await page.getByRole('spinbutton', { name: 'Radial sectors' }).fill('8');
+              await page.getByRole('spinbutton', { name: 'Brush random seed' }).fill('71');
+              await page.getByRole('textbox', { name: 'Color hex' }).fill('#235dce');
+              if (tool === 'texture-jitter') {
+                await page
+                  .getByLabel('Brush texture file', { exact: true })
+                  .setInputFiles(resolve('bench/results/fixtures/brush-texture.png'));
+                await expect(
+                  page.getByRole('status', { name: 'Brush library status' }),
+                ).toContainText('Texture loaded');
+                for (const [name, value] of [
+                  ['Scatter', 0.35],
+                  ['Size jitter', 0.3],
+                  ['Angle jitter', 0.7],
+                  ['Opacity jitter', 0.25],
+                  ['Texture depth', 0.8],
+                  ['Texture scale', 32],
+                ])
+                  await range(page, name, value);
+              }
+            } else if (!gradient) {
               await page.getByRole('combobox', { name: 'Retouch tool' }).selectOption(tool);
               await page.getByRole('combobox', { name: 'Brush preset' }).selectOption('Soft round');
               await range(page, 'Brush size', 200);
@@ -341,7 +395,7 @@ try {
               trials.push(entry);
               if (trial === 3)
                 await page.screenshot({
-                  path: `bench/results/p9-m4-performance-${channel}-${backend}-${tool}.png`,
+                  path: `${out.replace(/\.json$/, '')}-${channel}-${backend}-${tool}.png`,
                 });
               await outsideTiming(page, 'Undo restoration', () =>
                 page.evaluate((n) => window.__fotoeditor.historyJump(n), baseline),

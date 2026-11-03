@@ -13,6 +13,10 @@
   choices within that scope. No dependency, budget increase or new speed waiver.
 - Preserve immutable accepted M3/M4 artifacts and all inherited limits/deferrals;
   repeat regressions into distinct M5 evidence paths.
+- Image tips make queued stroke starts larger than pointer-only events. Keep the
+  existing count limit and add a 16 MiB payload ceiling on both sides of the
+  worker boundary, including retained queued strings in CPU residency/admission.
+  This is bounded input accounting within the unchanged 768 MiB total budget.
 
 ## 2026-11-02 - P9 M4 scope and engineering choices
 

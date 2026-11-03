@@ -127,6 +127,10 @@ defaults make the remaining roadmap behavior testable before coding.
   reading. Escape/focus loss, input overflow, hydration failure and budget refusal
   discard the whole candidate. Count decoded settings/assets, prepared tip/texture,
   bounded symmetry queue, coverage/output/history/source/paging/display/GPU memory.
+  The host and worker additionally bound queued brush payloads to 16 MiB by
+  UTF-16 string capacity plus settings overhead; the worker admits and reports
+  retained queued payloads alongside other external buffers. Overflow cancels
+  atomically, and consumed/cancelled payload reservations are released.
   Keep 768 MiB logical CPU / 128 MiB GPU, 16,384 sides, 128 MiB document images,
   4 GiB projects and 2,000,000-byte gzip WASM. No new dependency is planned.
 - Rust tests require independent coverage/transform oracles, deterministic results

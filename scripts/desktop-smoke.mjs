@@ -1345,6 +1345,107 @@ try {
         expect(record[key], shape + ' ' + key).toBe(true);
       result.gradients.push(record);
     }
+    // P9 M5: real image-file import, persisted self-contained preset roundtrip,
+    // oriented mirror/radial stamps and exact command restoration in WebView2.
+    result.advancedPainting = [];
+    await page.evaluate(() => {
+      const create = URL.createObjectURL.bind(URL),
+        click = HTMLAnchorElement.prototype.click;
+      URL.createObjectURL = (blob) => {
+        if (blob.type === 'application/json')
+          void blob.text().then((text) => {
+            window.__brushPayload = text;
+          });
+        return create(blob);
+      };
+      HTMLAnchorElement.prototype.click = function () {
+        if (this.download.endsWith('.cgbrush')) window.__brushFilename = this.download;
+        else click.call(this);
+      };
+    });
+    for (const mode of ['both', 'radial']) {
+      const prepared = await page.evaluate(async () => {
+        const a = window.__fotoeditor;
+        const s = await a.newDocument(256, 256, 300);
+        await a.interact([{ kind: 'actual', x: 0, y: 0, amount: 0 }]);
+        return s;
+      });
+      await page.waitForFunction(() => {
+        const s = JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot);
+        return s.document?.width === 256 && s.view.zoom === 1 && !s.operation && !s.painting;
+      });
+      await page.getByRole('button', { name: 'Brush', exact: true }).click();
+      await page.getByRole('combobox', { name: 'Brush preset' }).selectOption('Hard round');
+      const detail = page.locator('.advanced-brush');
+      if (!(await detail.evaluate((el) => el.open))) await detail.locator('summary').click();
+      await page
+        .getByLabel('Image tip file', { exact: true })
+        .setInputFiles(join(root, 'bench/results/fixtures/brush-asymmetric.png'));
+      await expect(page.getByRole('status', { name: 'Brush library status' })).toContainText(
+        'Image tip loaded',
+      );
+      await page.getByRole('combobox', { name: 'Painting symmetry' }).selectOption(mode);
+      if (mode === 'radial')
+        await page.getByRole('spinbutton', { name: 'Radial sectors' }).fill('4');
+      await page.getByRole('textbox', { name: 'Color hex' }).fill('#235dce');
+      await page.getByRole('textbox', { name: 'Brush preset name' }).fill('Desktop ink');
+      await page.getByRole('button', { name: 'Save brush', exact: true }).click();
+      await expect(page.getByRole('status', { name: 'Brush library status' })).toHaveText(
+        'Brush saved.',
+      );
+      await page.evaluate(() => {
+        window.__brushPayload = undefined;
+        window.__brushFilename = undefined;
+      });
+      await page.getByRole('button', { name: 'Export CashGear brushes' }).click();
+      await page.waitForFunction(() => typeof window.__brushPayload === 'string');
+      const library = await page.evaluate(() => window.__brushPayload);
+      expect(await page.evaluate(() => window.__brushFilename)).toBe('CashGear-brushes.cgbrush');
+      expect(JSON.parse(library).presets[0].settings.tipImage.coverage).toBe('ff0000ffff00');
+      await page.getByRole('button', { name: 'Delete brush', exact: true }).click();
+      await page.getByLabel('Import CashGear brushes', { exact: true }).setInputFiles({
+        name: 'desktop.cgbrush',
+        mimeType: 'application/json',
+        buffer: Buffer.from(library),
+      });
+      await expect(page.getByRole('status', { name: 'Brush library status' })).toHaveText(
+        'Brush library imported.',
+      );
+      await page.getByRole('combobox', { name: 'Brush preset' }).selectOption('Desktop ink');
+      const before = Buffer.from(await exportedPng());
+      const box = await page.getByTestId('gpu-canvas').boundingBox();
+      await page.mouse.click(box.x + box.width / 2 - 50, box.y + box.height / 2 - 50);
+      await page.waitForFunction((n) => {
+        const s = JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot);
+        return s.history.undo === n + 1 && !s.painting && !s.operation;
+      }, prepared.history.undo);
+      const after = Buffer.from(await exportedPng());
+      expect(after.equals(before)).toBe(false);
+      const png = PNG.sync.read(after);
+      let painted = 0;
+      const pixel = (x, y) => png.data.subarray((y * 256 + x) * 4, (y * 256 + x) * 4 + 4);
+      for (let y = 60; y < 96; y++)
+        for (let x = 60; x < 96; x++) {
+          if (pixel(x, y)[3]) painted++;
+          expect(pixel(255 - x, 255 - y).equals(pixel(x, y))).toBe(true);
+          if (mode === 'both') expect(pixel(255 - x, y).equals(pixel(x, y))).toBe(true);
+          else expect(pixel(255 - y, x).equals(pixel(x, y))).toBe(true);
+        }
+      expect(painted).toBeGreaterThan(40);
+      await page.evaluate((n) => window.__fotoeditor.historyJump(n), prepared.history.undo);
+      expect(Buffer.from(await exportedPng()).equals(before)).toBe(true);
+      await page.evaluate((n) => window.__fotoeditor.historyJump(n + 1), prepared.history.undo);
+      expect(Buffer.from(await exportedPng()).equals(after)).toBe(true);
+      result.advancedPainting.push({
+        mode,
+        imageFile: true,
+        presetRoundtrip: true,
+        orientedCopies: true,
+        oneCommand: true,
+        exactUndo: true,
+        exactRedo: true,
+      });
+    }
     result.software = process.env.GPU_TEST_SOFTWARE === '1';
     await mkdir(join(root, 'bench/results'), { recursive: true });
     await page.screenshot({ path: join(root, 'bench/results/desktop-p4-' + backend + '.png') });

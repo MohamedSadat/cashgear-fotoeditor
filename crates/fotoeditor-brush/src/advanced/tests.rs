@@ -425,3 +425,109 @@ fn image_clone_hydrates_only_jittered_dab_source_and_keeps_snapshot_immutable() 
     );
     assert_eq!(doc.tile_count(), 0);
 }
+
+#[test]
+fn image_and_texture_cover_every_stroke_pipeline_with_selection_and_exact_undo() {
+    for tool in [
+        "paint", "erase", "clone", "healing", "spot", "smudge", "blur", "sharpen", "dodge", "burn",
+        "sponge",
+    ] {
+        let mut doc = Document::blank(64, 64, 300.0).unwrap();
+        for y in 0..64 {
+            for x in 0..64 {
+                doc.raster_mut().write(
+                    x,
+                    y,
+                    Rgba8([
+                        70 + ((x * 3 + y) % 80) as u8,
+                        100 + ((x + y * 2) % 50) as u8,
+                        90,
+                        255,
+                    ]),
+                );
+            }
+        }
+        doc.raster_mut().write(40, 32, Rgba8([220, 20, 80, 255]));
+        doc.raster_mut().write(0, 0, Rgba8([77, 99, 33, 0]));
+        let mut select = TileSurface::new(64, 64);
+        for y in 0..64 {
+            for x in 32..64 {
+                select.write(x, y, Gray8(if x == 32 { 128 } else { 255 }));
+            }
+        }
+        doc.selection = Some(Arc::new(select));
+        let mut s = BrushSettings {
+            size: 12.0,
+            tip_image: Some(image()),
+            texture: Some(image()),
+            texture_depth: 0.4,
+            texture_scale: 5.0,
+            angle_jitter: 0.1,
+            seed: 71,
+            ..settings()
+        };
+        s.eraser = tool == "erase";
+        match tool {
+            "clone" => s.clone = Some(CloneOptions::default()),
+            "healing" | "spot" => {
+                s.healing = Some(HealingOptions {
+                    spot: tool == "spot",
+                    ..Default::default()
+                })
+            }
+            "smudge" | "blur" | "sharpen" | "dodge" | "burn" | "sponge" => {
+                s.retouch = Some(RetouchOptions {
+                    mode: match tool {
+                        "smudge" => RetouchMode::Smudge,
+                        "blur" => RetouchMode::Blur,
+                        "sharpen" => RetouchMode::Sharpen,
+                        "dodge" => RetouchMode::Dodge,
+                        "burn" => RetouchMode::Burn,
+                        _ => RetouchMode::Sponge,
+                    },
+                    strength: 0.5,
+                    range: TonalRange::All,
+                    saturate: false,
+                })
+            }
+            _ => {}
+        }
+        let mut stroke = if s.clone.is_some() || s.healing.is_some() {
+            StrokeCommand::for_clone(&doc, s, CPU_BUDGET, doc.layers[0].id, doc.clone(), [-16, 0])
+                .unwrap()
+        } else {
+            StrokeCommand::new(&doc, s, CPU_BUDGET).unwrap()
+        };
+        stroke.push(point(40.0, 32.0)).unwrap();
+        stroke
+            .push(Sample {
+                time: 20.0,
+                ..point(44.0, 32.0)
+            })
+            .unwrap();
+        stroke.end();
+        while !stroke.done() {
+            stroke.step(127).unwrap();
+        }
+        let before = pixels(&doc);
+        let after = pixels(&stroke.preview);
+        assert_ne!(before, after, "{tool}");
+        for y in 0..64 {
+            for x in 0..32 {
+                assert_eq!(
+                    stroke.preview.raster().sample(x, y),
+                    doc.raster().sample(x, y),
+                    "{tool}"
+                );
+            }
+        }
+        let mut h = History::default();
+        h.execute(&mut doc, Box::new(stroke.finish().unwrap()), 0)
+            .unwrap();
+        assert_eq!(h.depths(), (1, 0));
+        assert!(h.undo(&mut doc));
+        assert_eq!(pixels(&doc), before);
+        assert!(h.redo(&mut doc));
+        assert_eq!(pixels(&doc), after);
+    }
+}
