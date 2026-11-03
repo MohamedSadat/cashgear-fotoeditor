@@ -82,6 +82,59 @@ test.beforeEach(({ page }) => {
 });
 test.afterEach(({ page }) => expect(errors.get(page)).toEqual([]));
 for (const backend of ['WebGPU', 'WebGL2']) {
+  for (const mode of ['vertical', 'horizontal', 'both', 'radial'])
+    test(`${backend} coincident ${mode} image orientations union coverage without extra flow`, async ({
+      page,
+    }, info) => {
+      const o = await setup(page, backend);
+      await load(page, 'tip');
+      await load(page, 'texture');
+      await range(page, 'Brush size', 40);
+      await range(page, 'Brush flow', 0.3);
+      await range(page, 'Brush opacity', 0.5);
+      await range(page, 'Texture scale', 7);
+      const before = await exported(page);
+      await page.mouse.click(o.x + 256, o.y + 128);
+      await idle(page, 1);
+      const reference = await exported(page);
+      await undo(page, 0);
+      expect((await exported(page)).data.equals(before.data)).toBe(true);
+      await page.getByRole('combobox', { name: 'Painting symmetry' }).selectOption(mode);
+      if (mode === 'radial')
+        await page.getByRole('spinbutton', { name: 'Radial sectors' }).fill('4');
+      await page.mouse.click(o.x + 256, o.y + 128);
+      await idle(page, 1);
+      const actual = await exported(page);
+      let count = 0;
+      for (let y = 100; y < 156; y++)
+        for (let x = 228; x < 284; x++) {
+          const a = (x: number, y: number) => pixel(reference, x, y)[3];
+          const expected =
+            mode === 'vertical'
+              ? Math.max(a(x, y), a(511 - x, y))
+              : mode === 'horizontal'
+                ? Math.max(a(x, y), a(x, 255 - y))
+                : mode === 'both'
+                  ? Math.max(a(x, y), a(511 - x, y), a(x, 255 - y), a(511 - x, 255 - y))
+                  : Math.max(
+                      a(x, y),
+                      a(383 - y, x - 128),
+                      a(511 - x, 255 - y),
+                      a(128 + y, 383 - x),
+                    );
+          expect(pixel(actual, x, y)[3], `${mode} ${x},${y}`).toBe(expected);
+          if (expected) count++;
+        }
+      expect(count).toBeGreaterThan(80);
+      const prefix = `bench/results/${process.env.E2E_EVIDENCE_PREFIX ?? 'p9-m5'}-coincident-${info.project.name}-${backend}-${mode}`;
+      await mkdir('bench/results', { recursive: true });
+      await writeFile(prefix + '.png', PNG.sync.write(actual));
+      await undo(page, 0);
+      expect((await exported(page)).data.equals(before.data)).toBe(true);
+      await page.getByRole('button', { name: 'Redo', exact: true }).click();
+      await idle(page, 1);
+      expect((await exported(page)).data.equals(actual.data)).toBe(true);
+    });
   test(`${backend} queued image payload refusal preserves pixels redo and later input admission`, async ({
     page,
   }) => {

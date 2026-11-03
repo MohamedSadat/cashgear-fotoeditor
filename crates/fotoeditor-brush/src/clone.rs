@@ -206,6 +206,7 @@ pub(super) fn stamp_row(
             && clip_default == 255
             && scale == 1.0
             && dab.transform == [1.0, 0.0, 0.0, 1.0]
+            && dab.extra_count == 0
             && tip.texture.is_none()
             && base.is_some_and(|t| t.known_opaque)
             && sampled.as_ref().is_some_and(|t| t.known_opaque)

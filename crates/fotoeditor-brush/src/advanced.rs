@@ -100,6 +100,8 @@ pub(super) struct PlannedDab {
     pub influence: f64,
     /// Inverse orthonormal transform from document offsets to tip offsets.
     pub transform: [f64; 4],
+    pub extra_transforms: [[f64; 4]; 15],
+    pub extra_count: usize,
 }
 impl StrokeCommand {
     fn random(&mut self) -> f64 {
@@ -116,6 +118,10 @@ impl StrokeCommand {
         let influence = 1.0 - self.random() * self.settings.opacity_jitter;
         let (sin, cos) = angle.sin_cos();
         let sym = self.settings.symmetry;
+        let oriented = !self.settings.pencil
+            && (self.settings.tip_image.is_some()
+                || (self.settings.texture.is_some() && self.settings.texture_depth > 0.0)
+                || self.settings.roundness != 1.0);
         let n = match sym.mode {
             SymmetryMode::Off => 1,
             SymmetryMode::Both => 4,
@@ -159,23 +165,33 @@ impl StrokeCommand {
                     ..p
                 }
             };
-            if self
+            let transform = [
+                cos * a + sin * b,
+                cos * c + sin * d,
+                -sin * a + cos * b,
+                -sin * c + cos * d,
+            ];
+            if let Some(existing) = self
                 .planned
-                .iter()
-                .any(|v| (v.p.x - q.x).abs() < 1e-8 && (v.p.y - q.y).abs() < 1e-8)
+                .iter_mut()
+                .find(|v| (v.p.x - q.x).abs() < 1e-8 && (v.p.y - q.y).abs() < 1e-8)
             {
+                if oriented
+                    && transform != existing.transform
+                    && !existing.extra_transforms[..existing.extra_count].contains(&transform)
+                {
+                    existing.extra_transforms[existing.extra_count] = transform;
+                    existing.extra_count += 1;
+                }
                 continue;
             }
             self.planned.push_back(PlannedDab {
                 p: q,
                 size,
                 influence,
-                transform: [
-                    cos * a + sin * b,
-                    cos * c + sin * d,
-                    -sin * a + cos * b,
-                    -sin * c + cos * d,
-                ],
+                transform,
+                extra_transforms: [[0.0; 4]; 15],
+                extra_count: 0,
             });
         }
     }
@@ -209,10 +225,18 @@ impl Tip {
     pub(super) fn at(&self, dab: &Dab, x: f64, y: f64) -> u32 {
         let dx = x + 0.5 - dab.p.x;
         let dy = y + 0.5 - dab.p.y;
-        let [a, b, c, d] = dab.transform;
+        let mut value = self.at_transform(dab.radius, dx, dy, dab.transform);
+        for transform in &dab.extra_transforms[..dab.extra_count] {
+            value = value.max(self.at_transform(dab.radius, dx, dy, *transform));
+        }
+        value
+    }
+    #[inline(always)]
+    fn at_transform(&self, radius: f64, dx: f64, dy: f64, transform: [f64; 4]) -> u32 {
+        let [a, b, c, d] = transform;
         let tx = a * dx + b * dy;
         let ty = c * dx + d * dy;
-        let scale = self.radius / dab.radius;
+        let scale = self.radius / radius;
         let value = self.sample(
             tx * scale + self.radius + 0.5,
             ty * scale + self.radius + 0.5,

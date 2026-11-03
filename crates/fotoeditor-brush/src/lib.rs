@@ -239,6 +239,8 @@ struct Dab {
     radius: f64,
     influence: f64,
     transform: [f64; 4],
+    extra_transforms: [[f64; 4]; 15],
+    extra_count: usize,
     x0: u32,
     x1: u32,
     y1: u32,
@@ -398,6 +400,7 @@ impl StrokeCommand {
         let asset_bytes = settings.asset_bytes();
         if available
             < (QUEUE_LIMIT * size_of::<Sample>() + 16 * size_of::<advanced::PlannedDab>()) as u64
+                + size_of::<Dab>() as u64
                 + tip_side * tip_side * 2
                 + asset_bytes
                 + settings
@@ -440,6 +443,7 @@ impl StrokeCommand {
             + self.tip.bytes()
             + self.settings.asset_bytes()
             + (self.planned.capacity() * size_of::<advanced::PlannedDab>()) as u64
+            + size_of::<Dab>() as u64
             + self.patch.as_ref().map_or(0, |p| p.bytes())
     }
     /// Hydration can consume budget after stroke admission; never grow its ceiling.
@@ -556,6 +560,8 @@ impl StrokeCommand {
             size: 1.0,
             influence: 1.0,
             transform: [1.0, 0.0, 0.0, 1.0],
+            extra_transforms: [[0.0; 4]; 15],
+            extra_count: 0,
         });
     }
     fn begin_planned_dab(&mut self, planned: advanced::PlannedDab) {
@@ -618,6 +624,8 @@ impl StrokeCommand {
             radius,
             influence,
             transform: planned.transform,
+            extra_transforms: planned.extra_transforms,
+            extra_count: planned.extra_count,
             x0,
             x1,
             y1,
@@ -690,6 +698,7 @@ impl StrokeCommand {
                 let required = required
                     + self.settings.asset_bytes()
                     + (self.planned.capacity() * size_of::<advanced::PlannedDab>()) as u64;
+                let required = required + size_of::<Dab>() as u64;
                 let required = required + self.patch.as_ref().map_or(0, |p| p.bytes());
                 if required > self.available {
                     return Err("This stroke exceeds the 768 MiB document/history/temporary budget; stroke cancelled".into());
@@ -823,6 +832,7 @@ fn stamp_row(
         && clip_default == 255
         && scale == 1.0
         && dab.transform == [1.0, 0.0, 0.0, 1.0]
+        && dab.extra_count == 0
         && tip.texture.is_none()
         && !settings.eraser
         && base.is_some_and(|tile| tile.known_opaque)

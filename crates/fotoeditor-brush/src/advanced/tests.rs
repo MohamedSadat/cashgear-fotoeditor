@@ -531,3 +531,68 @@ fn image_and_texture_cover_every_stroke_pipeline_with_selection_and_exact_undo()
         assert_eq!(pixels(&doc), after);
     }
 }
+
+#[test]
+fn coincident_asymmetric_orientations_union_coverage_without_multiplying_flow() {
+    let doc = Document::blank(256, 256, 72.0).unwrap();
+    for texture in [None, Some(image())] {
+        for mode in [
+            SymmetryMode::Vertical,
+            SymmetryMode::Horizontal,
+            SymmetryMode::Both,
+            SymmetryMode::Radial,
+        ] {
+            let p = match mode {
+                SymmetryMode::Vertical => point(128.0, 96.0),
+                SymmetryMode::Horizontal => point(96.0, 128.0),
+                _ => point(128.0, 128.0),
+            };
+            let s = BrushSettings {
+                size: 30.0,
+                flow: 0.3,
+                opacity: 0.5,
+                tip_image: Some(image()),
+                texture: texture.clone(),
+                texture_scale: 7.0,
+                ..settings()
+            };
+            let reference = run(&doc, s.clone(), &[p], 262144);
+            let actual = run(
+                &doc,
+                BrushSettings {
+                    symmetry: Symmetry {
+                        mode,
+                        center: [128.0, 128.0],
+                        sectors: 4,
+                    },
+                    ..s
+                },
+                &[p],
+                17,
+            );
+            for y in 0..256 {
+                for x in 0..256 {
+                    let a = |x, y| reference.preview.raster().sample(x, y).0[3];
+                    let expected = match mode {
+                        SymmetryMode::Vertical => a(x, y).max(a(255 - x, y)),
+                        SymmetryMode::Horizontal => a(x, y).max(a(x, 255 - y)),
+                        SymmetryMode::Both => a(x, y)
+                            .max(a(255 - x, y))
+                            .max(a(x, 255 - y))
+                            .max(a(255 - x, 255 - y)),
+                        SymmetryMode::Radial => a(x, y)
+                            .max(a(255 - y, x))
+                            .max(a(255 - x, 255 - y))
+                            .max(a(y, 255 - x)),
+                        _ => unreachable!(),
+                    };
+                    assert_eq!(
+                        actual.preview.raster().sample(x, y).0[3],
+                        expected,
+                        "{mode:?} at {x},{y}"
+                    );
+                }
+            }
+        }
+    }
+}

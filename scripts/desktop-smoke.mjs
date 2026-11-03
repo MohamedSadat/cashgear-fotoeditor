@@ -1436,11 +1436,42 @@ try {
       expect(Buffer.from(await exportedPng()).equals(before)).toBe(true);
       await page.evaluate((n) => window.__fotoeditor.historyJump(n + 1), prepared.history.undo);
       expect(Buffer.from(await exportedPng()).equals(after)).toBe(true);
+      await page.evaluate((n) => window.__fotoeditor.historyJump(n), prepared.history.undo);
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+      await page.waitForFunction((n) => {
+        const s = JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot);
+        return s.history.undo === n + 1 && !s.painting && !s.operation;
+      }, prepared.history.undo);
+      const centered = PNG.sync.read(Buffer.from(await exportedPng()));
+      const originalAtCenter = (x, y) => pixel(x - 50, y - 50)[3];
+      for (let y = 110; y < 146; y++)
+        for (let x = 110; x < 146; x++) {
+          const expected =
+            mode === 'both'
+              ? Math.max(
+                  originalAtCenter(x, y),
+                  originalAtCenter(255 - x, y),
+                  originalAtCenter(x, 255 - y),
+                  originalAtCenter(255 - x, 255 - y),
+                )
+              : Math.max(
+                  originalAtCenter(x, y),
+                  originalAtCenter(255 - y, x),
+                  originalAtCenter(255 - x, 255 - y),
+                  originalAtCenter(y, 255 - x),
+                );
+          expect(centered.data[(y * 256 + x) * 4 + 3], mode + ' coincident coverage').toBe(
+            expected,
+          );
+        }
+      await page.evaluate((n) => window.__fotoeditor.historyJump(n), prepared.history.undo);
+      expect(Buffer.from(await exportedPng()).equals(before)).toBe(true);
       result.advancedPainting.push({
         mode,
         imageFile: true,
         presetRoundtrip: true,
         orientedCopies: true,
+        coincidentUnion: true,
         oneCommand: true,
         exactUndo: true,
         exactRedo: true,
