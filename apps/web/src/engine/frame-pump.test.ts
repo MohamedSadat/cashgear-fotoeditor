@@ -1,12 +1,37 @@
 import { describe, expect, it, vi } from 'vitest';
 import { FramePump } from './frame-pump';
 import type { DocumentSnapshot, FrameResult } from './types';
+import { defaults } from '../brush-state';
 const frame: FrameResult = { presented: true, frames: 1, width: 100, height: 100 };
 const settle = async () => {
   await new Promise((resolve) => setTimeout(resolve, 0));
 };
 
 describe('FramePump ownership and backpressure', () => {
+  it('cancels queued image payloads by byte capacity before the event-count limit', async () => {
+    const api = { resize: vi.fn(), frame: vi.fn().mockResolvedValue(frame) };
+    const pump = new FramePump(api, vi.fn(), vi.fn());
+    const asset = { width: 512, height: 512, coverage: 'ff'.repeat(512 * 512) };
+    for (let i = 0; i < 8; i++)
+      pump.input({
+        kind: 'stroke-begin',
+        x: 0,
+        y: 0,
+        amount: 0,
+        brush: {
+          ...defaults,
+          tipImage: asset,
+          texture: asset,
+          color: [0, 0, 0, 255],
+          eraser: false,
+        },
+      });
+    pump.resize({ width: 100, height: 100 });
+    pump.tick(0);
+    await settle();
+    expect(api.frame.mock.calls[0][1]).toEqual([{ kind: 'stroke-cancel', x: 0, y: 0, amount: -1 }]);
+    pump.stop();
+  });
   it('reports queued main-thread edits as busy across an older idle worker reply', async () => {
     let complete!: (value: FrameResult) => void;
     const onFrame = vi.fn();

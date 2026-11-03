@@ -1,5 +1,6 @@
 import type { EngineApi, FrameResult, PhysicalSize } from './types';
 import type { Interaction } from './types';
+import { brushInputBytes, queuedBrushLimit } from './brush-assets';
 
 // One transaction in flight, irrespective of how quickly the UI produces ticks.
 // Resizes arriving during a transaction replace older pending sizes.
@@ -9,6 +10,7 @@ export class FramePump {
   private size: PhysicalSize = { width: 0, height: 0 };
   private pendingSize: PhysicalSize | undefined;
   private inputs: Interaction[] = [];
+  private inputBytes = 0;
   private epoch = 0;
   private epochTime = 0;
   private presentedEpoch = -1;
@@ -30,11 +32,14 @@ export class FramePump {
   input(input: Interaction) {
     if (this.stopped) return;
     if (input.kind === 'cursor') this.inputs = this.inputs.filter((i) => i.kind !== 'cursor');
-    if (this.inputs.length >= 4096) {
+    const bytes = brushInputBytes(input);
+    if (this.inputs.length >= 4096 || this.inputBytes + bytes > queuedBrushLimit) {
       this.inputs = [{ kind: 'stroke-cancel', x: 0, y: 0, amount: -1 }];
+      this.inputBytes = 0;
       return;
     }
     this.inputs.push(input);
+    this.inputBytes += bytes;
     if (input.kind !== 'cursor') this.scheduleInput();
   }
   tick(timestamp: number) {
@@ -88,6 +93,7 @@ export class FramePump {
       if (this.stopped || this.size.width === 0 || this.size.height === 0) return;
       const inputs = this.inputs;
       this.inputs = [];
+      this.inputBytes = 0;
       const frame = await (preview
         ? this.api.frame(timestamp, inputs, true)
         : this.api.frame(timestamp, inputs));

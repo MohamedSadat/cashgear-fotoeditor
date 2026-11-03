@@ -15,6 +15,7 @@ import type { RecoveryFault } from './recovery';
 import { yieldProjectTask } from './yield-task';
 import { CHUNK, PagingStore } from './paging';
 import type { SyncHandle } from './paging';
+import { brushInputBytes, queuedBrushLimit } from './brush-assets';
 const pages = new PagingStore();
 
 let engine: Engine | undefined;
@@ -44,6 +45,7 @@ let store: RecoveryStore | undefined;
 let savedRevision = -1;
 let recoveryFault: RecoveryFault | undefined;
 let externalBytes = 0;
+let inputBytes = 0;
 let thumbnailRunning = false;
 let selectionTiming: DocumentSnapshot['selection']['timing'];
 let selectionFault: 'pause-before-commit' | 'budget' | undefined;
@@ -109,7 +111,7 @@ function beginJob() {
   return ++job;
 }
 function external(bytes: number) {
-  requireEngine().external_bytes(bytes);
+  requireEngine().external_bytes(bytes + inputBytes);
   externalBytes = bytes;
 }
 const yieldTask = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -2229,6 +2231,7 @@ const api: EngineApi = {
     presentation?.reject(new Error('Engine disposed'));
     presentation = undefined;
     disposed = true;
+    inputBytes = 0;
     store?.dispose();
     pages.dispose();
     engine?.dispose();
@@ -2253,6 +2256,8 @@ const api: EngineApi = {
     }
     if (inputsWaiting.length + inputs.length > 4096) {
       inputsWaiting = [];
+      inputBytes = 0;
+      external(externalBytes);
       e.stroke_cancel();
       dirty = true;
       editError = 'Stroke input queue exceeded; stroke cancelled';
@@ -2260,72 +2265,99 @@ const api: EngineApi = {
     }
     const pending = [...inputsWaiting, ...inputs];
     inputsWaiting = [];
-    for (let index = 0; index < pending.length; index++) {
-      const input = pending[index];
-      if (
-        (e.painting() && ['stroke-begin', 'clone-source', 'undo', 'redo'].includes(input.kind)) ||
-        (busy && ['undo', 'redo'].includes(input.kind))
-      ) {
-        inputsWaiting = pending.slice(index);
-        break;
-      }
-      try {
+    const payloadBytes = pending.reduce((sum, input) => sum + brushInputBytes(input), 0);
+    if (payloadBytes > queuedBrushLimit) {
+      e.stroke_cancel();
+      inputBytes = 0;
+      external(externalBytes);
+      dirty = true;
+      editError = 'Stroke image queue exceeded its 16 MiB limit; stroke cancelled';
+      return;
+    }
+    try {
+      e.external_bytes(externalBytes + payloadBytes);
+      inputBytes = payloadBytes;
+    } catch (error) {
+      e.stroke_cancel();
+      inputBytes = 0;
+      external(externalBytes);
+      dirty = true;
+      editError = String(error);
+      return;
+    }
+    try {
+      for (let index = 0; index < pending.length; index++) {
+        const input = pending[index];
         if (
-          !['cursor', 'sample-color', 'stroke-begin', 'stroke-sample', 'stroke-end'].includes(
-            input.kind,
+          (e.painting() && ['stroke-begin', 'clone-source', 'undo', 'redo'].includes(input.kind)) ||
+          (busy && ['undo', 'redo'].includes(input.kind))
+        ) {
+          inputsWaiting = pending.slice(index);
+          break;
+        }
+        try {
+          if (
+            !['cursor', 'sample-color', 'stroke-begin', 'stroke-sample', 'stroke-end'].includes(
+              input.kind,
+            )
           )
-        )
-          dirty = true;
-        if (input.kind === 'cursor') cursorScreen = [input.x, input.y];
-        else if (input.kind === 'clone-source') {
-          if (busy || e.painting()) throw new Error('Finish the current stroke or operation first');
-          e.clone_source(input.x, input.y);
-          editError = undefined;
-        } else if (input.kind === 'stroke-cancel') {
-          e.stroke_cancel();
-          if (input.amount < 0) editError = 'Stroke input queue exceeded; stroke cancelled';
-        } else if (input.kind.startsWith('stroke-')) {
-          if (input.kind !== 'stroke-begin' && !e.painting()) continue;
-          if (busy) throw new Error('Finish the current operation first');
-          if (input.kind === 'stroke-begin') {
+            dirty = true;
+          if (input.kind === 'cursor') cursorScreen = [input.x, input.y];
+          else if (input.kind === 'clone-source') {
+            if (busy || e.painting())
+              throw new Error('Finish the current stroke or operation first');
+            e.clone_source(input.x, input.y);
             editError = undefined;
-            if (input.brush?.clone?.allLayers || input.brush?.healing?.allLayers) {
-              busy = true;
-              try {
-                await recompose();
-              } finally {
-                busy = false;
+          } else if (input.kind === 'stroke-cancel') {
+            e.stroke_cancel();
+            if (input.amount < 0) editError = 'Stroke input queue exceeded; stroke cancelled';
+          } else if (input.kind.startsWith('stroke-')) {
+            if (input.kind !== 'stroke-begin' && !e.painting()) continue;
+            if (busy) throw new Error('Finish the current operation first');
+            if (input.kind === 'stroke-begin') {
+              editError = undefined;
+              if (input.brush?.clone?.allLayers || input.brush?.healing?.allLayers) {
+                busy = true;
+                try {
+                  await recompose();
+                } finally {
+                  busy = false;
+                }
               }
-            }
-            if (e.quick_mask_enabled() || (!input.brush?.retouch && e.active_cold())) {
-              busy = true;
-              try {
-                await pages.hydrate(e, e.quick_mask_enabled() ? 'selection-mask' : 'active');
-              } finally {
-                busy = false;
+              if (e.quick_mask_enabled() || (!input.brush?.retouch && e.active_cold())) {
+                busy = true;
+                try {
+                  await pages.hydrate(e, e.quick_mask_enabled() ? 'selection-mask' : 'active');
+                } finally {
+                  busy = false;
+                }
               }
+              e.stroke_begin(JSON.stringify(input.brush), input.x, input.y);
             }
-            e.stroke_begin(JSON.stringify(input.brush), input.x, input.y);
-          }
-          if (input.sample) e.stroke_sample(new Float64Array(input.sample));
-          if (input.kind === 'stroke-end') e.stroke_end();
-        } else if (input.kind === 'sample-color') {
-          const rgba = e.sample_color(input.x, input.y);
-          if (rgba.length === 4)
-            sampledColor = {
-              rgba: [rgba[0], rgba[1], rgba[2], rgba[3]],
-              serial: (sampledColor?.serial ?? 0) + 1,
-            };
-        } else if (input.kind === 'undo' || input.kind === 'redo') {
-          if (busy || e.painting()) throw new Error('Finish the current stroke or operation first');
-          e[input.kind]();
-          editError = undefined;
-        } else if (!e.painting()) e.navigate(input.kind, input.x, input.y, input.amount);
-      } catch (error) {
-        editError = String(error);
-        e.stroke_cancel();
-        dirty = true;
+            if (input.sample) e.stroke_sample(new Float64Array(input.sample));
+            if (input.kind === 'stroke-end') e.stroke_end();
+          } else if (input.kind === 'sample-color') {
+            const rgba = e.sample_color(input.x, input.y);
+            if (rgba.length === 4)
+              sampledColor = {
+                rgba: [rgba[0], rgba[1], rgba[2], rgba[3]],
+                serial: (sampledColor?.serial ?? 0) + 1,
+              };
+          } else if (input.kind === 'undo' || input.kind === 'redo') {
+            if (busy || e.painting())
+              throw new Error('Finish the current stroke or operation first');
+            e[input.kind]();
+            editError = undefined;
+          } else if (!e.painting()) e.navigate(input.kind, input.x, input.y, input.amount);
+        } catch (error) {
+          editError = String(error);
+          e.stroke_cancel();
+          dirty = true;
+        }
       }
+    } finally {
+      inputBytes = inputsWaiting.reduce((sum, input) => sum + brushInputBytes(input), 0);
+      external(externalBytes);
     }
   },
   newDocument(width, height, dpi) {
