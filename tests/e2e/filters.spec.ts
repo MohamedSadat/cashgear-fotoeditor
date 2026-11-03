@@ -263,7 +263,7 @@ for (const backend of ['WebGPU', 'WebGL2']) {
   test(
     backend +
       ' GPU filter preview is temporary, matches committed actual pixels and coalesces UI controls',
-    async ({ page }) => {
+    async ({ page }, info) => {
       await page.goto(query);
       await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');
       await expect(page.getByTestId('gpu-backend')).toHaveText(backend);
@@ -295,7 +295,17 @@ for (const backend of ['WebGPU', 'WebGL2']) {
           new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))),
       );
       const final = await page.getByTestId('gpu-canvas').screenshot();
-      expect(PNG.sync.read(preview).data.equals(PNG.sync.read(final).data)).toBe(true);
+      await info.attach('filter-preview', { body: preview, contentType: 'image/png' });
+      await info.attach('filter-committed', { body: final, contentType: 'image/png' });
+      const finalImage = PNG.sync.read(final);
+      const firstRow = Math.floor((finalImage.height - 3) / 2);
+      const row = (y: number) =>
+        finalImage.data.subarray(y * finalImage.width * 4, (y + 1) * finalImage.width * 4);
+      // All three fixture rows are identical. Nearest sampling at a half-pixel
+      // document origin must not drift across the viewport's two triangles.
+      expect(row(firstRow + 1).equals(row(firstRow))).toBe(true);
+      expect(row(firstRow + 2).equals(row(firstRow))).toBe(true);
+      expect(PNG.sync.read(preview).data.equals(finalImage.data)).toBe(true);
       const committed = await exported(page);
       await page.getByLabel('Filter', { exact: true }).selectOption('gaussian');
       await page.getByLabel('Live filter preview', { exact: true }).check();

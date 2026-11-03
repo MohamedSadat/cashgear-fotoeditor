@@ -35,16 +35,32 @@ fn inside(p:vec2<f32>)->bool {return all(p>=view.canvas.xy) && all(p<view.canvas
     if inside(to_doc(p.xy)) {discard;}
     return vec4<f32>(48.0/255.0,52.0/255.0,59.0/255.0,1.0);
 }
-struct VertexOut {@builtin(position) position:vec4<f32>,@location(0) uv:vec2<f32>,@location(1) doc:vec2<f32>};
+struct VertexOut {
+    @builtin(position) position:vec4<f32>,
+    @location(0) uv:vec2<f32>,@location(1) doc:vec2<f32>,
+    @location(2) @interpolate(flat) origin:vec2<f32>,
+    @location(3) @interpolate(flat) atlas_rect:vec4<f32>,
+};
 @vertex fn tile_vertex(@builtin(vertex_index) i:u32,@location(0) rect:vec4<f32>,@location(1) uvrect:vec4<f32>)->VertexOut {
     let corners=array<vec2<f32>,6>(vec2<f32>(0.0,0.0),vec2<f32>(1.0,0.0),vec2<f32>(0.0,1.0),vec2<f32>(0.0,1.0),vec2<f32>(1.0,0.0),vec2<f32>(1.0,1.0));
     let corner=corners[i];let d=rect.xy+corner*rect.zw;
     let q=(d-view.doc/2.0)*vec2<f32>(view.flip,1.0);let c=cos(view.rotation);let s=sin(view.rotation);
     let screen=vec2<f32>(q.x*c-q.y*s,q.x*s+q.y*c)*view.zoom+view.screen/2.0+view.pan;
     var out:VertexOut;out.position=vec4<f32>(screen/view.screen*vec2<f32>(2.0,-2.0)+vec2<f32>(-1.0,1.0),0.0,1.0);
-    out.uv=uvrect.xy+corner*uvrect.zw;out.doc=d;return out;
+    out.uv=uvrect.xy+corner*uvrect.zw;out.doc=d;
+    out.origin=rect.xy;out.atlas_rect=uvrect;return out;
 }
 @fragment fn tile_fragment(in:VertexOut)->@location(0) vec4<f32> {
+    if view.zoom>=1.0 {
+        // An interpolated UV can straddle an exact texel boundary differently
+        // in the two triangles (notably D3D11 WARP). Resolve nearest samples
+        // from the fragment's screen position using the same document mapping
+        // as the background. Atlas coordinates are exact power-of-two ratios.
+        let d=to_doc(in.position.xy);
+        if !inside(d) {discard;}
+        let uv=in.atlas_rect.xy+(d-in.origin)/256.0*in.atlas_rect.zw;
+        return textureLoad(atlas,vec2<i32>(floor(uv*vec2<f32>(textureDimensions(atlas)))),0);
+    }
     if !inside(in.doc) {discard;}
     return textureSample(atlas,atlas_sampler,in.uv);
 }

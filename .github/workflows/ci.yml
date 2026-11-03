@@ -45,7 +45,10 @@ jobs:
       - run: pnpm test
       - run: pnpm licenses:check
       - run: pnpm exec playwright install chromium
-      - run: pnpm test:e2e
+      - name: Run pnpm test:e2e
+        # Acceptance requires one clean full matrix. Stop a failed run promptly;
+        # the retained artifact records the failure, never a retried pass.
+        run: pnpm test:e2e --max-failures=1 --retries=0
       - run: pnpm desktop:build
       - run: pnpm desktop:smoke
       - uses: actions/upload-artifact@v4
