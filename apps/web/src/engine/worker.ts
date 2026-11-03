@@ -2275,8 +2275,12 @@ const api: EngineApi = {
       return;
     }
     try {
-      e.external_bytes(externalBytes + payloadBytes);
-      inputBytes = payloadBytes;
+      // Retained queued bytes are already admitted. Empty pointer frames must
+      // not repeat a full document/history residency walk for a zero change.
+      if (inputBytes !== payloadBytes) {
+        e.external_bytes(externalBytes + payloadBytes);
+        inputBytes = payloadBytes;
+      }
     } catch (error) {
       e.stroke_cancel();
       inputBytes = 0;
@@ -2356,8 +2360,11 @@ const api: EngineApi = {
         }
       }
     } finally {
-      inputBytes = inputsWaiting.reduce((sum, input) => sum + brushInputBytes(input), 0);
-      external(externalBytes);
+      const retainedBytes = inputsWaiting.reduce((sum, input) => sum + brushInputBytes(input), 0);
+      if (retainedBytes !== inputBytes) {
+        e.external_bytes(externalBytes + retainedBytes);
+        inputBytes = retainedBytes;
+      }
     }
   },
   newDocument(width, height, dpi) {
