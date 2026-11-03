@@ -1,5 +1,18 @@
 # Progress
 
+## P9 - M5 advanced painting started
+
+Started 2026-11-03 at the user's explicit request, directly on clean main matching
+fetched origin/main at accepted M4 `7d4f283`, without agents/worktrees. Read the
+required phase records and M4 report, verified the original PDF and immutable
+M3/M4 certificate hashes, and read the complete printed page 17 as text and a
+newly rendered page. Existing decisions resolve the phase questions.
+P9-DESIGN.md records M5 behavior and acceptance before implementation.
+
+Image tips, scatter/jitter/texture, CashGear presets, mirror/radial painting and
+phase-wide acceptance remain in progress. No P9 completion claim or tag yet.
+Inherited limits/deferrals and immutable accepted evidence remain unchanged.
+
 ## P9 - M4 retouch brushes and gradients locally verified
 
 Started 2026-11-02 on clean main matching fetched origin/main at certified M3

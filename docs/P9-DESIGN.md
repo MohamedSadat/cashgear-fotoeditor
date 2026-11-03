@@ -78,6 +78,82 @@ limits and P8's explicitly accepted save-speed miss (deferred to P12) persist.
 P8's thirteen validated raster PSDs do not close the feather gate. P10 is outside
 this phase. No new license or dependency is assumed by this design.
 
+## M5 design and acceptance (2026-11-03, before implementation)
+
+The user explicitly authorizes M5 and final P9 acceptance, directly on main,
+without agents/worktrees. Clean main and fetched origin/main both start at
+accepted M4 `7d4f28313f83ad66faab5b67df1e515c4e7d7050`. Read the required phase
+records and M4 report. Re-read the complete original printed page 17 as extracted
+text and a newly rendered page; its recorded SHA-256 matches. M4 certification
+SHA-256 remains `69b3efaee85ebb25ea6ce90a48c83988bec3f41e15b60113700a144b6227e66f`;
+M3 certification and accepted artifacts/classifications remain immutable too.
+Existing product decisions answer all questions. The following engineering
+defaults make the remaining roadmap behavior testable before coding.
+
+- Load image tips and textures from 8-bit PNG, JPEG or WebP, up to 512 pixels per
+  side and 4 MiB encoded. Check dimensions and decoder allocations before decode.
+  Rust converts to coverage: inverse sRGB luminance times alpha; black paints,
+  white/transparent leaves unchanged, and hidden RGB has no effect. Preserve
+  aspect ratio, bilinear tip sampling and existing roundness/angle/dynamics.
+  Image size denotes the circumscribed diameter so rotated corners are retained.
+  Procedural round tips remain the default. Pencil uses its existing exact pixel.
+- Add bounded scatter (0..2 brush diameters), size/angle/opacity jitter (0..1),
+  a user-editable u32 seed and repeatable per-dab Rust PRNG. Randomness advances
+  once per logical dab, independent of cooperative slicing/hydration. Size jitter
+  reduces size; opacity jitter reduces influence; angle jitter spans +/-180
+  degrees at maximum. Scatter offsets each dab in a disk. Texture repeats in
+  dab-local coordinates, with 1..512 document-pixel period and 0..1 depth;
+  multiply coverage once before flow/selection. Settings apply to brush, eraser
+  and the existing retouch tools; retouch sampling contracts stay unchanged.
+- Mirror painting offers vertical, horizontal and both axes; radial painting
+  offers 2..16 sectors. The editable center is in retained document coordinates,
+  defaulting to the visible canvas center. Show axes/spokes in the viewport,
+  correctly following pan/zoom/rotation/flip/crop. Paint/eraser, including mask
+  and Quick Mask painting, replicate each jittered dab and its oriented image
+  shape in Rust. Coincident copies are deduplicated. Retouch tools retain their
+  explicitly displayed single-path sampling behavior; symmetry is a painting
+  option, not a change to clone/healing source mapping. One stroke is one command.
+- Named CashGear presets capture tip/texture, brush shape/dynamics, scatter/jitter
+  and seed; foreground color, active tool and document-relative symmetry center
+  remain separate controls. Save/update/delete/reuse across documents/restarts.
+  Self-contained version-1 `.cgbrush` JSON imports/exports a validated library,
+  bounded to 32 presets / 4 MiB UTF-8, 64-character unique names and canonical
+  bounded coverage assets. No ABR. Import validates the whole candidate before
+  replacing presets; malformed/future/oversized files and storage failures leave
+  existing presets/settings/document/history/redo intact with a visible error.
+- All writes use the existing Rust command path, preserving selection coverage
+  exactly once, alpha locks/hidden RGB, sparse absence and exact undo/redo. Preserve
+  masks, crop-retained samples, guides/DPI, paging, project/recovery and legacy
+  reading. Escape/focus loss, input overflow, hydration failure and budget refusal
+  discard the whole candidate. Count decoded settings/assets, prepared tip/texture,
+  bounded symmetry queue, coverage/output/history/source/paging/display/GPU memory.
+  Keep 768 MiB logical CPU / 128 MiB GPU, 16,384 sides, 128 MiB document images,
+  4 GiB projects and 2,000,000-byte gzip WASM. No new dependency is planned.
+- Rust tests require independent coverage/transform oracles, deterministic results
+  across step sizes, transformed asymmetric tips, texture/scatter/jitter bounds,
+  coincident-copy handling, tile/crop/selection/alpha/locks, cold pages, bounded
+  memory/admission, cancellation/no-op redo and exact undo/redo. UI unit/browser
+  tests cover full preset roundtrip/refusal, actual import/settings/symmetry
+  controls, masks/Quick Mask and persistence. Inspect ordinary-view and enlarged
+  image-tip/texture/symmetry captures on both hardware APIs.
+- Measure meaningful first/warm 6000x4000 M5 strokes on verified installed
+  Chrome/Edge WebGPU/WebGL2, with dataset, settings/seed/path/input delivery,
+  completion and acknowledgement percentiles, logical CPU/GPU bounds and runtime
+  fingerprints. Repeat phase clone measurements and retained portrait checks.
+  No separate M5 fps/ms target exists; report limits. M1's accepted all-visible
+  60 fps miss remains a P12 deferral, never a passed original target.
+- Complete formatting, native/WASM clippy, Cargo tests, TS/ESLint/Prettier/Vitest,
+  production build/size/licenses, a fresh complete hardware browser matrix and
+  rebuilt Windows/WebView2 on both APIs. Require exact-final-head CI/deployment,
+  actual downloaded software/browser/desktop artifacts, hosted byte equality and
+  relevant hosted hardware tests: zero failures/skips/retries/flaky/global errors.
+  Keep failed/superseded attempts separate; no union of passing subsets. Preserve
+  accepted M3/M4 evidence by using new prefixes for every regression artifact.
+- Only after all remaining P9 gates pass, write immutable final certification and
+  a P9 shipped/deferred/performance report, create/push `p9-retouch`, propose P10
+  and stop. P5's open feather comparison, physical Ink deferral, P6/P7/P8 limits,
+  M3 quality limits and existing user-approved P12 deferrals retain their status.
+
 ## M4 design and acceptance (2026-11-02, before implementation)
 
 Starts at certified M3 `2ab9dbdd6820b23196cb1c5b2f1f4b0baab13d11`, clean main

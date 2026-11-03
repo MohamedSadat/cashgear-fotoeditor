@@ -365,8 +365,10 @@ M3 does not complete P9. M4 was explicitly authorized on 2026-11-02; its behavio
 and acceptance were recorded in P9-DESIGN.md before implementation. M4 local
 verification, photographic hardware measurements and bounds are recorded in
 P9-M4-REPORT.md. Its immutable certification records the actual final-head local,
-remote and hosted gates. Stop after M4 acceptance/report, before M5; do not create
-`p9-retouch`.
+remote and hosted gates. M5 is explicitly authorized on 2026-11-03 after accepted
+M4 `7d4f283`; its behavior and acceptance are recorded before implementation in
+P9-DESIGN.md. Complete M5 and remaining phase-wide gates before `p9-retouch`,
+report P9 and stop before P10.
 
 Source: complete original roadmap P9 section on printed page 17, extracted and
 visually inspected on 2026-10-27. Source SHA-256 is recorded in P9-DESIGN.md.

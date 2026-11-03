@@ -1,5 +1,19 @@
 # Decisions
 
+## 2026-11-03 - P9 M5 authorization and engineering contract
+
+- The user explicitly authorizes complete M5 and remaining P9 acceptance after
+  accepted M4 `7d4f283`, directly on main without agents or worktrees. Stop before
+  P10; publish `p9-retouch` only after every remaining gate and remote CI passes.
+- Existing choices persist: CashGear presets only, mirror/radial painting,
+  editable multi-stop gradients and the original milestone order. No unresolved
+  product question remains. P9-DESIGN.md records M5 behavior/acceptance before code.
+- Bounded grayscale image coverage, deterministic dab jitter, dab-local texture,
+  painting symmetry and self-contained versioned preset files are engineering
+  choices within that scope. No dependency, budget increase or new speed waiver.
+- Preserve immutable accepted M3/M4 artifacts and all inherited limits/deferrals;
+  repeat regressions into distinct M5 evidence paths.
+
 ## 2026-11-02 - P9 M4 scope and engineering choices
 
 - The user explicitly authorized all of M4 on main without agents/worktrees,
