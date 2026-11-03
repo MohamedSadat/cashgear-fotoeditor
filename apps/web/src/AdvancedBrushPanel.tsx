@@ -14,14 +14,16 @@ import {
 export function AdvancedBrushPanel({ api }: { api?: EngineApi }) {
   const { settings, symmetry, tool } = useBrush();
   const { presets, notice } = useBrushPresets();
-  const doc = useWorkspace((s) => s.snapshot?.document);
+  // Worker frame snapshots replace the document metadata object. Subscribe to
+  // its stable scalar values so hidden controls do not rerender at frame rate.
+  const originX = useWorkspace((s) => s.snapshot?.document?.originX ?? 0);
+  const originY = useWorkspace((s) => s.snapshot?.document?.originY ?? 0);
+  const width = useWorkspace((s) => s.snapshot?.document?.width ?? 0);
+  const height = useWorkspace((s) => s.snapshot?.document?.height ?? 0);
   const painting = useWorkspace((s) => s.snapshot?.painting);
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
-  const center: [number, number] = symmetry.center ?? [
-    (doc?.originX ?? 0) + (doc?.width ?? 0) / 2,
-    (doc?.originY ?? 0) + (doc?.height ?? 0) / 2,
-  ];
+  const center: [number, number] = symmetry.center ?? [originX + width / 2, originY + height / 2];
   const updateSymmetry = (change: Partial<PaintingSymmetry>) =>
     useBrush.setState({ symmetry: { ...symmetry, ...change } });
   async function image(file: File | undefined, key: 'tipImage' | 'texture') {
