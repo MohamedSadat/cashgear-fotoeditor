@@ -3,6 +3,8 @@ use fotoeditor_core::{Document, Rgba8, TileCommand, TileCoord, TILE_PIXELS, TILE
 use kurbo::{Line, ParamCurve, Point};
 use serde::Deserialize;
 use std::collections::{HashMap, VecDeque};
+mod advanced;
+pub use advanced::{CoverageImage, Symmetry, SymmetryMode};
 mod clone;
 mod healing;
 mod retouch;
@@ -22,6 +24,16 @@ pub struct BrushSettings {
     pub spacing: f64,
     pub roundness: f64,
     pub angle: f64,
+    pub tip_image: Option<CoverageImage>,
+    pub texture: Option<CoverageImage>,
+    pub texture_depth: f64,
+    pub texture_scale: f64,
+    pub scatter: f64,
+    pub size_jitter: f64,
+    pub angle_jitter: f64,
+    pub opacity_jitter: f64,
+    pub seed: u32,
+    pub symmetry: Symmetry,
     pub color: [u8; 4],
     pub eraser: bool,
     pub pencil: bool,
@@ -51,6 +63,16 @@ impl Default for BrushSettings {
             spacing: 0.1,
             roundness: 1.0,
             angle: 0.0,
+            tip_image: None,
+            texture: None,
+            texture_depth: 1.0,
+            texture_scale: 64.0,
+            scatter: 0.0,
+            size_jitter: 0.0,
+            angle_jitter: 0.0,
+            opacity_jitter: 0.0,
+            seed: 1,
+            symmetry: Symmetry::default(),
             color: [0, 0, 0, 255],
             eraser: false,
             pencil: false,
@@ -81,6 +103,29 @@ pub enum Stabilizer {
 }
 impl BrushSettings {
     pub fn validate(&self) -> Result<(), String> {
+        self.symmetry.validate()?;
+        for image in [&self.tip_image, &self.texture].into_iter().flatten() {
+            image.validate()?;
+        }
+        if !self.scatter.is_finite()
+            || !(0.0..=2.0).contains(&self.scatter)
+            || !self.texture_scale.is_finite()
+            || !(1.0..=512.0).contains(&self.texture_scale)
+            || [
+                self.size_jitter,
+                self.angle_jitter,
+                self.opacity_jitter,
+                self.texture_depth,
+            ]
+            .iter()
+            .any(|v| !v.is_finite() || !(0.0..=1.0).contains(v))
+            || (self.symmetry.mode != SymmetryMode::Off
+                && (self.clone.is_some() || self.healing.is_some() || self.retouch.is_some()))
+        {
+            return Err(
+                "Invalid advanced brush settings; symmetry supports painting and erasing".into(),
+            );
+        }
         if [
             self.clone.is_some(),
             self.healing.is_some(),
@@ -193,6 +238,7 @@ struct Dab {
     p: Sample,
     radius: f64,
     influence: f64,
+    transform: [f64; 4],
     x0: u32,
     x1: u32,
     y1: u32,
@@ -205,6 +251,9 @@ struct Tip {
     pixels: Vec<u16>,
     side: usize,
     radius: f64,
+    texture: Option<CoverageImage>,
+    texture_depth: f64,
+    texture_scale: f64,
 }
 impl Tip {
     fn new(settings: &BrushSettings) -> Self {
@@ -230,6 +279,15 @@ impl Tip {
                         settings.roundness
                     };
                 let d2 = rx * rx + ry * ry;
+                if let Some(image) = settings.tip_image.as_ref().filter(|_| !settings.pencil) {
+                    let factor = f64::from(image.width).hypot(f64::from(image.height)) / 2.0;
+                    let amount = image.sample(
+                        rx * factor + f64::from(image.width) / 2.0 - 0.5,
+                        ry * factor + f64::from(image.height) / 2.0 - 0.5,
+                    );
+                    pixels[y * side + x] = (amount * settings.flow * 65535.0 + 0.5) as u16;
+                    continue;
+                }
                 if d2 > 1.0 {
                     continue;
                 }
@@ -245,10 +303,17 @@ impl Tip {
             pixels,
             side,
             radius,
+            texture: settings.texture.clone().filter(|_| !settings.pencil),
+            texture_depth: settings.texture_depth,
+            texture_scale: settings.texture_scale,
         }
     }
     fn bytes(&self) -> u64 {
         (self.pixels.capacity() * 2) as u64
+            + self
+                .texture
+                .as_ref()
+                .map_or(0, |v| v.coverage.capacity() as u64)
     }
     #[inline(always)]
     fn sample(&self, x: f64, y: f64) -> u32 {
@@ -286,6 +351,8 @@ pub struct StrokeCommand {
     previous: Option<Sample>,
     segment: Option<Segment>,
     dab: Option<Dab>,
+    planned: VecDeque<advanced::PlannedDab>,
+    random: u32,
     carry: f64,
     ending: bool,
     available: u64,
@@ -328,7 +395,16 @@ impl StrokeCommand {
         } else {
             settings.size.ceil().min(512.0) as u64 + 2
         };
-        if available < (QUEUE_LIMIT * size_of::<Sample>()) as u64 + tip_side * tip_side * 2 {
+        let asset_bytes = settings.asset_bytes();
+        if available
+            < (QUEUE_LIMIT * size_of::<Sample>() + 16 * size_of::<advanced::PlannedDab>()) as u64
+                + tip_side * tip_side * 2
+                + asset_bytes
+                + settings
+                    .texture
+                    .as_ref()
+                    .map_or(0, |v| v.coverage.capacity() as u64)
+        {
             return Err("Not enough memory for a stroke".into());
         }
         let mut preview = base.clone();
@@ -344,12 +420,14 @@ impl StrokeCommand {
             completed_time: 0.0,
             base: base.clone(),
             tip: Tip::new(&settings),
+            random: settings.seed,
             settings,
             coverage: HashMap::new(),
             queue: VecDeque::with_capacity(QUEUE_LIMIT),
             previous: None,
             segment: None,
             dab: None,
+            planned: VecDeque::with_capacity(16),
             carry: 0.0,
             ending: false,
             available,
@@ -360,6 +438,8 @@ impl StrokeCommand {
         self.coverage.len() as u64 * TILE_BYTES * 2
             + (self.queue.capacity() * size_of::<Sample>()) as u64
             + self.tip.bytes()
+            + self.settings.asset_bytes()
+            + (self.planned.capacity() * size_of::<advanced::PlannedDab>()) as u64
             + self.patch.as_ref().map_or(0, |p| p.bytes())
     }
     /// Hydration can consume budget after stroke admission; never grow its ceiling.
@@ -380,7 +460,10 @@ impl StrokeCommand {
         self.ending = true;
     }
     pub fn pending(&self) -> usize {
-        self.queue.len() + usize::from(self.segment.is_some()) + usize::from(self.dab.is_some())
+        self.queue.len()
+            + self.planned.len()
+            + usize::from(self.segment.is_some())
+            + usize::from(self.dab.is_some())
     }
     pub fn done(&self) -> bool {
         self.ending && self.pending() == 0
@@ -466,8 +549,20 @@ impl StrokeCommand {
             * self.settings.spacing)
             .max(0.5)
     }
-    fn begin_dab(&mut self, mut p: Sample) {
+    #[cfg(test)]
+    fn begin_dab(&mut self, p: Sample) {
+        self.begin_planned_dab(advanced::PlannedDab {
+            p,
+            size: 1.0,
+            influence: 1.0,
+            transform: [1.0, 0.0, 0.0, 1.0],
+        });
+    }
+    fn begin_planned_dab(&mut self, planned: advanced::PlannedDab) {
+        let mut p = planned.p;
         let (size, influence) = self.settings.dynamics(p);
+        let size = size * planned.size;
+        let influence = influence * planned.influence;
         if size == 0.0
             || influence == 0.0
             || self.settings.opacity == 0.0
@@ -484,10 +579,11 @@ impl StrokeCommand {
             p.x = p.x.floor() + 0.5;
             p.y = p.y.floor() + 0.5;
         }
-        if self
-            .patch
-            .as_ref()
-            .is_some_and(|patch| !patch.matches([p.x, p.y], radius))
+        if self.settings.angle_jitter > 0.0
+            || self
+                .patch
+                .as_ref()
+                .is_some_and(|patch| !patch.matches([p.x, p.y], radius))
         {
             self.patch = None;
         }
@@ -521,6 +617,7 @@ impl StrokeCommand {
             p,
             radius,
             influence,
+            transform: planned.transform,
             x0,
             x1,
             y1,
@@ -536,10 +633,9 @@ impl StrokeCommand {
         let mut dabs = 0;
         while pixels > 0 && dabs < 512 {
             if self.dab.is_none() {
-                let Some(p) = self.next_dab() else {
+                if !self.begin_next_dab() {
                     break;
-                };
-                self.begin_dab(p);
+                }
                 dabs += 1;
                 if self.dab.is_none() {
                     continue;
@@ -591,6 +687,9 @@ impl StrokeCommand {
                 let required = (self.coverage.len() as u64 + 1) * TILE_BYTES * tile_buffers
                     + (self.queue.capacity() * size_of::<Sample>()) as u64
                     + self.tip.bytes();
+                let required = required
+                    + self.settings.asset_bytes()
+                    + (self.planned.capacity() * size_of::<advanced::PlannedDab>()) as u64;
                 let required = required + self.patch.as_ref().map_or(0, |p| p.bytes());
                 if required > self.available {
                     return Err("This stroke exceeds the 768 MiB document/history/temporary budget; stroke cancelled".into());
@@ -671,7 +770,9 @@ impl StrokeCommand {
                 dab.y += 1;
             }
             if dab.y == dab.y1 {
-                self.completed_time = self.completed_time.max(dab.p.time);
+                if self.planned.is_empty() {
+                    self.completed_time = self.completed_time.max(dab.p.time);
+                }
                 self.dab = None;
             }
         }
@@ -721,12 +822,13 @@ fn stamp_row(
     if selection.is_none()
         && clip_default == 255
         && scale == 1.0
+        && dab.transform == [1.0, 0.0, 0.0, 1.0]
+        && tip.texture.is_none()
         && !settings.eraser
         && base.is_some_and(|tile| tile.known_opaque)
     {
         return stamp_opaque_row(dab, tip, settings, base.unwrap(), mask, output, end);
     }
-    let sy = (dab.y as f64 + 0.5 - dab.p.y) * scale + tip.radius + 0.5;
     let influence = (dab.influence * 65535.0 + 0.5) as u32;
     let opacity = (settings.opacity
         * if settings.eraser {
@@ -738,8 +840,7 @@ fn stamp_row(
         + 0.5) as u32;
     let mut changed = false;
     for x in dab.x..end {
-        let sx = (x as f64 + 0.5 - dab.p.x) * scale + tip.radius + 0.5;
-        let value = tip.sample(sx, sy);
+        let value = tip.at(dab, f64::from(x), f64::from(dab.y));
         if value == 0 {
             continue;
         }

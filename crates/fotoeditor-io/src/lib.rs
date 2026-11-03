@@ -1,5 +1,7 @@
 //! Bounded CPU codecs; construction/export jobs yield between tile rows/scanlines.
+mod brush_image;
 mod color;
+pub use brush_image::*;
 mod export_capture;
 mod export_source;
 #[cfg(test)]

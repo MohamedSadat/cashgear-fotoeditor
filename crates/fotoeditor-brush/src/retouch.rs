@@ -185,16 +185,11 @@ pub(super) fn stamp_row(
     source: &Document,
     offset: [i32; 2],
 ) -> Result<bool, String> {
-    let scale = tip.radius / dab.radius;
-    let sy = (f64::from(dab.y) + 0.5 - dab.p.y) * scale + tip.radius + 0.5;
     let mut changed = false;
     for x in dab.x..end {
         let i = ((dab.y % TILE_SIZE) * TILE_SIZE + x % TILE_SIZE) as usize;
         let clip = selection.0.map_or(selection.1, |s| s.pixels[i].0);
-        let value = tip.sample(
-            (f64::from(x) + 0.5 - dab.p.x) * scale + tip.radius + 0.5,
-            sy,
-        );
+        let value = tip.at(dab, f64::from(x), f64::from(dab.y));
         if clip == 0 || value == 0 {
             continue;
         }

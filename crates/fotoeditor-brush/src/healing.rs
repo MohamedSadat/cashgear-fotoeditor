@@ -261,14 +261,12 @@ impl HealingPatch {
                 {
                     continue;
                 }
-                let scale = tip.radius / dab.radius;
-                let tx = (f64::from(self.x0) + (i % self.width) as f64 + 0.5 - dab.p.x) * scale
-                    + tip.radius
-                    + 0.5;
-                let ty = (f64::from(self.y0) + (i / self.width) as f64 + 0.5 - dab.p.y) * scale
-                    + tip.radius
-                    + 0.5;
-                if tip.sample(tx, ty) == 0 {
+                if tip.at(
+                    dab,
+                    f64::from(self.x0) + (i % self.width) as f64,
+                    f64::from(self.y0) + (i / self.width) as f64,
+                ) == 0
+                {
                     continue;
                 }
                 if std::iter::once(i)

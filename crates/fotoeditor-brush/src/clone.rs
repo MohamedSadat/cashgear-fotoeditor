@@ -86,8 +86,9 @@ impl StrokeCommand {
             return;
         }
         for _ in 0..512 {
-            let Some(p) = self.next_dab() else { break };
-            self.begin_dab(p);
+            if !self.begin_next_dab() {
+                break;
+            }
             if self.dab.is_some() {
                 break;
             }
@@ -170,7 +171,6 @@ pub(super) fn stamp_row(
     }
     let sy = sy as u32;
     let scale = tip.radius / dab.radius;
-    let ty = (dab.y as f64 + 0.5 - dab.p.y) * scale + tip.radius + 0.5;
     let influence = (dab.influence * 65535.0 + 0.5) as u32;
     let opacity = (settings.opacity * 65535.0 + 0.5) as u32;
     let mut changed = false;
@@ -205,6 +205,8 @@ pub(super) fn stamp_row(
             && selection.is_none()
             && clip_default == 255
             && scale == 1.0
+            && dab.transform == [1.0, 0.0, 0.0, 1.0]
+            && tip.texture.is_none()
             && base.is_some_and(|t| t.known_opaque)
             && sampled.as_ref().is_some_and(|t| t.known_opaque)
         {
@@ -238,8 +240,7 @@ pub(super) fn stamp_row(
                 continue;
             }
             let px = x + n;
-            let tx = (px as f64 + 0.5 - dab.p.x) * scale + tip.radius + 0.5;
-            let value = tip.sample(tx, ty);
+            let value = tip.at(dab, f64::from(px), f64::from(dab.y));
             if value == 0 {
                 continue;
             }
