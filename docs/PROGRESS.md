@@ -30,8 +30,16 @@ take 516.00-599.14 ms; observed logical CPU/GPU peaks are 102.25/32.11 MiB.
 Complete Clone Stamp regressions measure current-layer 56.65-57.84 presentation
 fps and all-visible 26.39-30.91 fps. Changed-input acknowledgements are reported
 separately in [P9-REPORT.md](P9-REPORT.md). The current-layer 60 fps gate is OPEN:
-the existing P12 exception covers all-visible sampling only. An additional
-performance decision is pending; no waiver is inferred.
+the existing P12 exception covers all-visible sampling only. On 2026-11-04 the
+user retained 60 fps and requested continued optimization. No waiver is inferred.
+
+The optimization candidate passes 233 Rust tests, native/WASM clippy, TypeScript,
+ESLint and 22 Vitest cases. Shared document/history generation accounting matches
+canonical counts exactly; full/fractional opaque clone and contiguous display
+rows retain independent pixel references. A complete diagnostic matrix measures
+59.84-60.01 presentation fps. Clean-commit timing and fresh full local/remote/
+hosted verification are required before acceptance. The original fps metric is
+retained alongside GPU-completion timestamps. No additional deferral or tag.
 
 Final acceptance requires the entire corrected-source 752-case hardware matrix,
 exact-final-head remote CI/deployment and downloaded artifacts (expected 560

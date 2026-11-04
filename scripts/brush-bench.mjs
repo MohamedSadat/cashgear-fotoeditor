@@ -1,5 +1,5 @@
 import { chromium } from '@playwright/test';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { mkdir, writeFile, readFile, readdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
@@ -186,7 +186,16 @@ try {
               snapshotMs: [],
               cpuBytes: [],
               gpuBytes: [],
+              origin: performance.timeOrigin,
               start: performance.now(),
+              completionTrace: [
+                {
+                  frames: Number(canvas.dataset.frames),
+                  submittedAt: Number(canvas.dataset.gpuSubmittedAt),
+                  completedAt: Number(canvas.dataset.gpuCompletedAt),
+                  observedAt: performance.timeOrigin + performance.now(),
+                },
+              ],
               initialFrames: Number(canvas.dataset.frames),
               inputEvents: 0,
               inputTrace: [],
@@ -208,11 +217,17 @@ try {
               paintTime = JSON.parse(canvas.dataset.snapshot).paintTime,
               completeTime = JSON.parse(canvas.dataset.snapshot).paintCompleteTime,
               frames = Number(canvas.dataset.frames);
-            const observer = new MutationObserver(() => {
+            const collect = () => {
               const n = Number(canvas.dataset.frames);
               if (n === frames) return;
               frames = n;
               const now = performance.now();
+              state.completionTrace.push({
+                frames: n,
+                submittedAt: Number(canvas.dataset.gpuSubmittedAt),
+                completedAt: Number(canvas.dataset.gpuCompletedAt),
+                observedAt: performance.timeOrigin + now,
+              });
               state.periods.push(now - lastFrame);
               lastFrame = now;
               const s = JSON.parse(canvas.dataset.snapshot);
@@ -231,9 +246,10 @@ try {
                 completeTime = s.paintCompleteTime;
                 state.completeLatencies.push(now - completeTime);
               }
-            });
+            };
+            const observer = new MutationObserver(collect);
             observer.observe(canvas, { attributes: true, attributeFilter: ['data-frames'] });
-            return { state, observer, input, inputEvent };
+            return { state, observer, input, inputEvent, collect };
           });
           // Native protocol mouse moves exercise Chromium's real input delivery /
           // coalescing. Dispatching synthetic events after the app's RAF callback
@@ -281,19 +297,22 @@ try {
           }
           await Promise.all(pendingInput);
           if (nativeError) throw nativeError;
-          const raw = await measurement.evaluate(({ state, observer, input, inputEvent }) => {
-            observer.disconnect();
-            const canvas = document.querySelector('[data-testid="gpu-canvas"]');
-            canvas.removeEventListener(inputEvent, input);
-            return {
-              ...state,
-              elapsedMs: performance.now() - state.start,
-              presented: Number(canvas.dataset.frames) - state.initialFrames,
-              maxPending: Math.max(...state.pending),
-              snapshot: JSON.parse(canvas.dataset.snapshot),
-              engineStatus: document.querySelector('[data-testid="engine-status"]').textContent,
-            };
-          });
+          const raw = await measurement.evaluate(
+            ({ state, observer, input, inputEvent, collect }) => {
+              collect();
+              observer.disconnect();
+              const canvas = document.querySelector('[data-testid="gpu-canvas"]');
+              canvas.removeEventListener(inputEvent, input);
+              return {
+                ...state,
+                elapsedMs: performance.now() - state.start,
+                presented: Number(canvas.dataset.frames) - state.initialFrames,
+                maxPending: Math.max(...state.pending),
+                snapshot: JSON.parse(canvas.dataset.snapshot),
+                engineStatus: document.querySelector('[data-testid="engine-status"]').textContent,
+              };
+            },
+          );
           await measurement.dispose();
           if (
             clone &&
@@ -321,7 +340,35 @@ try {
               !JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot)
                 .painting,
           );
+          const firstCompletion = raw.completionTrace[0],
+            lastCompletion = raw.completionTrace.at(-1);
+          if (
+            !raw.completionTrace.every(
+              (v, i, a) =>
+                Number.isFinite(v.completedAt) &&
+                Number.isFinite(v.submittedAt) &&
+                (!i || v.frames === a[i - 1].frames + 1),
+            ) ||
+            lastCompletion.frames - firstCompletion.frames !== raw.presented
+          )
+            throw Error('Incomplete completion trace');
+          const notificationLatencies = raw.completionTrace
+            .slice(1)
+            .map((v) => v.observedAt - v.completedAt);
           trials.push({
+            gpuCompletionFps:
+              ((lastCompletion.frames - firstCompletion.frames) * 1000) /
+              (lastCompletion.completedAt - firstCompletion.completedAt),
+            submissionCadenceFps:
+              ((lastCompletion.frames - firstCompletion.frames) * 1000) /
+              (lastCompletion.submittedAt - firstCompletion.submittedAt),
+            observedIntervalFps:
+              ((raw.periods.length - 1) * 1000) / raw.periods.slice(1).reduce((a, b) => a + b, 0),
+            completionBaselineBeforeStartMs: raw.origin + raw.start - firstCompletion.completedAt,
+            completionTailMs: raw.origin + raw.start + raw.elapsedMs - lastCompletion.completedAt,
+            notificationLatencyP50: percentile(notificationLatencies, 0.5),
+            notificationLatencyP95: percentile(notificationLatencies, 0.95),
+            raw,
             fps: (raw.presented * 1000) / raw.elapsedMs,
             strokeStartAckMs,
             changedPixelAckFps: (raw.latencies.length * 1000) / raw.elapsedMs,
@@ -374,7 +421,24 @@ try {
   await writeFile(
     `bench/results/${phase}-performance.json`,
     JSON.stringify(
-      { measuredAt: new Date().toISOString(), fixture, runtimeAssets, results },
+      {
+        measuredAt: new Date().toISOString(),
+        head: execFileSync('git', ['rev-parse', 'HEAD'], {
+          encoding: 'utf8',
+          windowsHide: true,
+        }).trim(),
+        dirty: Boolean(
+          execFileSync('git', ['status', '--porcelain'], {
+            encoding: 'utf8',
+            windowsHide: true,
+          }).trim(),
+        ),
+        completionMethod:
+          'Original whole-window main-thread fps retained. Completion interval rate uses every actual GPU-finished reply, with a baseline completion before the window; baseline/tail gaps and notification delays are reported explicitly. No compositor/scanout or distinct-pixel claim.',
+        fixture,
+        runtimeAssets,
+        results,
+      },
       null,
       2,
     ) + '\n',

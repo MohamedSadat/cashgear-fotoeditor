@@ -2208,6 +2208,7 @@ const api: EngineApi = {
       // in which it was submitted. A late fence must not consume the next
       // RAF's input slot as well.
       presentedAt: presented ? performance.timeOrigin + submitted : undefined,
+      completedAt: presented ? performance.timeOrigin + rendered : undefined,
       frames,
       width,
       height,

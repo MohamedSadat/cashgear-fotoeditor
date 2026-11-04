@@ -316,27 +316,29 @@ fn opaque_clone_optimization_matches_reference_across_source_and_destination_til
     for coord in [(0, 0), (1, 0), (2, 0)] {
         general.raster_mut().edit_tile(coord);
     }
-    let settings = BrushSettings {
-        size: 80.0,
-        hardness: 0.0,
-        opacity: 0.4,
-        flow: 0.2,
-        pressure_size: false,
-        roundness: 0.7,
-        angle: 36.0,
-        ..Default::default()
-    };
-    let mut a = stroke(&doc, settings.clone(), doc.clone(), [-13, 17]);
-    let mut b = stroke(&general, settings, general.clone(), [-13, 17]);
-    for p in [
-        point(10.1, 120.2),
-        point(500.00390625, 123.00390625),
-        point(30.75, 140.25),
-    ] {
-        a.push(p).unwrap();
-        b.push(p).unwrap();
+    for (opacity, flow) in [(1.0, 1.0), (1.0, 0.2), (0.4, 1.0), (0.4, 0.2)] {
+        let settings = BrushSettings {
+            size: 80.0,
+            hardness: 0.0,
+            opacity,
+            flow,
+            pressure_size: false,
+            roundness: 0.7,
+            angle: 36.0,
+            ..Default::default()
+        };
+        let mut a = stroke(&doc, settings.clone(), doc.clone(), [-13, 17]);
+        let mut b = stroke(&general, settings, general.clone(), [-13, 17]);
+        for p in [
+            point(10.1, 120.2),
+            point(500.00390625, 123.00390625),
+            point(30.75, 140.25),
+        ] {
+            a.push(p).unwrap();
+            b.push(p).unwrap();
+        }
+        finish(&mut a);
+        finish(&mut b);
+        assert_eq!(pixels(&a.preview), pixels(&b.preview), "{opacity}/{flow}");
     }
-    finish(&mut a);
-    finish(&mut b);
-    assert_eq!(pixels(&a.preview), pixels(&b.preview));
 }

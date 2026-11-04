@@ -1,5 +1,13 @@
 # Decisions
 
+## 2026-11-04 - User retains current-layer Clone Stamp 60 fps target
+
+- The user explicitly answered: "Keep 60 fps; continue optimizing (Recommended)".
+- Keep the current-layer speed gate open and optimize it. No additional P12
+  deferral is authorized. Preserve the all-visible exception and every other
+  acceptance requirement; tag only after the retained target and remaining
+  phase-wide gates pass.
+
 ## 2026-11-03 - P9 phase performance regression remains unresolved
 
 - The complete corrected-source current-layer Clone Stamp matrix measures
@@ -7,8 +15,8 @@
   Its 60 fps gate remains open. Changed-input acknowledgements are separate.
 - The existing user-approved P12 exception covers all-visible sampling only;
   that mode now measures 26.39-30.91 fps. It does not extend to current-layer
-  speed. A user decision about this additional miss has been requested but has
-  not been received. No new exception or acceptance is recorded.
+  speed. On 2026-11-04 the user retained the target and requested continued
+  optimization, as recorded above. No new exception or acceptance is recorded.
 - Continue independent phase-wide verification. Publish no `p9-retouch` until
   the performance gate is met or explicitly resolved and all other gates pass.
 

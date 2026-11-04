@@ -1,5 +1,5 @@
 //! Reversible document commands. No browser, renderer or UI state.
-use crate::{Document, LayerId, Rgba8, TileCoord, TileHandle, TileRef, CPU_BUDGET};
+use crate::{Document, LayerId, Residency, Rgba8, TileCoord, TileHandle, TileRef, CPU_BUDGET};
 use std::collections::HashSet;
 
 /// Commands must apply/revert exactly, including transparent RGB and sparse tiles.
@@ -195,6 +195,24 @@ impl History {
     pub fn bytes(&self, document: &Document) -> u64 {
         retained_bytes(document, self.entries.iter().map(|c| c.as_ref()))
     }
+    /// Count live/history resident samples once. Returned generation IDs let
+    /// additional immutable owners reuse this walk without retaining tile pins.
+    pub fn residency_with_document(&self, document: &Document) -> (Residency, HashSet<u64>) {
+        // Shared layers can greatly overestimate the number of unique IDs.
+        let mut seen = HashSet::with_capacity(document.tile_count().min(4096));
+        let mut usage = Residency::default();
+        document.visit_tiles(&mut |tile| {
+            if seen.insert(tile.id()) {
+                usage.document += tile.bytes();
+            }
+        });
+        self.visit_tiles(&mut |tile| {
+            if seen.insert(tile.id()) {
+                usage.history += tile.bytes();
+            }
+        });
+        (usage, seen)
+    }
     pub fn configure(&mut self, document: &Document, limits: HistoryLimits) -> Result<(), String> {
         if limits.bytes > CPU_BUDGET || limits.steps > 2000 {
             return Err("History limits must be 0–768 MiB and 0–2000 steps".into());
@@ -313,6 +331,47 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
     use std::hash::{Hash, Hasher};
+    #[test]
+    fn joint_residency_counts_shared_layers_selection_hidden_rgb_and_redo_exactly() {
+        use crate::{Gray8, Layer, TileSurface, TILE_PIXELS};
+        let mut document = Document::blank(513, 1, 72.0).unwrap();
+        document.raster_mut().write(0, 0, Rgba8([11, 22, 33, 0]));
+        document
+            .raster_mut()
+            .write(256, 0, Rgba8([44, 55, 66, 255]));
+        document
+            .layers
+            .push(Layer::raster("Shared".into(), document.raster().clone()));
+        let mut selection = TileSurface::new(513, 1);
+        selection.write(0, 0, Gray8(128));
+        document.selection = Some(std::sync::Arc::new(selection));
+        let mut history = History::default();
+        let check = |document: &Document, history: &History, live: u64, retained: u64| {
+            let (usage, seen) = history.residency_with_document(document);
+            assert_eq!(
+                usage.document,
+                live * (TILE_PIXELS * 4) as u64 + TILE_PIXELS as u64
+            );
+            assert_eq!(usage.history, retained * (TILE_PIXELS * 4) as u64);
+            assert_eq!(usage.document, document.bytes());
+            assert_eq!(usage.history, history.bytes(document));
+            assert_eq!(seen.len() as u64, live + retained + 1);
+            assert_eq!((usage.temporary, usage.gpu), (0, 0));
+        };
+        check(&document, &history, 2, 0);
+        for n in 1..=2 {
+            let command = edit(&document, 0, [n, 17, 29, 1]);
+            history.execute(&mut document, command, 0).unwrap();
+            check(&document, &history, 3, u64::from(n - 1));
+        }
+        assert!(history.undo(&mut document));
+        check(&document, &history, 3, 1);
+        assert!(history.undo(&mut document));
+        check(&document, &history, 2, 2);
+        assert_eq!(document.raster().sample(0, 0), Rgba8([11, 22, 33, 0]));
+        assert!(history.redo(&mut document));
+        check(&document, &history, 3, 1);
+    }
     #[test]
     fn paged_undo_keeps_identity_and_exact_samples_without_pin_retention() {
         use crate::{TileBacking, TilePager};

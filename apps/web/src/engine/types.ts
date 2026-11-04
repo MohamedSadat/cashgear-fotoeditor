@@ -22,6 +22,8 @@ export interface FrameResult extends PhysicalSize {
   frames: number;
   /** GPU submission time; the frame RPC still waits for GPU completion. */
   presentedAt?: number;
+  /** Completed GPU work time, before the reply crosses back to the UI. */
+  completedAt?: number;
   snapshot?: DocumentSnapshot;
 }
 export interface DocumentSnapshot {

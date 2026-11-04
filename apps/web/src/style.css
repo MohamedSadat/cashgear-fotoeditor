@@ -860,6 +860,8 @@ select {
 }
 .brush-outline {
   position: absolute;
+  left: 0;
+  top: 0;
   pointer-events: none;
   border: 1px solid #fff;
   box-shadow: 0 0 0 1px #000b;
@@ -1399,6 +1401,8 @@ select {
 
 .clone-source-marker {
   position: absolute;
+  left: 0;
+  top: 0;
   width: 15px;
   height: 15px;
   transform: translate(-50%, -50%);

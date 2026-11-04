@@ -127,9 +127,14 @@ mod bridge {
             }
         }
         fn residency(&self) -> Residency {
+            let (base, mut seen) = self
+                .document
+                .as_ref()
+                .map(|document| self.history.residency_with_document(document))
+                .unwrap_or_default();
             Residency {
-                document: self.document.as_ref().map_or(0, |d| d.bytes()),
-                history: self.document.as_ref().map_or(0, |d| self.history.bytes(d)),
+                document: base.document,
+                history: base.history,
                 temporary: self.import.as_ref().map_or(0, |j| j.temporary_bytes())
                     + self.renderer.selection_cpu_bytes()
                     + self.external_bytes
@@ -138,8 +143,7 @@ mod bridge {
                     + self.adjusted.scratch_bytes()
                     + self.geometric.scratch_bytes()
                     + self.layered.extra_source_bytes(
-                        self.document.as_ref(),
-                        &self.history,
+                        &mut seen,
                         self.stroke.as_ref(),
                         &self.selected,
                         &self.adjusted,

@@ -400,5 +400,6 @@ and radial symmetry, editable multi-stop gradients. See DECISIONS.md.
 M5's complete corrected-source phase regression on 2026-11-03 measures current-
 layer Clone Stamp at 56.65-57.84 presentation fps. That 60 fps gate remains open;
 M1's existing exception covers all-visible sampling only. No additional speed
-exception has been approved. Complete all independent verification, then require
-the target or an explicit user decision before `p9-retouch`. See P9-REPORT.md.
+exception has been approved. On 2026-11-04 the user explicitly retained 60 fps
+and requested continued optimization. Meet that target and complete all other
+verification before `p9-retouch`. See P9-REPORT.md.

@@ -51,6 +51,9 @@ const start = Date.now(),
   seen = new Set();
 const manifest = {
   head: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', windowsHide: true }).trim(),
+  sourceDirty: Boolean(
+    execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8', windowsHide: true }).trim(),
+  ),
   startedAt: new Date(start).toISOString(),
   url: base,
   method:

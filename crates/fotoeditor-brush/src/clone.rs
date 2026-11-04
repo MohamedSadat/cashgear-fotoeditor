@@ -214,7 +214,12 @@ pub(super) fn stamp_row(
             let at = ((dab.y % TILE_SIZE) * TILE_SIZE + x % TILE_SIZE) as usize;
             let sample_at = ((sy % TILE_SIZE) * TILE_SIZE + sx % TILE_SIZE) as usize;
             let length = count as usize;
-            changed |= stamp_opaque(
+            let stamp: OpaqueStamp = if influence == 65535 && opacity == 65535 {
+                stamp_opaque::<true>
+            } else {
+                stamp_opaque::<false>
+            };
+            changed |= stamp(
                 dab,
                 tip,
                 x,
@@ -282,9 +287,12 @@ pub(super) fn stamp_row(
 
 // Same UNORM16 coverage and straight-alpha reference, with row-invariant mask
 // interpolation. Opaque source/destination are common in photo retouching.
+type OpaqueStamp =
+    fn(&Dab, &Tip, u32, u32, u32, &[Rgba8], &[Rgba8], &mut [u32], &mut [Rgba8]) -> bool;
+
 #[inline(never)]
 #[allow(clippy::too_many_arguments)]
-fn stamp_opaque(
+fn stamp_opaque<const UNIT_FACTORS: bool>(
     dab: &Dab,
     tip: &Tip,
     x: u32,
@@ -295,6 +303,11 @@ fn stamp_opaque(
     masks: &mut [u32],
     outputs: &mut [Rgba8],
 ) -> bool {
+    // The caller clips every slice to this row. State that invariant once so
+    // LLVM can vectorize the integer kernel without per-lane panic paths.
+    assert_eq!(original.len(), outputs.len());
+    assert_eq!(source.len(), outputs.len());
+    assert_eq!(masks.len(), outputs.len());
     let tx = x as f64 - dab.p.x + tip.radius + 1.0;
     let ty = dab.y as f64 - dab.p.y + tip.radius + 1.0;
     let ix = tx as usize;
@@ -308,9 +321,17 @@ fn stamp_opaque(
         let a = u32::from(top[i]) * (256 - fx) + u32::from(top[i + 1]) * fx;
         let b = u32::from(bottom[i]) * (256 - fx) + u32::from(bottom[i + 1]) * fx;
         let value = (a * (256 - fy) + b * fy + 32768) >> 16;
-        let amount = divide_unorm16(value * influence + 32767);
+        let amount = if UNIT_FACTORS {
+            value
+        } else {
+            divide_unorm16(value * influence + 32767)
+        };
         masks[i] += divide_unorm16((65535 - masks[i]) * amount + 32767);
-        let coverage = divide_unorm16(opacity * masks[i] + 32767);
+        let coverage = if UNIT_FACTORS {
+            masks[i]
+        } else {
+            divide_unorm16(opacity * masks[i] + 32767)
+        };
         let keep = 65535 - coverage;
         let before = original[i].0;
         let color = source[i].0;

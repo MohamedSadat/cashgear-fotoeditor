@@ -59,8 +59,7 @@ impl LayerRuntime {
     }
     pub fn extra_source_bytes(
         &self,
-        document: Option<&Document>,
-        history: &History,
+        seen: &mut HashSet<u64>,
         stroke: Option<&StrokeCommand>,
         selection: &super::selection::SelectionRuntime,
         adjustment: &super::adjustments::AdjustmentRuntime,
@@ -81,15 +80,6 @@ impl LayerRuntime {
         {
             return 0;
         }
-        let mut seen = HashSet::new();
-        if let Some(doc) = document {
-            doc.visit_tiles(&mut |t| {
-                seen.insert(t.id());
-            });
-        }
-        history.visit_tiles(&mut |t| {
-            seen.insert(t.id());
-        });
         if let Some(preview) = preview {
             preview.visit_tiles(&mut |t| {
                 seen.insert(t.id());

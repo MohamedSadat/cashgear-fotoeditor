@@ -45,14 +45,31 @@ pub fn display_region(surface: &TileSurface<Rgba8>, coord: TileCoord, rect: Tile
     let width = rect.x1 - rect.x0;
     let height = rect.y1 - rect.y0;
     let mut out = vec![0; (width * height * 4) as usize];
+    if width == 0 || height == 0 {
+        return out;
+    }
     let tile = surface.tiles()[&coord].pin().expect("hydrate display tile");
     let valid_w = (surface.width - coord.0 * TILE_SIZE).min(TILE_SIZE);
     let valid_h = (surface.height - coord.1 * TILE_SIZE).min(TILE_SIZE);
-    for y in 0..height {
-        for x in 0..width {
-            let p = tile.pixels[(((rect.y0 + y).min(valid_h - 1)) * TILE_SIZE
-                + (rect.x0 + x).min(valid_w - 1)) as usize];
-            out[((y * width + x) * 4) as usize..][..4].copy_from_slice(&premultiplied(p));
+    for (y, row) in out.chunks_exact_mut(width as usize * 4).enumerate() {
+        let at = ((rect.y0 + y as u32).min(valid_h - 1) * TILE_SIZE) as usize;
+        let source = &tile.pixels[at..][..TILE_SIZE as usize];
+        if rect.x1 <= valid_w {
+            // Clamp once per row and keep the ordinary interior loop contiguous.
+            let source = &source[rect.x0 as usize..rect.x1 as usize];
+            if tile.known_opaque {
+                for (output, pixel) in row.as_chunks_mut::<4>().0.iter_mut().zip(source) {
+                    *output = pixel.0;
+                }
+            } else {
+                for (output, pixel) in row.as_chunks_mut::<4>().0.iter_mut().zip(source) {
+                    *output = premultiplied(*pixel);
+                }
+            }
+        } else {
+            for (x, output) in row.as_chunks_mut::<4>().0.iter_mut().enumerate() {
+                *output = premultiplied(source[(rect.x0 + x as u32).min(valid_w - 1) as usize]);
+            }
         }
     }
     out
@@ -220,24 +237,56 @@ mod tests {
     use super::*;
     #[test]
     fn partial_display_matches_full_tile_including_clamped_edges() {
-        let mut surface = TileSurface::new(257, 1);
-        for x in 0..257 {
-            surface.write(x, 0, Rgba8([217, 33, 97, (x % 256) as u8]));
-        }
-        for coord in [(0, 0), (1, 0)] {
-            let rect = TileRect {
-                x0: 0,
-                y0: 0,
-                x1: 17,
-                y1: 13,
-            };
-            let partial = display_region(&surface, coord, rect);
-            let full = display_tile(&surface, coord, 0);
-            for y in 0..13 {
-                assert_eq!(
-                    &partial[y * 17 * 4..][..17 * 4],
-                    &full[((y + 1) * 258 + 1) * 4..][..17 * 4]
-                );
+        for opaque in [false, true] {
+            let mut surface = TileSurface::new(257, 1);
+            if opaque {
+                for coord in [(0, 0), (1, 0)] {
+                    surface.insert(coord, vec![Rgba8([217, 33, 97, 255]); crate::TILE_PIXELS]);
+                }
+            } else {
+                for x in 0..257 {
+                    surface.write(x, 0, Rgba8([217, 33, 97, (x % 256) as u8]));
+                }
+            }
+            for coord in [(0, 0), (1, 0)] {
+                for rect in [
+                    TileRect::FULL,
+                    TileRect {
+                        x0: 0,
+                        y0: 0,
+                        x1: 17,
+                        y1: 13,
+                    },
+                    TileRect {
+                        x0: 7,
+                        y0: 2,
+                        x1: 38,
+                        y1: 19,
+                    },
+                    TileRect {
+                        x0: 4,
+                        y0: 0,
+                        x1: 4,
+                        y1: 13,
+                    },
+                    TileRect {
+                        x0: 0,
+                        y0: 4,
+                        x1: 17,
+                        y1: 4,
+                    },
+                ] {
+                    let width = (rect.x1 - rect.x0) as usize;
+                    let partial = display_region(&surface, coord, rect);
+                    let full = display_tile(&surface, coord, 0);
+                    for y in 0..(rect.y1 - rect.y0) as usize {
+                        assert_eq!(
+                            &partial[y * width * 4..][..width * 4],
+                            &full[((y + rect.y0 as usize + 1) * 258 + rect.x0 as usize + 1) * 4..]
+                                [..width * 4]
+                        );
+                    }
+                }
             }
         }
     }

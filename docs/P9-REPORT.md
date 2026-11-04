@@ -6,11 +6,19 @@ scatter/jitter, texture, CashGear brush libraries and mirror/radial painting.
 Phase completion requires the remaining gates below and the immutable final
 certificate before creating `p9-retouch`. P10 has not started.
 
-**Current-layer clone performance remains an open gate:** the complete final
-matrix measures 56.65-57.84 presentation fps, including WebGL2 misses. The
+**Current-layer clone performance is being revalidated:** the pre-optimization
+phase matrix measures 56.65-57.84 presentation fps, including WebGL2 misses. The
 existing user-approved P12 exception covers all-visible sampling only. No new
 exception is inferred, and the original current-layer 60 fps target is not
-declared passed. A product decision about that additional miss is pending.
+declared passed. On 2026-11-04 the user retained 60 fps and requested continued
+optimization; no additional deferral is authorized.
+
+The subsequent complete candidate matrix measures 59.84-60.01 presentation fps,
+within M1's previously accepted nominal 60 Hz range. Opaque-row specialization,
+one shared document/history residency walk, contiguous display conversion and
+2D cursor transforms preserve exact samples and budgets. This remains a candidate
+until clean-commit measurements and all final verification pass. The original
+whole-window fps metric is retained alongside actual GPU-completion traces.
 
 ## Baseline and delivered scope
 
@@ -118,7 +126,7 @@ admission and retained-generation accounting enforce the processing budgets.
 
 ## Hardware measurements
 
-The complete M5 matrix has 16 configurations and 64 successful strokes. Every
+The pre-optimization M5 matrix has 16 configurations and 64 successful strokes. Every
 configuration restores its exported before/after SHA-256 after four exact Undo
 restorations. Warm scripted strokes take **516.00-599.14 ms**. Observed logical
 CPU/GPU peaks are **102.25/32.11 MiB**. There is no separate M5 speed threshold
@@ -217,7 +225,7 @@ inferred extension of the old waiver.
 
 ## Verification, visual evidence and remaining gates
 
-All 232 Rust tests, native/WASM clippy, Rust formatting, TypeScript, ESLint,
+All 233 Rust tests, native/WASM clippy, Rust formatting, TypeScript, ESLint,
 Prettier, 22 Vitest cases and 459 license expressions pass. Independent oracles
 cover coverage/transform math, deterministic slicing, image/texture across every
 stroke pipeline, selection/crop/alpha/locks, cold source pages, bounded admission,
@@ -226,8 +234,9 @@ partial refusal/cancellation/no-op redo and exact command restoration.
 The clean 96-case focused installed-browser run and 42-case focused software run
 pass once per case, with zero failures/skips/retries/flaky/global errors. Rebuilt
 WebView2 passes both NVIDIA APIs, all retained broad checks and new image/preset/
-oriented mirror/radial/coincident-union/one-command/exact undo/redo checks. Production
-Windows WASM is 4,543,901 bytes / gzip9 **1,679,500**, below the unchanged 2,000,000 gate.
+oriented mirror/radial/coincident-union/one-command/exact undo/redo checks.
+The optimization candidate's Windows WASM is 4,547,667 bytes / gzip9 **1,682,136**,
+below the unchanged 2,000,000 gate. Full final verification is still required.
 
 Ordinary-view captures and 4x nearest magnifications show transformed asymmetric
 tip coverage and grain on both APIs. Magnifications composite onto light gray

@@ -325,8 +325,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
             ? [destination[0] + offset[0], destination[1] + offset[1]]
             : source;
         const screen = screenPoint(point.map((v) => Math.floor(v) + 0.5) as [number, number]);
-        cloneMarker.style.left = screen[0] + 'px';
-        cloneMarker.style.top = screen[1] + 'px';
+        cloneMarker.style.transform = `translate(${screen[0]}px,${screen[1]}px) translate(-50%,-50%)`;
       }
       outline.hidden =
         brush.tool === 'gradient' ||
@@ -348,13 +347,11 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
         (settings.pressureSize ? evaluateCurve(settings.sizePressure, pressure) : 1) *
         (settings.tiltSize ? evaluateCurve(settings.sizeTilt, tilt) : 1);
       const diameter = (settings.pencil ? 1 : settings.size * scale) * snapshot.view.zoom;
-      outline.style.left = lastScreen[0] + 'px';
-      outline.style.top = lastScreen[1] + 'px';
       outline.style.width = Math.max(1, diameter) + 'px';
       outline.style.height =
         Math.max(1, diameter * (settings.pencil ? 1 : settings.roundness)) + 'px';
       outline.style.transform =
-        'translate(-50%,-50%) rotate(' +
+        `translate(${lastScreen[0]}px,${lastScreen[1]}px) translate(-50%,-50%) rotate(` +
         ((snapshot.view.rotation * 180) / Math.PI +
           (snapshot.view.flipped ? -1 : 1) * settings.angle) +
         'deg)';
@@ -957,6 +954,10 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
             // This attribute records whether the canvas has presented pixels;
             // idle worker polls do not submit duplicate GPU frames.
             if (frame.presented) canvas.dataset.presented = 'true';
+            if (frame.presented && frame.completedAt !== undefined) {
+              canvas.dataset.gpuSubmittedAt = String(frame.presentedAt);
+              canvas.dataset.gpuCompletedAt = String(frame.completedAt);
+            }
             canvas.dataset.renderWidth = String(frame.width);
             canvas.dataset.renderHeight = String(frame.height);
             canvas.dataset.timing = JSON.stringify(frame.snapshot?.timing);

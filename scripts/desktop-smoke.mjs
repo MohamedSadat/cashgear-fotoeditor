@@ -1349,6 +1349,26 @@ try {
     // oriented mirror/radial stamps and exact command restoration in WebView2.
     result.advancedPainting = [];
     await page.evaluate(() => {
+      window.__desktopBrushInput = [];
+      const canvas = document.querySelector('[data-testid="gpu-canvas"]');
+      canvas.addEventListener('pointerdown', (event) => {
+        const rect = canvas.getBoundingClientRect();
+        const s = JSON.parse(canvas.dataset.snapshot);
+        const qx = (event.clientX - rect.left - s.view.screenWidth / 2 - s.view.panX) / s.view.zoom;
+        const qy = (event.clientY - rect.top - s.view.screenHeight / 2 - s.view.panY) / s.view.zoom;
+        const c = Math.cos(s.view.rotation),
+          sn = Math.sin(s.view.rotation);
+        window.__desktopBrushInput.push({
+          client: [event.clientX, event.clientY],
+          document: [
+            (qx * c + qy * sn) * (s.view.flipped ? -1 : 1) + s.document.retainedWidth / 2,
+            -qx * sn + qy * c + s.document.retainedHeight / 2,
+          ],
+          dpr: devicePixelRatio,
+          rect: rect.toJSON(),
+          view: s.view,
+        });
+      });
       const create = URL.createObjectURL.bind(URL),
         click = HTMLAnchorElement.prototype.click;
       URL.createObjectURL = (blob) => {
@@ -1364,6 +1384,9 @@ try {
       };
     });
     for (const mode of ['both', 'radial']) {
+      await page.evaluate(() => {
+        window.__desktopBrushInput = [];
+      });
       const prepared = await page.evaluate(async () => {
         const a = window.__fotoeditor;
         const s = await a.newDocument(256, 256, 300);
@@ -1436,13 +1459,45 @@ try {
       expect(Buffer.from(await exportedPng()).equals(before)).toBe(true);
       await page.evaluate((n) => window.__fotoeditor.historyJump(n + 1), prepared.history.undo);
       expect(Buffer.from(await exportedPng()).equals(after)).toBe(true);
+      await page.waitForFunction((n) => {
+        const s = JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot);
+        return s.history.undo === n + 1 && !s.painting && !s.operation;
+      }, prepared.history.undo);
+      const redoRevision = await page.evaluate(
+        () =>
+          JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot)
+            .revision,
+      );
       await page.evaluate((n) => window.__fotoeditor.historyJump(n), prepared.history.undo);
+      // A frame submitted before this direct API undo can reply afterward.
+      // Publish the undo before an old redo depth can match the next stroke.
+      await page.waitForFunction(
+        ({ revision, undo }) => {
+          const s = JSON.parse(
+            document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot,
+          );
+          return s.revision > revision && s.history.undo === undo && !s.painting && !s.operation;
+        },
+        { revision: redoRevision, undo: prepared.history.undo },
+      );
       await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
       await page.waitForFunction((n) => {
         const s = JSON.parse(document.querySelector('[data-testid="gpu-canvas"]').dataset.snapshot);
         return s.history.undo === n + 1 && !s.painting && !s.operation;
       }, prepared.history.undo);
-      const centered = PNG.sync.read(Buffer.from(await exportedPng()));
+      const centerBytes = Buffer.from(await exportedPng());
+      const centered = PNG.sync.read(centerBytes);
+      const evidencePrefix = (process.env.DESKTOP_EVIDENCE_PREFIX ?? 'desktop-advanced').replace(
+        /[^a-zA-Z0-9_-]/g,
+        '_',
+      );
+      const evidence = join(root, 'bench/results', evidencePrefix + '-' + backend + '-' + mode);
+      await writeFile(evidence + '-offcenter.png', after);
+      await writeFile(evidence + '-centered.png', centerBytes);
+      await writeFile(
+        evidence + '-input.json',
+        JSON.stringify(await page.evaluate(() => window.__desktopBrushInput), null, 2) + '\n',
+      );
       const originalAtCenter = (x, y) => pixel(x - 50, y - 50)[3];
       for (let y = 110; y < 146; y++)
         for (let x = 110; x < 146; x++) {
@@ -1460,9 +1515,10 @@ try {
                   originalAtCenter(255 - x, 255 - y),
                   originalAtCenter(y, 255 - x),
                 );
-          expect(centered.data[(y * 256 + x) * 4 + 3], mode + ' coincident coverage').toBe(
-            expected,
-          );
+          expect(
+            centered.data[(y * 256 + x) * 4 + 3],
+            mode + ' coincident coverage ' + x + ',' + y,
+          ).toBe(expected);
         }
       await page.evaluate((n) => window.__fotoeditor.historyJump(n), prepared.history.undo);
       expect(Buffer.from(await exportedPng()).equals(before)).toBe(true);
