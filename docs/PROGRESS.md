@@ -34,10 +34,12 @@ the existing P12 exception covers all-visible sampling only. On 2026-11-04 the
 user retained 60 fps and requested continued optimization. No waiver is inferred.
 
 The optimization candidate passes 233 Rust tests, native/WASM clippy, TypeScript,
-ESLint and 22 Vitest cases. Shared document/history generation accounting matches
+ESLint and 23 Vitest cases. Shared document/history generation accounting matches
 canonical counts exactly; full/fractional opaque clone and contiguous display
 rows retain independent pixel references. A complete diagnostic matrix measures
-59.84-60.01 presentation fps. Clean-commit timing and fresh full local/remote/
+59.95-60.18 presentation fps after retaining preview deadlines across GPU waits.
+The earlier clean-source matrix still missed at 59.25 fps and remains retained.
+Clean-commit timing and fresh full local/remote/
 hosted verification are required before acceptance. The original fps metric is
 retained alongside GPU-completion timestamps. No additional deferral or tag.
 

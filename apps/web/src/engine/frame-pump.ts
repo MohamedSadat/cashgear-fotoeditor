@@ -18,6 +18,7 @@ export class FramePump {
   private armed = false;
   private immediateScheduled = false;
   private painting = false;
+  private previewDue = false;
   private previewTimer: ReturnType<typeof setTimeout> | undefined;
   constructor(
     private api: Pick<EngineApi, 'resize' | 'frame'>,
@@ -47,6 +48,7 @@ export class FramePump {
     ++this.epoch;
     this.epochTime = performance.timeOrigin + timestamp;
     this.armed = true;
+    this.previewDue = false;
     this.flush(timestamp);
     clearTimeout(this.previewTimer);
     const epoch = this.epoch;
@@ -59,8 +61,10 @@ export class FramePump {
         !this.pendingSize &&
         this.presentedEpoch < epoch &&
         this.resizedEpoch < epoch
-      )
+      ) {
+        this.previewDue = true;
         this.flush(performance.now(), true);
+      }
     }, 8);
   }
   private scheduleInput() {
@@ -80,6 +84,7 @@ export class FramePump {
   private flush(timestamp: number, preview = false) {
     if (this.stopped || this.busy) return;
     this.busy = true;
+    if (preview) this.previewDue = false;
     const resize = this.pendingSize;
     this.pendingSize = undefined;
     void this.dispatch(timestamp, resize, preview);
@@ -114,6 +119,16 @@ export class FramePump {
     } finally {
       this.busy = false;
       if (this.inputs.length) this.scheduleInput();
+      else if (
+        this.previewDue &&
+        this.painting &&
+        !this.pendingSize &&
+        this.presentedEpoch < this.epoch &&
+        this.resizedEpoch < this.epoch
+      )
+        // A fence may occupy the slot when the preview timer fires. Retry its
+        // one deferred preview after completion rather than losing that epoch.
+        this.flush(performance.now(), true);
     }
   }
   stop() {

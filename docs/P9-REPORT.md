@@ -13,8 +13,11 @@ exception is inferred, and the original current-layer 60 fps target is not
 declared passed. On 2026-11-04 the user retained 60 fps and requested continued
 optimization; no additional deferral is authorized.
 
-The subsequent complete candidate matrix measures 59.84-60.01 presentation fps,
-within M1's previously accepted nominal 60 Hz range. Opaque-row specialization,
+The latest complete candidate matrix measures 59.95-60.18 presentation fps,
+within M1's previously accepted nominal 60 Hz range. The first clean-source
+optimization matrix still had a 59.25 fps WebGL2 trial; all trials are retained.
+The frame pump now retains a preview deadline that fires during an earlier GPU
+fence and services its unused slot after completion. Opaque-row specialization,
 one shared document/history residency walk, contiguous display conversion and
 2D cursor transforms preserve exact samples and budgets. This remains a candidate
 until clean-commit measurements and all final verification pass. The original
@@ -226,7 +229,7 @@ inferred extension of the old waiver.
 ## Verification, visual evidence and remaining gates
 
 All 233 Rust tests, native/WASM clippy, Rust formatting, TypeScript, ESLint,
-Prettier, 22 Vitest cases and 459 license expressions pass. Independent oracles
+Prettier, 23 Vitest cases and 459 license expressions pass. Independent oracles
 cover coverage/transform math, deterministic slicing, image/texture across every
 stroke pipeline, selection/crop/alpha/locks, cold source pages, bounded admission,
 partial refusal/cancellation/no-op redo and exact command restoration.

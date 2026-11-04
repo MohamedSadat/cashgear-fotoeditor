@@ -8,6 +8,44 @@ const settle = async () => {
 };
 
 describe('FramePump ownership and backpressure', () => {
+  it('retains a preview deadline that fires while an earlier GPU fence is pending', async () => {
+    vi.useFakeTimers();
+    let complete!: (value: FrameResult) => void;
+    const active = { ...frame, snapshot: { painting: true } as DocumentSnapshot };
+    const api = {
+      resize: vi.fn(),
+      frame: vi
+        .fn()
+        .mockResolvedValueOnce(active)
+        .mockImplementationOnce(
+          () =>
+            new Promise<FrameResult>((resolve) => {
+              complete = resolve;
+            }),
+        )
+        .mockResolvedValue(active),
+    };
+    const pump = new FramePump(api, vi.fn(), vi.fn());
+    try {
+      pump.resize({ width: 100, height: 100 });
+      pump.tick(0);
+      await vi.advanceTimersByTimeAsync(0);
+      pump.tick(16);
+      await vi.advanceTimersByTimeAsync(0);
+      pump.tick(32);
+      await vi.advanceTimersByTimeAsync(8);
+      expect(api.frame).toHaveBeenCalledTimes(2);
+      complete({ ...active, presentedAt: performance.timeOrigin + 20 });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(api.frame).toHaveBeenCalledTimes(3);
+      expect(api.frame.mock.calls[2][2]).toBe(true);
+      await vi.advanceTimersByTimeAsync(32);
+      expect(api.frame).toHaveBeenCalledTimes(3);
+    } finally {
+      pump.stop();
+      vi.useRealTimers();
+    }
+  });
   it('cancels queued image payloads by byte capacity before the event-count limit', async () => {
     const api = { resize: vi.fn(), frame: vi.fn().mockResolvedValue(frame) };
     const pump = new FramePump(api, vi.fn(), vi.fn());
