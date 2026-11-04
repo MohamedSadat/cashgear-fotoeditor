@@ -397,9 +397,11 @@ and radial symmetry, editable multi-stop gradients. See DECISIONS.md.
   Report shipped/deferred work, hardware measurements and proposed P10, then stop.
   Existing P5/Ink/P6/P7 and accepted P8/P12 limits retain their status.
 
-M5's complete corrected-source phase regression on 2026-11-03 measures current-
-layer Clone Stamp at 56.65-57.84 presentation fps. That 60 fps gate remains open;
-M1's existing exception covers all-visible sampling only. No additional speed
-exception has been approved. On 2026-11-04 the user explicitly retained 60 fps
-and requested continued optimization. Meet that target and complete all other
-verification before `p9-retouch`. See P9-REPORT.md.
+M5's initial phase regression measured current-layer Clone Stamp at 56.65-57.84
+presentation fps. On 2026-11-04 the user retained 60 fps and requested continued
+optimization. The complete clean-source matrix at `4c7a643` now measures
+59.98-60.09 fps, restoring M1's already accepted nominal 60 Hz current-layer
+cadence. Changed-input acknowledgements are separate. All-visible sampling still
+misses at 25.88-30.66 fps under its existing P12 exception; no additional waiver.
+Complete all remaining verification and immutable certification before
+`p9-retouch`; stop before P10. See P9-REPORT.md.

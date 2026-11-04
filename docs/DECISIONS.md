@@ -1,5 +1,18 @@
 # Decisions
 
+## 2026-11-04 - Current-layer nominal 60 Hz cadence restored
+
+- After the user retained 60 fps, the complete clean-source matrix at `4c7a643`
+  measures 59.98-60.09 presentation fps across Chrome/Edge and both NVIDIA APIs.
+  This restores the current-layer nominal 60 Hz range already accepted at M1;
+  no additional speed waiver or broader P12 exception is introduced.
+- Changed-input acknowledgements remain separate at 44.80-52.04 per second.
+  Keep every original whole-window trial alongside GPU-fence completion traces;
+  do not claim 60 distinct changed document updates or physical scanout.
+- All-visible sampling still fails 60 fps at 25.88-30.66 fps under its existing
+  P12 deferral. Complete every other gate before certification/tagging; stop
+  before P10. The final certificate records actual completion and identities.
+
 ## 2026-11-04 - User retains current-layer Clone Stamp 60 fps target
 
 - The user explicitly answered: "Keep 60 fps; continue optimizing (Recommended)".

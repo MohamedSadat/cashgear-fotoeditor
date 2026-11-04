@@ -6,22 +6,23 @@ scatter/jitter, texture, CashGear brush libraries and mirror/radial painting.
 Phase completion requires the remaining gates below and the immutable final
 certificate before creating `p9-retouch`. P10 has not started.
 
-**Current-layer clone performance is being revalidated:** the pre-optimization
-phase matrix measures 56.65-57.84 presentation fps, including WebGL2 misses. The
-existing user-approved P12 exception covers all-visible sampling only. No new
-exception is inferred, and the original current-layer 60 fps target is not
-declared passed. On 2026-11-04 the user retained 60 fps and requested continued
-optimization; no additional deferral is authorized.
+**Current-layer clone cadence is restored:** the complete clean-source matrix
+measures 59.98-60.09 presentation fps across installed Chrome/Edge and both
+NVIDIA APIs, within the current-layer nominal 60 Hz range already accepted at M1.
+The user retained that target on 2026-11-04; no additional speed waiver is used.
+Changed-input acknowledgements are separate, 44.80-52.04 per second. The original
+whole-window fps metric is unchanged; actual GPU-fence completion traces,
+notification delays and baseline/tail gaps are retained alongside it.
 
-The latest complete candidate matrix measures 59.95-60.18 presentation fps,
-within M1's previously accepted nominal 60 Hz range. The first clean-source
-optimization matrix still had a 59.25 fps WebGL2 trial; all trials are retained.
-The frame pump now retains a preview deadline that fires during an earlier GPU
-fence and services its unused slot after completion. Opaque-row specialization,
-one shared document/history residency walk, contiguous display conversion and
-2D cursor transforms preserve exact samples and budgets. This remains a candidate
-until clean-commit measurements and all final verification pass. The original
-whole-window fps metric is retained alongside actual GPU-completion traces.
+Opaque-row specialization, one shared document/history residency walk,
+contiguous display conversion and 2D cursor transforms preserve exact samples
+and budgets. The frame pump retains a preview deadline that fires during an
+earlier GPU fence and services its unused slot after actual completion.
+The earlier clean-source optimization still had a 59.25 fps WebGL2 trial;
+that complete matrix and every rejected experiment remain separately classified.
+All-visible sampling still misses 60 fps and retains only its existing P12
+deferral. Full P9 acceptance is recorded by the final immutable certificate;
+the completion tag is created only after every remaining gate passes.
 
 ## Baseline and delivered scope
 
@@ -156,7 +157,7 @@ depth 0.8, period 32 and seed 71. Mirror uses both axes; radial uses eight secto
 center [3000,2000]. Asset hashes and native paths/settings are retained in the raw data.
 
 Twelve native Playwright moves cover 240 px with a 20 px sine deviation, requesting 20 ms
-between moves. Actual warm input delivery spans 22.02-26.32 Hz. Wall completion
+between moves. Actual warm input delivery spans 20.82-26.40 Hz. Wall completion
 includes automation/input, processing, observed committed presentation and
 persistence. Opening, control changes, hash exports and Undo are outside timing.
 Normal autosave stays enabled. No measured edit is retried; there are zero
@@ -167,10 +168,10 @@ are the maximum observed warm value, not long-term tail estimates.
 
 | Configuration  | Chrome WebGPU            | Chrome WebGL2            | Edge WebGPU              | Edge WebGL2              |
 | -------------- | ------------------------ | ------------------------ | ------------------------ | ------------------------ |
-| Image tip      | 548.32 / 536.63 / 550.66 | 556.03 / 558.74 / 563.72 | 545.40 / 556.36 / 580.41 | 568.87 / 548.58 / 563.92 |
-| Texture/jitter | 545.12 / 544.82 / 554.92 | 566.11 / 541.66 / 561.57 | 520.51 / 536.24 / 540.23 | 561.85 / 565.96 / 568.54 |
-| Both mirrors   | 528.54 / 534.77 / 539.64 | 568.43 / 564.31 / 582.49 | 573.83 / 523.99 / 541.76 | 573.61 / 563.68 / 569.65 |
-| Radial 8       | 549.81 / 555.89 / 572.13 | 614.21 / 576.72 / 599.14 | 529.95 / 554.03 / 557.48 | 568.67 / 583.17 / 583.70 |
+| Image tip      | 620.24 / 579.97 / 581.77 | 552.22 / 547.34 / 580.46 | 618.27 / 547.16 / 573.15 | 553.33 / 543.42 / 576.27 |
+| Texture/jitter | 594.73 / 566.03 / 577.51 | 525.00 / 561.13 / 579.54 | 509.92 / 563.63 / 579.10 | 544.18 / 558.79 / 628.35 |
+| Both mirrors   | 567.34 / 577.58 / 583.76 | 506.12 / 578.60 / 614.51 | 591.39 / 579.01 / 579.65 | 536.30 / 542.68 / 595.05 |
+| Radial 8       | 589.22 / 579.45 / 629.30 | 579.64 / 610.66 / 663.63 | 623.85 / 563.25 / 578.56 | 606.49 / 628.44 / 632.53 |
 
 Warm changed-input acknowledgement and presentation-gap percentiles aggregate
 the four configurations. Completion of all replicated dabs is tracked separately;
@@ -179,18 +180,18 @@ exclude compositor/scanout and physical input latency.
 
 | Browser/API   | Changed ack p50/p95/p99 ms | Completed ack p50/p95/p99 ms | Presentation gap p50/p95/p99 ms |
 | ------------- | -------------------------- | ---------------------------- | ------------------------------- |
-| Chrome WebGPU | 15.19 / 38.51 / 57.81      | 17.30 / 57.02 / 84.62        | 18.02 / 29.14 / 58.46           |
-| Chrome WebGL2 | 26.39 / 53.36 / 72.67      | 27.85 / 79.58 / 109.42       | 18.95 / 35.88 / 66.58           |
-| Edge WebGPU   | 15.62 / 37.10 / 43.63      | 17.63 / 43.48 / 66.97        | 17.70 / 29.52 / 50.20           |
-| Edge WebGL2   | 26.25 / 48.43 / 65.72      | 27.95 / 73.31 / 87.30        | 18.44 / 36.10 / 51.25           |
+| Chrome WebGPU | 11.88 / 45.63 / 65.30      | 12.58 / 58.75 / 88.79        | 17.42 / 26.21 / 55.21           |
+| Chrome WebGL2 | 24.10 / 50.08 / 65.75      | 25.12 / 75.79 / 93.15        | 17.61 / 32.53 / 63.29           |
+| Edge WebGPU   | 11.98 / 43.49 / 63.92      | 12.92 / 58.46 / 85.16        | 17.17 / 26.69 / 57.55           |
+| Edge WebGL2   | 24.52 / 51.31 / 67.83      | 25.87 / 75.42 / 94.67        | 17.34 / 34.08 / 63.68           |
 
 The fixed path and eight-sector support lie within at most nine tile coordinates.
 Their conservative ordinary-paint coverage/output reservation is at most 4.5 MiB,
 plus separately admitted tip/settings/queue/input, paging and display resources.
 This bounds unobserved allocation without calling a frame-fence sample an
 exhaustive peak. Raw data, ordinary-view captures, assets and summary:
-`bench/results/p9-m5-axis-final-performance*`; reproduce with `pnpm bench:advanced-brush`.
-Processing head is `8ea6566e4bd963a3df91b0ccab2c08689043122b`.
+`bench/results/p9-m5-frame-final-performance*`; reproduce with `pnpm bench:advanced-brush`.
+Processing head is `4c7a643b7261b824dab8cec01b9c042ca77c5676`; final report-only changes are verified for source and build equivalence.
 
 ### Clone phase regression
 
@@ -204,29 +205,29 @@ retained. All-visible sampling paints a separate raster. No build/test overlaps.
 
 | Source      | Browser/API   | Presentation fps, two trials | Changed-input ack fps, two trials |
 | ----------- | ------------- | ---------------------------- | --------------------------------- |
-| Current     | Chrome WebGPU | 57.08 / 57.69                | 49.60 / 44.46                     |
-| Current     | Chrome WebGL2 | 57.00 / 56.86                | 48.79 / 42.65                     |
-| Current     | Edge WebGPU   | 57.73 / 57.84                | 49.76 / 43.63                     |
-| Current     | Edge WebGL2   | 56.65 / 56.86                | 48.17 / 42.89                     |
-| All-visible | Chrome WebGPU | 27.93 / 30.14                | 24.44 / 24.91                     |
-| All-visible | Chrome WebGL2 | 26.39 / 26.68                | 23.65 / 21.94                     |
-| All-visible | Edge WebGPU   | 29.85 / 30.91                | 26.87 / 25.43                     |
-| All-visible | Edge WebGL2   | 26.67 / 27.64                | 23.93 / 22.41                     |
+| Current     | Chrome WebGPU | 59.98 / 59.98                | 51.27 / 44.80                     |
+| Current     | Chrome WebGL2 | 59.99 / 60.00                | 51.28 / 45.06                     |
+| Current     | Edge WebGPU   | 60.01 / 60.09                | 52.04 / 45.13                     |
+| Current     | Edge WebGL2   | 60.05 / 60.00                | 51.58 / 45.06                     |
+| All-visible | Chrome WebGPU | 29.64 / 29.91                | 25.90 / 24.43                     |
+| All-visible | Chrome WebGL2 | 27.14 / 25.88                | 24.16 / 20.16                     |
+| All-visible | Edge WebGPU   | 30.66 / 30.12                | 27.17 / 24.89                     |
+| All-visible | Edge WebGL2   | 26.64 / 25.90                | 23.90 / 21.41                     |
 
 Current/all-visible observed logical CPU peaks are 103.93/202.18 MiB; GPU at most
-32.11 MiB. Current changed-ack p95 spans 25.54-30.62 ms, all-visible 50.10-64.63 ms;
+32.11 MiB. Current changed-ack p95 spans 24.41-30.35 ms, all-visible 51.17-60.28 ms;
 the complete per-trial p50/p95/p99 cadence/latency, start response, source settings,
-input delivery and bounds are in `p9-m5-axis-final-clone-*-performance.json` and the
+input delivery and bounds are in `p9-m5-frame-final-clone-*-performance.json` and the
 performance summary. Presentation includes unchanged previews and does not mean
 60 distinct document updates per second.
 
 The original all-visible 60 fps target remains failed under its existing explicit
-P12 deferral. **Current-layer misses remain open without a new user decision.**
-An unmodified accepted M4 deployment-bundle comparison on the same machine today
+P12 deferral. Current-layer cadence is restored within its previously accepted nominal 60 Hz range.
+A separately retained unmodified accepted M4 deployment-bundle comparison
 also measures 56.08-57.74 fps; this is diagnostic context, not M5 acceptance or an
 inferred extension of the old waiver.
 
-## Verification, visual evidence and remaining gates
+## Verification and certification
 
 All 233 Rust tests, native/WASM clippy, Rust formatting, TypeScript, ESLint,
 Prettier, 23 Vitest cases and 459 license expressions pass. Independent oracles
@@ -234,12 +235,14 @@ cover coverage/transform math, deterministic slicing, image/texture across every
 stroke pipeline, selection/crop/alpha/locks, cold source pages, bounded admission,
 partial refusal/cancellation/no-op redo and exact command restoration.
 
-The clean 96-case focused installed-browser run and 42-case focused software run
-pass once per case, with zero failures/skips/retries/flaky/global errors. Rebuilt
+Earlier focused runs retain 96 installed-browser hardware and 42 software cases,
+plus a 124-case optimization-candidate hardware supplement. Each passes once,
+with zero failures/skips/retries/flaky/global errors; these supplements do not
+replace the final full matrix. Rebuilt
 WebView2 passes both NVIDIA APIs, all retained broad checks and new image/preset/
 oriented mirror/radial/coincident-union/one-command/exact undo/redo checks.
-The optimization candidate's Windows WASM is 4,547,667 bytes / gzip9 **1,682,136**,
-below the unchanged 2,000,000 gate. Full final verification is still required.
+The optimized Windows WASM is 4,547,667 bytes / gzip9 **1,682,136**,
+below the unchanged 2,000,000 gate. Final acceptance is guarded by the complete evidence requirements below.
 
 Ordinary-view captures and 4x nearest magnifications show transformed asymmetric
 tip coverage and grain on both APIs. Magnifications composite onto light gray
@@ -248,14 +251,14 @@ portrait seam/texture assessments retain their original scope and limitations.
 Fresh phase-wide M2/M3/M4 regression images must be inspected with new evidence
 prefixes before final certification.
 
-Remaining final certification requires the complete 752-case local hardware
+Final certification requires the complete 752-case local hardware
 matrix, exact-final-head remote CI/deployment, actual downloaded artifacts
 (expected 560 software cases and both software WebView2 APIs), hosted runtime
 byte equality and relevant hosted hardware cases. Inspect all attempts; require
 zero failures/skips/retries/flaky/global errors. The certificate records actual
 run/artifact identities, hashes, case counts, driver events and source equivalence.
-No passing subset substitutes for a complete matrix. Resolve the current-layer
-performance gate before tagging, even if the other checks are green.
+No passing subset substitutes for a complete matrix. The certificate records the restored current-layer cadence with all eight raw trials,
+using the same nominal 60 Hz interpretation accepted at M1. No extra waiver.
 
 Failed/superseded attempts remain separate in `p9-m5-attempts.json`: the
 Fit-versus-100% mask fixture, redundant input-residency walks, hidden-control
@@ -263,7 +266,11 @@ rerenders, a zero-test port conflict and the resulting shared trace-directory
 collision. Exact assertions and deadlines were retained. A diagnostic 64-poll
 GPU experiment did not improve speed and was reverted; the accepted nearest
 sampling correction and completed-work fence remain intact. Instrumented and
-old-runtime timings never certify the chosen runtime. A new independent oracle
+old-runtime timings never certify the chosen runtime. The native centered-stamp fixture also exposed a stale redo snapshot: direct API
+Undo had completed before React published its revision. The smoke now awaits
+published redo and subsequent Undo revisions before new native input, keeping
+the original exact pixel oracle. Failed exports and pointer coordinates remain
+retained. A new independent oracle
 found that coincident asymmetric orientations were discarded; Rust now unions
 their coverage before flow. New native/browser/desktop center cases pass.
 All pre-correction timings and the deliberately cancelled partial regression
@@ -273,7 +280,7 @@ and was rejected without changing the production shader.
 
 ## Deferred work and proposed P10
 
-No selected M5 feature is deferred. Current-layer clone speed remains unresolved;
+No selected M5 feature is deferred. Current-layer clone cadence is restored;
 all-visible clone speed retains only its existing user-approved P12 deferral.
 P5's identifiable Photoshop feather comparison remains open without `p5-select`.
 Physical Windows Ink keeps its approved deferral. Recorded P6/P7 limits, P8's

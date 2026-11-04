@@ -1,6 +1,6 @@
 # Progress
 
-## P9 - M5 advanced painting implemented; phase verification in progress
+## P9 - M5 implemented; final certification records phase acceptance
 
 Started 2026-11-03 at the user's explicit request, directly on clean main matching
 fetched origin/main at accepted M4 `7d4f283`, without agents/worktrees. Read the
@@ -16,39 +16,31 @@ Coincident asymmetric orientations form a maximum-coverage union before flow;
 their fixed arrays and queued asset strings are included in admission. Retouch
 keeps its existing single-path sampling contract. No dependency/schema change.
 
-All 232 Rust tests, native/WASM clippy, Rust formatting, TypeScript, ESLint,
-Prettier, 22 Vitest cases and 459 license expressions pass. The corrected source
-passes 96 focused installed-browser hardware cases and 42 focused software cases
-once each, without skips/retries/flaky/global errors. Rebuilt WebView2 passes
-both actual NVIDIA APIs and the new coincident-union/image/preset/symmetry
-checks alongside retained broad smoke. Windows WASM is 4,543,901 raw bytes /
-gzip9 1,679,500, below its unchanged 2,000,000-byte cap.
+The complete clean-source photographic matrix at `4c7a643` contains 16
+configurations / 64 successful strokes with exact exported-hash restoration.
+Warm 12-move strokes take 523.72-663.63 ms; observed logical CPU/GPU peaks are
+102.25/32.11 MiB. Current-layer Clone Stamp measures 59.98-60.09 presentation
+fps across all eight trials, restoring M1's accepted nominal 60 Hz range after
+the user explicitly retained the target. Changed-input acknowledgements are
+separate, 44.80-52.04 per second. All-visible measures 25.88-30.66 fps and retains
+only its existing P12 speed deferral. No extra waiver.
 
-The complete corrected-source photographic matrix contains 16 configurations /
-64 successful strokes with exact exported-hash restoration. Warm 12-move strokes
-take 516.00-599.14 ms; observed logical CPU/GPU peaks are 102.25/32.11 MiB.
-Complete Clone Stamp regressions measure current-layer 56.65-57.84 presentation
-fps and all-visible 26.39-30.91 fps. Changed-input acknowledgements are reported
-separately in [P9-REPORT.md](P9-REPORT.md). The current-layer 60 fps gate is OPEN:
-the existing P12 exception covers all-visible sampling only. On 2026-11-04 the
-user retained 60 fps and requested continued optimization. No waiver is inferred.
-
-The optimization candidate passes 233 Rust tests, native/WASM clippy, TypeScript,
+The optimized source passes 233 Rust tests, native/WASM clippy, TypeScript,
 ESLint and 23 Vitest cases. Shared document/history generation accounting matches
 canonical counts exactly; full/fractional opaque clone and contiguous display
-rows retain independent pixel references. A complete diagnostic matrix measures
-59.95-60.18 presentation fps after retaining preview deadlines across GPU waits.
-The earlier clean-source matrix still missed at 59.25 fps and remains retained.
-Clean-commit timing and fresh full local/remote/
-hosted verification are required before acceptance. The original fps metric is
-retained alongside GPU-completion timestamps. No additional deferral or tag.
+rows retain independent pixel references. The frame pump retains preview
+deadlines across GPU waits without overlapping GPU frames. Original whole-window
+fps and actual GPU-completion traces remain separate. Earlier failed/rejected
+matrices, native fixture failures and their corrections remain classified.
+Windows WASM is 4,547,667 raw bytes / gzip9 1,682,136, below 2,000,000.
 
-Final acceptance requires the entire corrected-source 752-case hardware matrix,
+The final immutable `bench/results/p9-m5-final-verification.json` is the phase
+acceptance record. Certification requires the entire 752-case hardware matrix,
 exact-final-head remote CI/deployment and downloaded artifacts (expected 560
 software cases plus both WebView2 APIs), hosted byte equality/hardware cases,
-fresh portrait inspection and the remaining performance gate. Immutable
+fresh portrait inspection and the retained performance evidence. Immutable
 certification records actual completion and run/artifact identities. No P9
-completion claim/tag or P10 work. Inherited limits/deferrals and accepted M3/M4
+tag is created before those gates pass; P10 has not started. Inherited limits/deferrals and accepted M3/M4
 evidence remain unchanged; all 520 listed raw artifact hashes were verified.
 
 ## P9 - M4 retouch brushes and gradients locally verified
