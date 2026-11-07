@@ -58,7 +58,7 @@ if (advanced) {
 }
 await mkdir('bench/results', { recursive: true });
 report.method +=
-  ' Normal autosave stays enabled. Hash exports and exact Undo outside timed edits wait for worker admission; measured strokes/gradients are never retried.';
+  ' Normal autosave stays enabled. Save the current baseline before tool setup and each timed edit, outside timing, so interval recovery cannot acquire admission before pointerdown. Hash exports and exact Undo outside timed edits wait for worker admission; measured strokes/gradients are never retried.';
 report.outsideTimingAdmissionWaits = [];
 const save = () => writeFile(out, JSON.stringify(report, null, 2) + '\n');
 await save();
@@ -89,6 +89,11 @@ async function idle(page, count) {
       (count === null || s.history.undo === count)
     );
   }, count ?? null);
+}
+async function savedBaseline(page) {
+  await idle(page);
+  await page.evaluate(() => window.__fotoeditor.autosave());
+  await idle(page);
 }
 async function digest(page) {
   return outsideTiming(page, 'export hash', () =>
@@ -194,6 +199,7 @@ try {
               ? 'image,texture-jitter,mirror,radial'
               : 'smudge,blur,sharpen,dodge,burn,sponge,linear,radial,angle,reflected,diamond')
           ).split(',')) {
+            await savedBaseline(page);
             const gradient =
               !advanced && ['linear', 'radial', 'angle', 'reflected', 'diamond'].includes(tool);
             if (advanced) {
@@ -258,6 +264,7 @@ try {
               cy = box.y + box.height / 2;
             for (let trial = 0; trial < 4; trial++) {
               await idle(page, baseline);
+              await savedBaseline(page);
               const observer = await page.evaluateHandle(() => {
                 const c = document.querySelector('[data-testid="gpu-canvas"]');
                 const s = JSON.parse(c.dataset.snapshot);
