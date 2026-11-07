@@ -128,7 +128,11 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       // A background autosave otherwise owns admission at the 30-second tick;
       // its visible busy state deliberately rejects new gestures. Keep normal
       // autosave enabled and never retry a stroke that has started.
-      await page.evaluate(() => (Reflect.get(window, '__fotoeditor') as EngineApi).autosave());
+      await expect
+        .poll(() =>
+          page.evaluate(() => (Reflect.get(window, '__fotoeditor') as EngineApi).autosave()),
+        )
+        .toBe(true);
       await idle(page, base);
       await page.mouse.move(x - 8, y);
       await page.mouse.down();

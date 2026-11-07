@@ -91,9 +91,21 @@ async function idle(page, count) {
   }, count ?? null);
 }
 async function savedBaseline(page) {
-  await idle(page);
-  await page.evaluate(() => window.__fotoeditor.autosave());
-  await idle(page);
+  const deadline = Date.now() + 60000;
+  for (;;) {
+    await idle(page);
+    if (await page.evaluate(() => window.__fotoeditor.autosave())) {
+      await idle(page);
+      return;
+    }
+    if (Date.now() >= deadline) throw Error('Recovery baseline was not saved before setup');
+    report.outsideTimingAdmissionWaits.push({
+      label: 'Save baseline before setup/edit',
+      at: new Date().toISOString(),
+      reason: 'Autosave returned false: current content was not confirmed saved',
+    });
+    await delay(50);
+  }
 }
 async function digest(page) {
   return outsideTiming(page, 'export hash', () =>

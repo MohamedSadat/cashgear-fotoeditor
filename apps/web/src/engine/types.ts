@@ -219,7 +219,9 @@ export interface EngineApi {
   openProject(bytes: ArrayBuffer, name: string): Promise<DocumentSnapshot>;
   saveProject(): Promise<Uint8Array>;
   startRecovery(persistent: RecoveryStatus['persistent']): Promise<void>;
-  autosave(): Promise<void>;
+  // True only when current content is already saved or this call saved it.
+  // False means admission/storage was unavailable; no completion is implied.
+  autosave(): Promise<boolean>;
   restoreRecovery(file: string): Promise<DocumentSnapshot>;
   discardRecovery(file: string): Promise<void>;
   diagnosticRecoveryFault(

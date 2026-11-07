@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import type { DocumentSnapshot } from '../../apps/web/src/engine/types';
+import type { DocumentSnapshot, EngineApi } from '../../apps/web/src/engine/types';
 const snap = async (page: Page) =>
   JSON.parse(
     (await page.getByTestId('gpu-canvas').getAttribute('data-snapshot'))!,
@@ -220,6 +220,12 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       await idle(page, 1);
       const prior = await project(page);
       await autosave(page);
+      // A completed/already-current save is distinguishable from a busy no-op.
+      await expect
+        .poll(() =>
+          page.evaluate(() => (Reflect.get(window, '__fotoeditor') as EngineApi).autosave()),
+        )
+        .toBe(true);
       await page.getByRole('button', { name: 'New canvas', exact: true }).click();
       await page.getByRole('spinbutton', { name: 'Width', exact: true }).fill('1024');
       await page.getByRole('spinbutton', { name: 'Height', exact: true }).fill('1024');
@@ -255,6 +261,9 @@ for (const backend of ['WebGPU', 'WebGL2']) {
           }),
         )
         .toBe(true);
+      expect(
+        await page.evaluate(() => (Reflect.get(window, '__fotoeditor') as EngineApi).autosave()),
+      ).toBe(false);
       const session = await context.newCDPSession(page);
       const crashed = page.waitForEvent('crash');
       void session.send('Page.crash').catch(() => {});

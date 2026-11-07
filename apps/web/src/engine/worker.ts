@@ -1974,9 +1974,10 @@ const api: EngineApi = {
       busy ||
       snapshot().painting
     )
-      return;
+      return false;
     const state = snapshot();
-    if (!state.document || state.contentRevision === savedRevision) return;
+    if (!state.document) return false;
+    if (state.contentRevision === savedRevision) return true;
     const e = requireEngine();
     busy = true;
     operation = 'Autosaving…';
@@ -1991,7 +1992,7 @@ const api: EngineApi = {
         : await store.saveStream(e.stream_write_begin(), name, (handle) =>
             writeRecoveryStream(handle, token, fault),
           );
-      if (disposed || token !== job) return;
+      if (disposed || token !== job) return false;
       savedRevision = state.contentRevision;
       recovery = {
         ...recovery,
@@ -2016,6 +2017,7 @@ const api: EngineApi = {
         operation = undefined;
       }
     }
+    return !disposed && token === job && savedRevision === state.contentRevision;
   },
   async restoreRecovery(file) {
     const e = requireIdle();
