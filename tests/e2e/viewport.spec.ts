@@ -96,6 +96,30 @@ for (const backend of ['WebGPU', 'WebGL2']) {
       await page.mouse.wheel(0, -10000);
       await page.keyboard.up('Control');
       await expect(page.getByTestId('zoom')).toHaveText('3200.0%');
+      // This point stays in the opaque blue quadrant while zooming around the
+      // pointer. Align grid edges with physical sample centers: at an integral
+      // pan the shader's strict half-pixel edge test can sample only interiors.
+      const gridPan = (await snap(page)).view.panX;
+      await page.mouse.down({ button: 'middle' });
+      await page.mouse.move(rect.x + rect.width / 2 + 0.5, rect.y + rect.height / 2);
+      await page.mouse.up({ button: 'middle' });
+      await expect.poll(async () => (await snap(page)).view.panX).toBe(gridPan + 0.5);
+      // The 32 px pixel grid must still blend its dark edge lines.
+      const magnified = PNG.sync.read(await canvas.screenshot());
+      const gridBlue = Array.from({ length: 64 }, (_, x) => {
+        const offset =
+          ((Math.floor(magnified.height / 2) + 3) * magnified.width +
+            Math.floor(magnified.width / 2) -
+            32 +
+            x) *
+          4;
+        expect(magnified.data[offset]).toBe(0);
+        expect(magnified.data[offset + 1]).toBe(0);
+        return magnified.data[offset + 2];
+      });
+      expect(Math.max(...gridBlue)).toBe(255);
+      expect(Math.min(...gridBlue)).toBeGreaterThanOrEqual(198);
+      expect(Math.min(...gridBlue)).toBeLessThanOrEqual(200);
       await page.keyboard.down('Control');
       await page.mouse.wheel(0, 10000);
       await page.keyboard.up('Control');

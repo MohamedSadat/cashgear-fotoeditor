@@ -25,6 +25,7 @@ pub struct ViewportRenderer {
     background: RenderPipeline,
     outside: RenderPipeline,
     grid: RenderPipeline,
+    grid_visible: bool,
     tiles: RenderPipeline,
     uniform: Buffer,
     binding: BindGroup,
@@ -159,6 +160,7 @@ impl ViewportRenderer {
             background,
             outside,
             grid,
+            grid_visible: false,
             tiles,
             uniform,
             binding,
@@ -316,6 +318,7 @@ impl ViewportRenderer {
     }
     pub fn prepare_background(&mut self, queue: &Queue, view: &View, dpr: f64, active: bool) {
         let canvas = view.canvas_rect();
+        self.grid_visible = active && view.zoom >= 8.0;
         queue.write_buffer(
             &self.uniform,
             0,
@@ -329,7 +332,7 @@ impl ViewportRenderer {
                 (view.zoom * dpr) as f32,
                 view.rotation as f32,
                 if view.flipped { -1.0 } else { 1.0 },
-                if view.zoom >= 8.0 { 1.0 } else { 0.0 },
+                if self.grid_visible { 1.0 } else { 0.0 },
                 if active { 1.0 } else { 0.0 },
                 0.0,
                 canvas.x as f32,
@@ -346,6 +349,11 @@ impl ViewportRenderer {
         pass.draw(0..3, 0..1);
     }
     pub fn draw_grid(&self, pass: &mut RenderPass<'_>) {
+        // Below 800%, the shader only returns transparent pixels. Avoid its
+        // full-screen fragment and blend work, including on live previews.
+        if !self.grid_visible {
+            return;
+        }
         pass.set_pipeline(&self.grid);
         pass.set_bind_group(0, &self.binding, &[]);
         pass.draw(0..3, 0..1);
@@ -580,7 +588,6 @@ impl ViewportRenderer {
                 pass.draw(0..6, 0..page.instances);
             }
         }
-        pass.set_pipeline(&self.grid);
-        pass.draw(0..3, 0..1);
+        self.draw_grid(pass);
     }
 }
