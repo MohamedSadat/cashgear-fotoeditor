@@ -6,18 +6,30 @@ scatter/jitter, texture, CashGear brush libraries and mirror/radial painting.
 Phase completion requires the remaining gates below and the immutable final
 certificate before creating `p9-retouch`. P10 has not started.
 
-**Current-layer clone cadence is restored:** the complete clean-source matrix
-measures 59.98-60.09 presentation fps across installed Chrome/Edge and both
-NVIDIA APIs, within the current-layer nominal 60 Hz range already accepted at M1.
-The user retained that target on 2026-11-04; no additional speed waiver is used.
-Changed-input acknowledgements are separate, 44.80-52.04 per second. The original
-whole-window fps metric is unchanged; actual GPU-fence completion traces,
-notification delays and baseline/tail gaps are retained alongside it.
+**Current-layer clone speed remains open (2026-11-08):** the complete clean-source
+matrix at `3e30cd0` measures 65.96-75.20 presentation fps on WebGPU and
+53.25-59.99 on WebGL2. A complete same-source repeat, with agent tool activity
+paused during timing, measures 69.39-72.44 and 48.11-59.73 respectively. Both
+eight-trial matrices are retained. Other GPU applications remained uncontrolled;
+their observed activity does not establish the cause of the stalls. The prior
+November 4 matrix below is historical evidence, not current speed acceptance.
+The user retained 60 fps; no additional speed waiver is authorized. The original
+whole-window fps metric is unchanged. Changed-input acknowledgements, actual
+GPU-fence completion traces, notification delays and baseline/tail gaps remain
+separate from physical display scanout.
 
 Opaque-row specialization, one shared document/history residency walk,
 contiguous display conversion and 2D cursor transforms preserve exact samples
 and budgets. The frame pump retains a preview deadline that fires during an
 earlier GPU fence and services its unused slot after actual completion.
+Fresh stroke input now uses a free slot immediately after GPU completion, even
+within the same UI animation epoch. One GPU transaction remains in flight;
+navigation and idle previews retain their animation pacing. Genuine input-driven
+GPU completion rates can exceed display refresh, without implying faster scanout.
+Stable control metadata also avoids rerendering editing panels for cursor and
+memory telemetry, which still update at full rate. Instrumented CPU traces show
+main-thread frame-message handling falling from approximately 2.05 to 0.69 ms per
+message; those traces are not acceptance timings.
 The earlier clean-source optimization still had a 59.25 fps WebGL2 trial;
 that complete matrix and every rejected experiment remain separately classified.
 All-visible sampling still misses 60 fps and retains only its existing P12
@@ -191,7 +203,8 @@ plus separately admitted tip/settings/queue/input, paging and display resources.
 This bounds unobserved allocation without calling a frame-fence sample an
 exhaustive peak. Raw data, ordinary-view captures, assets and summary:
 `bench/results/p9-m5-frame-final-performance*`; reproduce with `pnpm bench:advanced-brush`.
-Processing head is `4c7a643b7261b824dab8cec01b9c042ca77c5676`; final report-only changes are verified for source and build equivalence.
+This historical matrix uses processing head `4c7a643b7261b824dab8cec01b9c042ca77c5676`.
+Fresh final-source measurements and build equivalence remain required.
 
 ### Clone phase regression
 
@@ -222,7 +235,11 @@ performance summary. Presentation includes unchanged previews and does not mean
 60 distinct document updates per second.
 
 The original all-visible 60 fps target remains failed under its existing explicit
-P12 deferral. Current-layer cadence is restored within its previously accepted nominal 60 Hz range.
+P12 deferral. The November 4 current-layer matrix restored its previously accepted
+nominal 60 Hz range. The newer complete matrices above miss the retained target,
+so the current-layer gate is open. Their raw evidence is in
+`p9-m5-throughput-final-clone-current-performance.json` and
+`p9-m5-quiet-window-clone-current-performance.json`.
 A separately retained unmodified accepted M4 deployment-bundle comparison
 also measures 56.08-57.74 fps; this is diagnostic context, not M5 acceptance or an
 inferred extension of the old waiver.
@@ -230,7 +247,7 @@ inferred extension of the old waiver.
 ## Verification and certification
 
 All 233 Rust tests, native/WASM clippy, Rust formatting, TypeScript, ESLint,
-Prettier, 23 Vitest cases and 459 license expressions pass. Independent oracles
+Prettier, 27 Vitest cases and 459 license expressions pass. Independent oracles
 cover coverage/transform math, deterministic slicing, image/texture across every
 stroke pipeline, selection/crop/alpha/locks, cold source pages, bounded admission,
 partial refusal/cancellation/no-op redo and exact command restoration.
@@ -257,10 +274,18 @@ matrix, exact-final-head remote CI/deployment, actual downloaded artifacts
 byte equality and relevant hosted hardware cases. Inspect all attempts; require
 zero failures/skips/retries/flaky/global errors. The certificate records actual
 run/artifact identities, hashes, case counts, driver events and source equivalence.
-No passing subset substitutes for a complete matrix. The certificate records the restored current-layer cadence with all eight raw trials,
-using the same nominal 60 Hz interpretation accepted at M1. No extra waiver.
+No passing subset substitutes for a complete matrix. The current-layer speed gate
+must pass on the final source, with all eight raw trials retained, before
+certification. No extra waiver is authorized.
 
 Failed/superseded attempts remain separate in `p9-m5-attempts.json`: the
+first unfiltered 752-case run failed three photographic retouch cases after
+661 passes, leaving 88 unrun. Traces show Burn pointerdown during Autosaving;
+the existing admission guard rejected the gesture before painting. The fixture
+now saves the restored baseline before each photographic stroke. Normal
+autosave, exact pixel assertions, deadlines and zero retries remain unchanged.
+All four focused photographic hardware cases pass; a new full matrix is required.
+Earlier attempts include the
 Fit-versus-100% mask fixture, redundant input-residency walks, hidden-control
 rerenders, a zero-test port conflict and the resulting shared trace-directory
 collision. Exact assertions and deadlines were retained. A diagnostic 64-poll

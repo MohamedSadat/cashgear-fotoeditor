@@ -399,9 +399,12 @@ and radial symmetry, editable multi-stop gradients. See DECISIONS.md.
 
 M5's initial phase regression measured current-layer Clone Stamp at 56.65-57.84
 presentation fps. On 2026-11-04 the user retained 60 fps and requested continued
-optimization. The complete clean-source matrix at `4c7a643` now measures
+optimization. The November 4 clean-source matrix at `4c7a643` measured
 59.98-60.09 fps, restoring M1's already accepted nominal 60 Hz current-layer
 cadence. Changed-input acknowledgements are separate. All-visible sampling still
 misses at 25.88-30.66 fps under its existing P12 exception; no additional waiver.
+Fresh complete clean-source matrices at `3e30cd0` miss that retained target on
+WebGL2 (53.25-59.99 fps, then 48.11-59.73 in a repeat). Keep the current-layer
+gate open and continue optimizing; the earlier passing matrix is historical.
 Complete all remaining verification and immutable certification before
 `p9-retouch`; stop before P10. See P9-REPORT.md.

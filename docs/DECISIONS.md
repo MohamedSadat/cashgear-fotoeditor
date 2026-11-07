@@ -1,5 +1,20 @@
 # Decisions
 
+## 2026-11-08 - Retained current-layer target remains open on fresh measurements
+
+- Complete clean-source matrices at `3e30cd0` miss current-layer Clone Stamp's
+  retained 60 fps target on WebGL2: 53.25-59.99 fps, then 48.11-59.73 in a repeat
+  with agent tool activity paused. WebGPU measures 65.96-75.20, then 69.39-72.44.
+  Keep all trials and continue optimizing. The older November 4 passing matrix
+  does not establish current acceptance. No new P12 deferral is authorized.
+- Fresh stroke input may use a completed GPU slot within the same UI RAF epoch.
+  Preserve one in-flight transaction and actual completed-work fences. Idle
+  previews/navigation stay RAF paced. GPU completion rates above refresh do not
+  establish physical scanout or distinct changed-pixel update rates.
+- Other GPU activity was observed, without controlled attribution. Do not claim
+  an exclusive machine or discard failed trials. All remaining phase-wide gates,
+  exact final-head CI, certification and the stop before P10 remain required.
+
 ## 2026-11-04 - Current-layer nominal 60 Hz cadence restored
 
 - After the user retained 60 fps, the complete clean-source matrix at `4c7a643`

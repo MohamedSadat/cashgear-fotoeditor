@@ -1,6 +1,6 @@
 # Progress
 
-## P9 - M5 implemented; final certification records phase acceptance
+## P9 - M5 implemented; current-layer speed and final verification remain open
 
 Started 2026-11-03 at the user's explicit request, directly on clean main matching
 fetched origin/main at accepted M4 `7d4f283`, without agents/worktrees. Read the
@@ -16,7 +16,7 @@ Coincident asymmetric orientations form a maximum-coverage union before flow;
 their fixed arrays and queued asset strings are included in admission. Retouch
 keeps its existing single-path sampling contract. No dependency/schema change.
 
-The complete clean-source photographic matrix at `4c7a643` contains 16
+The historical clean-source photographic matrix at `4c7a643` contains 16
 configurations / 64 successful strokes with exact exported-hash restoration.
 Warm 12-move strokes take 523.72-663.63 ms; observed logical CPU/GPU peaks are
 102.25/32.11 MiB. Current-layer Clone Stamp measures 59.98-60.09 presentation
@@ -25,14 +25,30 @@ the user explicitly retained the target. Changed-input acknowledgements are
 separate, 44.80-52.04 per second. All-visible measures 25.88-30.66 fps and retains
 only its existing P12 speed deferral. No extra waiver.
 
+Fresh clean-source measurements at `3e30cd0` on updated Edge 157 miss the retained
+current-layer target: WebGPU 65.96-75.20 fps and WebGL2 53.25-59.99. A complete
+same-source repeat with agent tool activity paused measures 69.39-72.44 and
+48.11-59.73 respectively. All eight trials in each matrix remain retained;
+background GPU activity was observed but not controlled or established as the
+cause. The November 4 passing matrix does not substitute for current acceptance.
+Continue optimizing; no `p9-retouch` or new P12 deferral is authorized.
+
 The optimized source passes 233 Rust tests, native/WASM clippy, TypeScript,
-ESLint and 23 Vitest cases. Shared document/history generation accounting matches
+ESLint and 27 Vitest cases. Shared document/history generation accounting matches
 canonical counts exactly; full/fractional opaque clone and contiguous display
 rows retain independent pixel references. The frame pump retains preview
 deadlines across GPU waits without overlapping GPU frames. Original whole-window
 fps and actual GPU-completion traces remain separate. Earlier failed/rejected
 matrices, native fixture failures and their corrections remain classified.
 Windows WASM is 4,547,667 raw bytes / gzip9 1,682,136, below 2,000,000.
+
+Fresh stroke input uses an available slot immediately after actual GPU completion,
+with one GPU transaction in flight; navigation/idle previews stay RAF paced.
+Stable control metadata isolates panels from full-rate cursor/memory telemetry.
+The first unfiltered run failed three photographic gestures during Autosaving
+(661 passed / 88 unrun). Saving the restored baseline before each gesture fixes
+fixture admission; all four focused hardware cases pass once. Normal autosave,
+exact assertions and deadlines remain unchanged. A fresh full run is required.
 
 The final immutable `bench/results/p9-m5-final-verification.json` is the phase
 acceptance record. Certification requires the entire 752-case hardware matrix,
