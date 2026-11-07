@@ -3,7 +3,7 @@ import { useWorkspace } from './state';
 import { useCrop, startCrop, applyCrop, cancelCrop } from './crop-state';
 export function CropPanel({ api, disabled }: { api?: EngineApi; disabled: boolean }) {
   const p = useCrop(),
-    d = useWorkspace((s) => s.snapshot?.document);
+    d = useWorkspace((s) => s.controls?.document);
   return (
     <section
       className="geometry-panel crop-panel"

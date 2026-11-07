@@ -170,7 +170,7 @@ function plot(bins: number[]) {
     .join(' ');
 }
 export function AdjustmentPanel({ api, disabled }: { api?: EngineApi; disabled: boolean }) {
-  const snapshot = useWorkspace((s) => s.snapshot);
+  const snapshot = useWorkspace((s) => s.controls);
   const [adjustment, setAdjustment] = useState<Adjustment>(defaults('brightness-contrast'));
   const [applying, setApplying] = useState(false);
   const [notice, setNotice] = useState('');

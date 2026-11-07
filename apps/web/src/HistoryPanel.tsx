@@ -20,7 +20,8 @@ function storedLimits(): [number, number] {
   return [256, 200];
 }
 export function HistoryPanel({ api, disabled }: { api?: EngineApi; disabled: boolean }) {
-  const snapshot = useWorkspace((s) => s.snapshot);
+  const snapshot = useWorkspace((s) => s.controls);
+  const historyBytes = useWorkspace((s) => s.snapshot?.memory.history ?? 0);
   const [limits, setLimits] = useState(storedLimits);
   const [error, setError] = useState('');
   const gesture = useRef(0);
@@ -61,8 +62,7 @@ export function HistoryPanel({ api, disabled }: { api?: EngineApi; disabled: boo
         ))}
       </div>
       <p className="history-note" data-testid="history-eviction">
-        {history?.evicted ?? 0} steps evicted ·{' '}
-        {((snapshot?.memory.history ?? 0) / 1048576).toFixed(1)} MiB retained
+        {history?.evicted ?? 0} steps evicted · {(historyBytes / 1048576).toFixed(1)} MiB retained
       </p>
       <details>
         <summary>History limits</summary>

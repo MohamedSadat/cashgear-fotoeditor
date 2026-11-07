@@ -52,7 +52,7 @@ function find(nodes: LayerNode[], id?: number): LayerNode | undefined {
   }
 }
 export function FilterPanel({ api, disabled }: { api?: EngineApi; disabled: boolean }) {
-  const snapshot = useWorkspace((s) => s.snapshot);
+  const snapshot = useWorkspace((s) => s.controls);
   const previewEnabled = useWorkspace((s) => s.previewOwner === 'filter');
   const [filter, setFilter] = useState<SpatialFilter>(defaults('gaussian'));
   const [opacity, setOpacity] = useState(100);

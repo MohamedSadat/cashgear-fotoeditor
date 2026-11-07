@@ -15,7 +15,7 @@ import { startTransform, cancelTransform, useTransform, resetTransform } from '.
 import { useSelection } from './selection-state';
 import { useBrush } from './brush-state';
 import { updateWorkspace, useWorkspace } from './state';
-import type { EngineApi, Interaction } from './engine/types';
+import type { DocumentSnapshot, EngineApi, Interaction } from './engine/types';
 import {
   fileAccessError,
   filePermission,
@@ -33,6 +33,29 @@ const presets = [
   { name: 'A4 · Print', width: 2480, height: 3508, dpi: 300 },
 ];
 const memory = (n: number) => (n / 1048576).toFixed(1) + ' MiB';
+function MemoryValue({ kind }: { kind: keyof DocumentSnapshot['memory'] }) {
+  return memory(useWorkspace((s) => s.snapshot?.memory[kind] ?? 0));
+}
+function CursorPosition() {
+  const x = useWorkspace((s) => s.snapshot?.cursor?.[0]);
+  const y = useWorkspace((s) => s.snapshot?.cursor?.[1]);
+  const width = useWorkspace((s) => s.snapshot?.document?.width);
+  const height = useWorkspace((s) => s.snapshot?.document?.height);
+  const inside =
+    x !== undefined &&
+    y !== undefined &&
+    width !== undefined &&
+    height !== undefined &&
+    x >= 0 &&
+    y >= 0 &&
+    x < width &&
+    y < height;
+  return (
+    <span className="cursor-position" data-testid="cursor-position">
+      {inside ? Math.floor(x) + ', ' + Math.floor(y) + ' px' : '—'}
+    </span>
+  );
+}
 export function App() {
   const [generation, setGeneration] = useState(0);
   const [dialog, setDialog] = useState(false);
@@ -75,7 +98,12 @@ export function App() {
       setBusy('');
     }
   }, []);
-  const { status, backend, adapter, error, size, snapshot } = useWorkspace();
+  const status = useWorkspace((s) => s.status);
+  const backend = useWorkspace((s) => s.backend);
+  const adapter = useWorkspace((s) => s.adapter);
+  const error = useWorkspace((s) => s.error);
+  const size = useWorkspace((s) => s.size);
+  const snapshot = useWorkspace((s) => s.controls);
   const doc = snapshot?.document;
   const tool = useBrush((state) => state.tool);
   const selectionBusy = useSelection((state) => state.busy);
@@ -304,14 +332,6 @@ export function App() {
       setNotice(String(e));
     }
   };
-  const cursor = snapshot?.cursor;
-  const inside =
-    doc &&
-    cursor &&
-    cursor[0] >= 0 &&
-    cursor[1] >= 0 &&
-    cursor[0] < doc.width &&
-    cursor[1] < doc.height;
   return (
     <div className="app" data-status={status}>
       {exportDialog && engineApi && (
@@ -857,19 +877,27 @@ export function App() {
           >
             <div>
               <dt>Document</dt>
-              <dd>{memory(snapshot?.memory.document ?? 0)}</dd>
+              <dd>
+                <MemoryValue kind="document" />
+              </dd>
             </div>
             <div>
               <dt>History</dt>
-              <dd>{memory(snapshot?.memory.history ?? 0)}</dd>
+              <dd>
+                <MemoryValue kind="history" />
+              </dd>
             </div>
             <div>
               <dt>Temporary</dt>
-              <dd>{memory(snapshot?.memory.temporary ?? 0)}</dd>
+              <dd>
+                <MemoryValue kind="temporary" />
+              </dd>
             </div>
             <div>
               <dt>GPU atlas</dt>
-              <dd>{memory(snapshot?.memory.gpu ?? 0)}</dd>
+              <dd>
+                <MemoryValue kind="gpu" />
+              </dd>
             </div>
           </dl>
           <div className="workspace-note">
@@ -945,17 +973,14 @@ export function App() {
         <span data-testid="gpu-backend" title={adapter}>
           {backend ?? 'Detecting GPU'}
         </span>
-        <span className="cursor-position" data-testid="cursor-position">
-          {inside ? Math.floor(cursor[0]) + ', ' + Math.floor(cursor[1]) + ' px' : '—'}
-        </span>
+        <CursorPosition />
         <span className="status-right">
           {doc
             ? doc.width + ' × ' + doc.height + ' · ' + (snapshot!.view.zoom * 100).toFixed(1) + '%'
             : 'READY WHEN YOU ARE'}
         </span>
         <span data-testid="status-memory" title="Logical CPU tile buffers">
-          Doc {memory(snapshot?.memory.document ?? 0)} · Undo{' '}
-          {memory(snapshot?.memory.history ?? 0)}
+          Doc <MemoryValue kind="document" /> · Undo <MemoryValue kind="history" />
         </span>
       </footer>
       <dialog

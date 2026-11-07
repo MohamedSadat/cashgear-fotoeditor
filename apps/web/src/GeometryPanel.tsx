@@ -10,7 +10,7 @@ import { updateWorkspace, useWorkspace } from './state';
 import { useGeometry } from './geometry-state';
 
 export function GeometryPanel({ api, disabled }: { api?: EngineApi; disabled: boolean }) {
-  const doc = useWorkspace((s) => s.snapshot?.document);
+  const doc = useWorkspace((s) => s.controls?.document);
   const [crop, setCrop] = useState({ x: 0, y: 0, width: 100, height: 100 });
   const [axis, setAxis] = useState<Guide['axis']>('vertical');
   const [position, setPosition] = useState(0);

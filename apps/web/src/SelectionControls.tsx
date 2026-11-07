@@ -4,7 +4,7 @@ import { useWorkspace, updateWorkspace } from './state';
 import { useBrush } from './brush-state';
 export function SelectionControls({ api, disabled }: { api?: EngineApi; disabled: boolean }) {
   const settings = useSelection();
-  const snapshot = useWorkspace((s) => s.snapshot);
+  const snapshot = useWorkspace((s) => s.controls);
   const blocked = disabled || settings.busy || !api;
   const act = (action: SelectionAction) => {
     if (api) void performSelection(api, action);

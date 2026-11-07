@@ -21,7 +21,7 @@ const modes = [
   'luminosity',
 ];
 export function LayerPanel({ api, disabled }: { api?: EngineApi; disabled: boolean }) {
-  const layers = useWorkspace((s) => s.snapshot?.layers);
+  const layers = useWorkspace((s) => s.controls?.layers);
   const revision = useWorkspace((s) => s.snapshot?.contentRevision);
   const painting = useWorkspace((s) => s.snapshot?.painting);
   const [thumbnails, setThumbnails] = useState<Record<number, string>>({});

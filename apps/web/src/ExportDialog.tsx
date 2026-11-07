@@ -22,7 +22,7 @@ export function ExportDialog({
   const dialog = useRef<HTMLDialogElement | null>(null);
   const revision = useWorkspace((s) => s.snapshot?.revision);
   const active = useWorkspace((s) => s.snapshot?.layers.active);
-  const document = useWorkspace((s) => s.snapshot?.document);
+  const document = useWorkspace((s) => s.controls?.document);
   const [options, setOptions] = useState(defaults);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');

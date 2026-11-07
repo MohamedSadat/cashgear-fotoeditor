@@ -13,7 +13,7 @@ import {
   mapQuad,
 } from './transform-state';
 export function TransformPanel({ api, disabled }: { api?: EngineApi; disabled: boolean }) {
-  const session = useWorkspace((s) => s.snapshot?.transform);
+  const session = useWorkspace((s) => s.controls?.transform);
   const selected = useWorkspace((s) => s.snapshot?.selection.active);
   const settings = useTransform();
   const snapping = useGeometry((s) => s.snapping);
