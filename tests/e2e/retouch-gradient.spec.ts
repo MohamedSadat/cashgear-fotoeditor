@@ -124,6 +124,12 @@ for (const backend of ['WebGPU', 'WebGL2']) {
         'Retouch strength',
         ['dodge', 'burn', 'sponge'].includes(mode) ? 0.05 : mode === 'sharpen' ? 0.2 : 0.5,
       );
+      // Complete recovery of the restored document before native pointerdown.
+      // A background autosave otherwise owns admission at the 30-second tick;
+      // its visible busy state deliberately rejects new gestures. Keep normal
+      // autosave enabled and never retry a stroke that has started.
+      await page.evaluate(() => (Reflect.get(window, '__fotoeditor') as EngineApi).autosave());
+      await idle(page, base);
       await page.mouse.move(x - 8, y);
       await page.mouse.down();
       await page.mouse.move(x + 8, y, { steps: 8 });
