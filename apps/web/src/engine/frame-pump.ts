@@ -75,7 +75,11 @@ export class FramePump {
       if (
         this.inputs.length &&
         !this.pendingSize &&
-        this.presentedEpoch < this.epoch &&
+        // Fresh stroke input can use a completed GPU slot immediately. Only
+        // navigation/idle previews wait for another RAF; the busy flag still
+        // prevents overlapping GPU transactions or an unbounded render queue.
+        (this.presentedEpoch < this.epoch ||
+          this.inputs.some((input) => input.kind.startsWith('stroke-'))) &&
         this.resizedEpoch < this.epoch
       )
         this.flush(performance.now());

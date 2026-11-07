@@ -8,6 +8,49 @@ const settle = async () => {
 };
 
 describe('FramePump ownership and backpressure', () => {
+  it('admits fresh stroke input after GPU completion without waiting for another RAF', async () => {
+    vi.useFakeTimers();
+    let complete!: (value: FrameResult) => void;
+    const active = { ...frame, snapshot: { painting: true } as DocumentSnapshot };
+    const api = {
+      resize: vi.fn(),
+      frame: vi
+        .fn()
+        .mockResolvedValueOnce({ ...active, presented: false })
+        .mockResolvedValueOnce({ ...active, presented: false })
+        .mockImplementationOnce(
+          () =>
+            new Promise<FrameResult>((resolve) => {
+              complete = resolve;
+            }),
+        )
+        .mockResolvedValue(active),
+    };
+    const pump = new FramePump(api, vi.fn(), vi.fn());
+    try {
+      pump.resize({ width: 100, height: 100 });
+      pump.tick(0);
+      await vi.advanceTimersByTimeAsync(0);
+      pump.tick(16);
+      await vi.advanceTimersByTimeAsync(0);
+      pump.input({ kind: 'stroke-sample', x: 1, y: 2, amount: 0 });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(api.frame).toHaveBeenCalledTimes(3);
+      const next = { kind: 'stroke-sample' as const, x: 3, y: 4, amount: 0 };
+      pump.input(next);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(api.frame).toHaveBeenCalledTimes(3);
+      complete(active);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(api.frame).toHaveBeenCalledTimes(4);
+      expect(api.frame.mock.calls[3][1]).toEqual([next]);
+      await vi.advanceTimersByTimeAsync(10);
+      expect(api.frame).toHaveBeenCalledTimes(4);
+    } finally {
+      pump.stop();
+      vi.useRealTimers();
+    }
+  });
   it('retains a preview deadline that fires while an earlier GPU fence is pending', async () => {
     vi.useFakeTimers();
     let complete!: (value: FrameResult) => void;
@@ -115,10 +158,13 @@ describe('FramePump ownership and backpressure', () => {
       expect(api.frame.mock.calls[2][2]).toBe(true);
       pump.input({ kind: 'stroke-sample', x: 1, y: 2, amount: 0 });
       await vi.advanceTimersByTimeAsync(0);
-      expect(api.frame).toHaveBeenCalledTimes(3);
+      expect(api.frame).toHaveBeenCalledTimes(4);
+      expect(api.frame.mock.calls[3][1]).toEqual([
+        { kind: 'stroke-sample', x: 1, y: 2, amount: 0 },
+      ]);
       pump.stop();
       await vi.advanceTimersByTimeAsync(32);
-      expect(api.frame).toHaveBeenCalledTimes(3);
+      expect(api.frame).toHaveBeenCalledTimes(4);
     } finally {
       pump.stop();
       vi.useRealTimers();
@@ -177,7 +223,7 @@ describe('FramePump ownership and backpressure', () => {
     await settle();
     expect(api.frame).toHaveBeenCalledTimes(2);
   });
-  it('flushes edits after an idle poll and permits only one presentation per RAF epoch', async () => {
+  it('keeps navigation paced to RAF after an input-driven stroke presentation', async () => {
     const api = {
       resize: vi.fn(),
       frame: vi
@@ -195,7 +241,7 @@ describe('FramePump ownership and backpressure', () => {
     pump.input({ kind: 'stroke-sample', x: 1, y: 2, amount: 0 });
     await settle();
     expect(api.frame).toHaveBeenCalledTimes(3);
-    pump.input({ kind: 'stroke-end', x: 2, y: 3, amount: 0 });
+    pump.input({ kind: 'pan', x: 2, y: 3, amount: 0 });
     await settle();
     expect(api.frame).toHaveBeenCalledTimes(3);
     pump.tick(32);
@@ -230,11 +276,9 @@ describe('FramePump ownership and backpressure', () => {
     expect(api.frame).toHaveBeenCalledTimes(1);
     complete(frame);
     await settle();
-    pump.tick(3);
-    await settle();
     expect(api.frame.mock.calls).toEqual([
       [1, [begin]],
-      [3, [point, end]],
+      [expect.any(Number), [point, end]],
     ]);
   });
   it('batches ordered input in one frame RPC and retains the latest cursor', async () => {
