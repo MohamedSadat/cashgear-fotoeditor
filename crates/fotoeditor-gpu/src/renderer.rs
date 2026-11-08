@@ -5,22 +5,22 @@ use fotoeditor_core::{Document, View};
 use web_sys::OffscreenCanvas;
 use wgpu::*;
 // Message tasks break nested-timer clamping while the completed-work fence stays
-// in place. Only the first sixteen polls are rapid; slow queues then poll at
-// one millisecond without accumulating work or spinning indefinitely.
+// in place. Give the browser/GPU a millisecond between status queries instead of
+// repeatedly posting immediate polls while the same work remains incomplete.
 #[wasm_bindgen::prelude::wasm_bindgen(inline_js = "
 const channel = new MessageChannel();
 const waiting = [];
 channel.port1.onmessage = () => waiting.shift()?.();
-export function nextFencePoll(rapid) {
+export function nextFencePoll() {
     return new Promise(resolve => {
-        waiting.push(rapid ? resolve : () => setTimeout(resolve, 1));
+        waiting.push(() => setTimeout(resolve, 1));
         channel.port2.postMessage(null);
     });
 }
 ")]
 extern "C" {
     #[wasm_bindgen::prelude::wasm_bindgen(js_name = nextFencePoll)]
-    fn next_fence_poll(rapid: bool) -> js_sys::Promise;
+    fn next_fence_poll() -> js_sys::Promise;
 }
 
 pub struct Renderer {
@@ -554,7 +554,6 @@ impl Renderer {
         let device = self.device.clone();
         let disposed = self.disposed.clone();
         wasm_bindgen_futures::future_to_promise(async move {
-            let mut rapid_polls = 16_u8;
             while !complete.load(Ordering::Relaxed) {
                 if disposed.load(Ordering::Relaxed) {
                     return Err(wasm_bindgen::JsValue::from_str("Renderer disposed"));
@@ -571,9 +570,7 @@ impl Renderer {
                 if complete.load(Ordering::Relaxed) {
                     break;
                 }
-                let rapid = rapid_polls > 0;
-                rapid_polls = rapid_polls.saturating_sub(1);
-                wasm_bindgen_futures::JsFuture::from(next_fence_poll(rapid)).await?;
+                wasm_bindgen_futures::JsFuture::from(next_fence_poll()).await?;
             }
             Ok(wasm_bindgen::JsValue::UNDEFINED)
         })
