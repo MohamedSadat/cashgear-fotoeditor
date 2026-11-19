@@ -88,7 +88,11 @@ async function probes() {
         const page = await browser.newPage();
         try {
           await page.goto(base + '/?diagnostic=1' + (backend === 'WebGL2' ? '&gpu=webgl2' : ''));
-          await expect(page.getByTestId('engine-status')).toHaveText('Engine ready');
+          // Match the installed-browser suite's readiness timeout. This probe
+          // verifies the backend after startup, including on the deployed URL.
+          await expect(page.getByTestId('engine-status')).toHaveText('Engine ready', {
+            timeout: 30_000,
+          });
           await expect(page.getByTestId('gpu-backend')).toHaveText(backend);
           const gpu = await page.evaluate(async () => {
             const a = await navigator.gpu?.requestAdapter();
