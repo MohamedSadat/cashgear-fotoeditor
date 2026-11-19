@@ -2082,7 +2082,11 @@ const api: EngineApi = {
         },
       });
     }
-    await initWasm({ module_or_path: new URL('./pkg/fotoeditor_wasm_bg.wasm', import.meta.url) });
+    // Complete the fetch before instantiation. Cold hosted launches showed
+    // long stalls in streaming instantiation even after the response arrived.
+    const wasm = await fetch(new URL('./pkg/fotoeditor_wasm_bg.wasm', import.meta.url));
+    if (!wasm.ok) throw new Error(`Could not load the image engine (HTTP ${wasm.status})`);
+    await initWasm({ module_or_path: await wasm.arrayBuffer() });
     const created = await Engine.create(
       canvas,
       options.backend,
