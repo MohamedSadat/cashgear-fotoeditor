@@ -16,6 +16,20 @@ Coincident asymmetric orientations form a maximum-coverage union before flow;
 their fixed arrays and queued asset strings are included in admission. Retouch
 keeps its existing single-path sampling contract. No dependency/schema change.
 
+On November 19, `e42fc15` passed all 752 local hardware cases, both NVIDIA
+WebView2 smoke tests and remote CI run `44602649757`. The eight hosted runtime
+files matched the Azure build artifact. Three current-layer Clone Stamp timing
+matrices yielded 59.722–60.102 fps on WebGL2 and 66.70–75.15 fps on WebGPU. Three
+of 24 trials missed the previously accepted nominal range. All-visible sampling
+measured 20.41–35.36 fps under its existing P12 deferral. The fresh M5 matrix ran
+64 strokes with exact hash restoration in all 16 configurations.
+
+Hosted hardware acceptance remains open after eight of the first 56 cases
+timed out during engine initialization, leaving 180 unrun. The worker trace
+isolated a long wait in streaming WASM instantiation. A buffered instantiation
+diagnostic reached ready in all 24 cold starts. The production startup change
+requires fresh local and hosted verification alongside the retained speed gate.
+
 The historical clean-source photographic matrix at `4c7a643` contains 16
 configurations / 64 successful strokes with exact exported-hash restoration.
 Warm 12-move strokes take 523.72-663.63 ms; observed logical CPU/GPU peaks are

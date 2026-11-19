@@ -6,7 +6,15 @@ scatter/jitter, texture, CashGear brush libraries and mirror/radial painting.
 Phase completion requires the remaining gates below and the immutable final
 certificate before creating `p9-retouch`. P10 has not started.
 
-**Current-layer clone speed remains open (2026-11-08):** the complete clean-source
+**Current-layer clone speed remains open (2026-11-19).** Three complete timing
+matrices on `e42fc15`, Chrome 157.0.8103.79 and Edge 157.0.4341.60, measured
+59.722–60.102 presentation fps on WebGL2 and 66.70–75.15 on WebGPU. Three of the
+24 trials were below the previously accepted nominal range of 59.79 fps or
+higher. The largest WebGL2 shortfall was 59.722 fps. All trials, including earlier
+failures and the two rejected viewport and preview experiments, remain in the
+original whole-window records. The 60 fps target is still required.
+
+The November 8 clean-source
 matrix at `3e30cd0` measures 65.96-75.20 presentation fps on WebGPU and
 53.25-59.99 on WebGL2. A complete same-source repeat, with agent tool activity
 paused during timing, measures 69.39-72.44 and 48.11-59.73 respectively. Both
@@ -245,6 +253,32 @@ also measures 56.08-57.74 fps; this is diagnostic context, not M5 acceptance or 
 inferred extension of the old waiver.
 
 ## Verification and certification
+
+On `e42fc15`, all 752 installed-browser hardware cases passed in 30 specs with
+zero retries, skips or global errors and no matching driver events. The Windows
+smoke passed both NVIDIA backends. The deployed bundle's eight runtime files
+matched the deployment artifact. CI run `44602649757` passed, including the
+560 software browser cases and both WebView2 software backends. All 12 local
+portrait reviews and the 520 inherited artifact hashes were checked.
+
+The fresh M5 performance matrix on that head completed 64 strokes across 16
+configurations. Every configuration restored its exported hash after Undo.
+Warm strokes took 495.63–661.48 ms with observed logical CPU and GPU peaks of
+102.25 and 32.11 MiB. One recovery admission wait occurred during preparation,
+outside the measured edits. All-visible Clone Stamp measured 20.41–35.36 fps
+and remains under its existing P12 deferral.
+
+Hosted verification stopped in the first spec with 48 passes, eight starts
+that exceeded the test's 30-second readiness assertion, and 180 unrun cases.
+A preceding attempt stopped during the adapter probe before any test ran.
+In startup diagnostics, storage permission and recovery completed in
+milliseconds after worker initialization. Streaming WASM instantiation alone
+took 22.5 seconds in one slow start. All 24 diagnostics using the same WASM
+bytes in a downloaded buffer reached ready in 2.8–22.0 seconds. The production
+loader now buffers the response before instantiation. The adapter preflight
+uses the installed-browser suite's 30-second readiness timeout. The functional
+test deadlines and timing harness remain as before. Fresh verification of the
+deployed loader is still required.
 
 All 233 Rust tests, native/WASM clippy, Rust formatting, TypeScript, ESLint,
 Prettier, 27 Vitest cases and 459 license expressions pass. Independent oracles
