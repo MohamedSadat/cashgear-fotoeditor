@@ -57,13 +57,15 @@ export class FramePump {
     this.previewTimer = setTimeout(() => {
       if (
         this.epoch === epoch &&
-        this.painting &&
+        (this.painting || this.busy) &&
         !this.pendingSize &&
         this.presentedEpoch < epoch &&
         this.resizedEpoch < epoch
       ) {
+        // A stroke can start in the frame still waiting for its GPU fence.
+        // Remember the deadline and only present after painting is confirmed.
         this.previewDue = true;
-        this.flush(performance.now(), true);
+        if (this.painting) this.flush(performance.now(), true);
       }
     }, 8);
   }

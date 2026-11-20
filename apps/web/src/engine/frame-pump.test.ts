@@ -170,6 +170,47 @@ describe('FramePump ownership and backpressure', () => {
       vi.useRealTimers();
     }
   });
+
+  it('retains a preview deadline crossed by the first stroke fence', async () => {
+    vi.useFakeTimers();
+    let complete!: (value: FrameResult) => void;
+    const api = {
+      resize: vi.fn(),
+      frame: vi
+        .fn()
+        .mockResolvedValueOnce({ ...frame, presented: false })
+        .mockImplementationOnce(
+          () =>
+            new Promise<FrameResult>((resolve) => {
+              complete = resolve;
+            }),
+        )
+        .mockResolvedValue(frame),
+    };
+    const pump = new FramePump(api, vi.fn(), vi.fn());
+    try {
+      pump.resize({ width: 100, height: 100 });
+      pump.tick(0);
+      await vi.advanceTimersByTimeAsync(16);
+      pump.input({ kind: 'stroke-begin', x: 1, y: 2, amount: 0 });
+      pump.tick(16);
+      await vi.advanceTimersByTimeAsync(16);
+      pump.tick(32);
+      await vi.advanceTimersByTimeAsync(8);
+      expect(api.frame).toHaveBeenCalledTimes(2);
+      complete({
+        ...frame,
+        presentedAt: performance.timeOrigin + 25,
+        snapshot: { painting: true } as DocumentSnapshot,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(api.frame).toHaveBeenCalledTimes(3);
+      expect(api.frame.mock.calls[2][2]).toBe(true);
+    } finally {
+      pump.stop();
+      vi.useRealTimers();
+    }
+  });
   it('lets new input use the preview slot before its timer', async () => {
     vi.useFakeTimers();
     const active = { ...frame, snapshot: { painting: true } as DocumentSnapshot };
