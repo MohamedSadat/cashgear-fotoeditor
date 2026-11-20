@@ -73,6 +73,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
     let lastSample: Interaction['sample'];
     let lastSampleTime = -1;
     let lastScreen: [number, number] | undefined;
+    let outlineNeedsRefresh = false;
     let spray: ReturnType<typeof setInterval> | undefined;
     let selectionDrag:
       | {
@@ -307,6 +308,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
       strokeSettings = undefined;
     }
     function refreshOutline() {
+      outlineNeedsRefresh = false;
       const brush = useBrush.getState();
       const settings = strokeSettings ?? brush.settings;
       const snapshot = useWorkspace.getState().snapshot;
@@ -712,8 +714,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
           }, 33);
       }
     });
-    function strokeSamples(event: PointerEvent) {
-      const rect = canvas.getBoundingClientRect();
+    function strokeSamples(event: PointerEvent, rect = canvas.getBoundingClientRect()) {
       if (strokePointer === event.pointerId) {
         for (const p of pointerSamples(event, rect, lastSampleTime)) {
           lastSample = p;
@@ -722,7 +723,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
         }
       }
       lastScreen = [event.clientX - rect.left, event.clientY - rect.top];
-      refreshOutline();
+      outlineNeedsRefresh = true;
       if (gradientDrag?.pointer === event.pointerId)
         drawGesture([
           gradientDrag.start,
@@ -779,7 +780,6 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
         input('cursor', ...lastScreen);
         return;
       }
-      refreshOutline();
       if (drag) {
         const dx = event.clientX - drag.x;
         const dy = event.clientY - drag.y;
@@ -787,7 +787,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
         drag.x = event.clientX;
         drag.y = event.clientY;
       }
-      strokeSamples(event);
+      strokeSamples(event, rect);
       input('cursor', event.clientX - rect.left, event.clientY - rect.top);
     });
     canvas.addEventListener('pointerup', (event) => {
@@ -973,7 +973,7 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
                 useBrush.getState().setColor(picked.rgba);
                 useBrush.setState({ sampledSerial: picked.serial });
               }
-              refreshOutline();
+              outlineNeedsRefresh = true;
               drawGeometry();
             }
             updateWorkspace((state) =>
@@ -988,6 +988,9 @@ export function CanvasHost({ generation, diagnostic, onFaultReady, onApiReady }:
         const tick = (timestamp: number) => {
           if (disposed || failed) return;
           pump!.tick(timestamp);
+          // Pointer samples reach the worker immediately. Draw the DOM outline
+          // once with the latest cursor and pressure before the next paint.
+          if (outlineNeedsRefresh) refreshOutline();
           animation = requestAnimationFrame(tick);
         };
         animation = requestAnimationFrame(tick);
