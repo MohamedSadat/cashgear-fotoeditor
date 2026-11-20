@@ -1,6 +1,6 @@
 # Progress
 
-## P9 - M5 implemented; current-layer speed and final verification remain open
+## P9 - M5 implemented and current-layer speed verified locally
 
 Started 2026-11-03 at the user's explicit request, directly on clean main matching
 fetched origin/main at accepted M4 `7d4f283`, without agents/worktrees. Read the
@@ -24,11 +24,22 @@ of 24 trials missed the previously accepted nominal range. All-visible sampling
 measured 20.41–35.36 fps under its existing P12 deferral. The fresh M5 matrix ran
 64 strokes with exact hash restoration in all 16 configurations.
 
-Hosted hardware acceptance remains open after eight of the first 56 cases
-timed out during engine initialization, leaving 180 unrun. The worker trace
-isolated a long wait in streaming WASM instantiation. A buffered instantiation
-diagnostic reached ready in all 24 cold starts. The production startup change
-requires fresh local and hosted verification alongside the retained speed gate.
+On November 20, clean `ec22901` met the retained nominal 60 fps current-layer
+Clone Stamp gate in all 24 trials. WebGL2 measured 59.964–60.017 fps and WebGPU
+measured 69.441–78.548 fps. Changed-input acknowledgements measured
+44.82–63.84 per second. The outline paints once per browser frame and native
+pointer samples reach the worker as they arrive. The frame pump preserves an
+eligible preview deadline while the first stroke awaits GPU completion.
+The same clean M5 run completed 64 strokes in 16 configurations with exact
+export restoration. Warm strokes took 494.30–666.72 ms. All-visible sampling
+measured 27.39–35.11 fps under its existing P12 deferral.
+
+Buffered WASM startup resolved the earlier hosted readiness failures. All 236
+hosted hardware cases passed on `a326b54`. The software CI trace exposed a failed
+stylesheet request that expanded the canvas and changed the filter preview.
+The embedded stylesheet fallback preserved viewport sizing in the dedicated
+hardware and software cases. The full software and desktop CI run `44706769006`
+passed on `cb542d3`. Final head verification is underway on the combined build.
 
 The historical clean-source photographic matrix at `4c7a643` contains 16
 configurations / 64 successful strokes with exact exported-hash restoration.
@@ -45,7 +56,7 @@ same-source repeat with agent tool activity paused measures 69.39-72.44 and
 48.11-59.73 respectively. All eight trials in each matrix remain retained;
 background GPU activity was observed but not controlled or established as the
 cause. The November 4 passing matrix does not substitute for current acceptance.
-Continue optimizing; no `p9-retouch` or new P12 deferral is authorized.
+Those speed misses are retained as historical comparisons.
 
 The optimized source passes 233 Rust tests, native/WASM clippy, TypeScript,
 ESLint and 27 Vitest cases. Shared document/history generation accounting matches
@@ -65,13 +76,13 @@ fixture admission; all four focused hardware cases pass once. Normal autosave,
 exact assertions and deadlines remain unchanged. A fresh full run is required.
 
 The final immutable `bench/results/p9-m5-final-verification.json` is the phase
-acceptance record. Certification requires the entire 752-case hardware matrix,
-exact-final-head remote CI/deployment and downloaded artifacts (expected 560
-software cases plus both WebView2 APIs), hosted byte equality/hardware cases,
+acceptance record. Certification requires the entire 756-case hardware matrix,
+exact-final-head remote CI/deployment and downloaded artifacts (563 software
+cases plus both WebView2 APIs), hosted byte equality and all 240 hardware cases,
 fresh portrait inspection and the retained performance evidence. Immutable
-certification records actual completion and run/artifact identities. No P9
-tag is created before those gates pass; P10 has not started. Inherited limits/deferrals and accepted M3/M4
-evidence remain unchanged; all 520 listed raw artifact hashes were verified.
+certification records actual completion and run/artifact identities. The P9
+tag follows those gates. Inherited limits and deferrals carry forward, and all
+520 listed M3/M4 raw artifact hashes were verified. P10 remains next.
 
 ## P9 - M4 retouch brushes and gradients locally verified
 

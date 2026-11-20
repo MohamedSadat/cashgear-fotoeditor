@@ -1,5 +1,18 @@
 # Decisions
 
+## 2026-11-20 - Current-layer cadence verified across three complete matrices
+
+- Clean `ec22901` passed all 24 original four-second trials on Chrome and Edge
+  with both NVIDIA APIs. WebGL2 measured 59.964–60.017 fps. WebGPU measured
+  69.441–78.548 fps. The previously accepted M1 nominal 60 Hz range applies.
+- The UI updates the brush outline once per browser frame and dispatches native
+  stroke input as it arrives. A pending first-stroke GPU fence can now retain a
+  crossed preview deadline. One GPU transaction remains in flight, with actual
+  fence completion recorded and changed-input acknowledgements reported separately.
+- All-visible sampling measured 27.39–35.11 fps under its existing P12 deferral.
+  The phase completion tag follows the final build, browser, desktop, CI,
+  deployment and artifact checks. P10 remains the proposed next phase.
+
 ## 2026-11-08 - Retained current-layer target remains open on fresh measurements
 
 - Complete clean-source matrices at `3e30cd0` miss current-layer Clone Stamp's

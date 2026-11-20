@@ -403,8 +403,10 @@ optimization. The November 4 clean-source matrix at `4c7a643` measured
 59.98-60.09 fps, restoring M1's already accepted nominal 60 Hz current-layer
 cadence. Changed-input acknowledgements are separate. All-visible sampling still
 misses at 25.88-30.66 fps under its existing P12 exception; no additional waiver.
-Fresh complete clean-source matrices at `3e30cd0` miss that retained target on
-WebGL2 (53.25-59.99 fps, then 48.11-59.73 in a repeat). Keep the current-layer
-gate open and continue optimizing; the earlier passing matrix is historical.
-Complete all remaining verification and immutable certification before
-`p9-retouch`; stop before P10. See P9-REPORT.md.
+Later clean-source matrices at `3e30cd0` missed the target on WebGL2
+(53.25-59.99 fps, then 48.11-59.73 in a repeat). The November 20 clean-source
+matrices at `ec22901` passed all 24 trials at the retained nominal 60 fps range.
+WebGL2 measured 59.964–60.017 fps and WebGPU measured 69.441–78.548 fps.
+The all-visible P12 deferral applies to the latest 27.39–35.11 fps results.
+Complete the remaining verification and immutable certification before
+`p9-retouch`, then stop before P10. See P9-REPORT.md.
