@@ -57,6 +57,34 @@ test('updates actual backing dimensions when device pixel ratio changes', async 
 
 for (const backend of ['WebGPU', 'WebGL2'] as const) {
   const query = '?diagnostic=1' + (backend === 'WebGL2' ? '&gpu=webgl2' : '');
+  test(backend + ' fits the canvas when the editor stylesheet fails to load', async ({ page }) => {
+    const stylesheet = /\/assets\/index-[\w-]+\.css$/;
+    await page.route(stylesheet, (route) => route.abort());
+    const failedStylesheet = page.waitForEvent('requestfailed', (request) =>
+      stylesheet.test(request.url()),
+    );
+    await page.goto('/' + query);
+    await failedStylesheet;
+    await expect(page.getByTestId('gpu-backend')).toHaveText(backend);
+    const canvas = page.getByTestId('gpu-canvas');
+    await expect(canvas).toHaveAttribute('data-presented', 'true');
+    const dimensions = await canvas.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        width: rect.width,
+        height: rect.height,
+        renderWidth: Number(element.getAttribute('data-render-width')),
+        renderHeight: Number(element.getAttribute('data-render-height')),
+      };
+    });
+    const viewport = page.viewportSize()!;
+    expect(dimensions.width).toBeGreaterThan(0);
+    expect(dimensions.height).toBeGreaterThan(0);
+    expect(dimensions.width).toBeLessThanOrEqual(viewport.width);
+    expect(dimensions.height).toBeLessThanOrEqual(viewport.height);
+    expect(dimensions.renderWidth).toBe(Math.round(dimensions.width));
+    expect(dimensions.renderHeight).toBe(Math.round(dimensions.height));
+  });
   test(backend + ' presents Rust-uploaded texture samples', async ({ page }, testInfo) => {
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));

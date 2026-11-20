@@ -172,6 +172,7 @@
   box-shadow: 0 0 0 1px #ffab75;
 }
 :root {
+  --editor-styles-ready: 1;
   font-family: Inter, 'Segoe UI', sans-serif;
   color: #e9ecf0;
   background: #14171c;
