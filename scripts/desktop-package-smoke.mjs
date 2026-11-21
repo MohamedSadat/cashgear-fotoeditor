@@ -122,6 +122,9 @@ async function verify() {
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: args,
     FOTOEDITOR_TEST_BINARY: exe,
   };
+  // RunAsUser can discard the elevated runner's environment at restart. A fresh
+  // runner can use the installed application's default profile for both launches.
+  if (hosted) delete env.WEBVIEW2_USER_DATA_FOLDER;
   const policy = 'HKLM\\SOFTWARE\\Policies\\Microsoft\\Edge\\WebView2\\AdditionalBrowserArguments';
   const registry = (...data) =>
     execFileSync('reg.exe', data, {
@@ -266,7 +269,7 @@ async function verify() {
     connection = await connect();
     ({ browser, page } = connection);
     const recovery = page.getByRole('dialog', { name: 'Restore last session?' });
-    await expect(recovery).toBeVisible();
+    await expect(recovery).toBeVisible({ timeout: 30_000 });
     await recovery.getByRole('button', { name: 'Restore session', exact: true }).click();
     await expect(page.getByTestId('document-name')).toHaveText(basename(forwarded));
     await expect(
