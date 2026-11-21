@@ -1,5 +1,14 @@
 # Decisions
 
+## 2026-11-21 - P10 desktop choices
+
+- Ship a Windows NSIS .exe installer. Leave Authenticode unsigned for P10.
+- Keep the desktop app free and retain its existing in-app menu.
+- Use one stable update channel on GitHub Releases with cryptographically
+  verified update metadata and installers.
+- Start from verified `p9-retouch` on main. The existing P12 deferral for
+  all-visible Clone Stamp speed still applies.
+
 ## 2026-11-20 - Current-layer cadence verified across three complete matrices
 
 - Clean `ec22901` passed all 24 original four-second trials on Chrome and Edge

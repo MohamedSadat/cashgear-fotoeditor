@@ -410,3 +410,23 @@ WebGL2 measured 59.964–60.017 fps and WebGPU measured 69.441–78.548 fps.
 The all-visible P12 deferral applies to the latest 27.39–35.11 fps results.
 Complete the remaining verification and immutable certification before
 `p9-retouch`, then stop before P10. See P9-REPORT.md.
+
+## P10 acceptance
+
+Source: original roadmap, printed pages 17–18. The installer, signing, licensing,
+update channel and menu choices are recorded in DECISIONS.md.
+
+- Build the NSIS Windows installer in CI from the same app and worker as the web
+  build, with the WebView2 Runtime bootstrapper for systems that need it.
+- A shared FileHost supports browser and native open/save. Windows supports
+  Explorer activation and drag/drop, associates .cgfoto, .png, .jpg and .jpeg,
+  restores window state, lists recent files and forwards launches to one instance.
+- Preserve streamed project I/O, exact samples, existing budgets and cancellation.
+  A failed or cancelled native save must preserve the destination.
+- The stable GitHub Releases updater verifies signed metadata and installer bytes.
+- On clean Windows 10 and Windows 11, install, open a file by double-click,
+  edit, save, update to a newer build and uninstall. Verify WebGPU and forced
+  WebGL2 in WebView2 and run the full repository checks.
+- Measure installer and WASM sizes and native file integration timings. Tag
+  `p10-desktop` once acceptance and exact-head remote CI pass. Report and stop
+  before P11.

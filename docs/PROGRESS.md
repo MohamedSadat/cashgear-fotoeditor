@@ -1,5 +1,11 @@
 # Progress
 
+## P10 - Windows packaging and file integration started
+
+Started 2026-11-21 on clean main at verified `p9-retouch` (`2e1f7f4`). Reviewed
+the full P10 section on printed pages 17–18 of the original roadmap and
+confirmed its five product choices. PLAN.md records the acceptance gates.
+
 ## P9 - M5 implemented and current-layer speed verified locally
 
 Started 2026-11-03 at the user's explicit request, directly on clean main matching
