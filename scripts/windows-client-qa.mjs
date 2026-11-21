@@ -171,6 +171,9 @@ New-Item -ItemType Directory -Path $qa | Out-Null
 try {
   Expand-Archive -LiteralPath (Join-Path $PSScriptRoot 'node.zip') -DestinationPath $qa
   Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'files') -Destination $qa -Recurse
+  # Copy-Item preserves the read-only attribute from the mounted ISO.
+  $fixture = Get-Item -LiteralPath (Join-Path $qa 'files\\assets\\source.cgfoto')
+  $fixture.IsReadOnly = $false
   $node = (Get-ChildItem $qa -Directory -Filter 'node-*-win-x64')[0].FullName + '\\node.exe'
   $env:GPU_TEST_SOFTWARE='1'
   $env:RUNNER_ENVIRONMENT='github-hosted'
