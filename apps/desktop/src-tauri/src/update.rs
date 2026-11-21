@@ -172,8 +172,13 @@ pub async fn check_desktop_update(window: WebviewWindow) -> Result<UpdateCheck> 
     }
     let bytes = limited_body(response, FEED_LIMIT).await?;
     let (value, manifest) = authenticate(&bytes, &config.pubkey)?;
+    // The NSIS restart resumes from recovery. Drop launch-time document arguments,
+    // which may refer to a different document from the one the user just saved.
     let Some(update) = window
-        .updater()
+        .updater_builder()
+        .restart_after_install(false)
+        .installer_args(["/R", "/ARGS", "--restarted-after-update"])
+        .build()
         .map_err(update_error)?
         .restore_update(value)
         .map_err(update_error)?
