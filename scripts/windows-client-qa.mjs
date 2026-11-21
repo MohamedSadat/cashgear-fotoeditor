@@ -145,8 +145,13 @@ await writeFile(
     </component>
   </settings>
   <settings pass="oobeSystem">
+    ${component('Microsoft-Windows-International-Core')}
+      <InputLocale>0409:00000409</InputLocale>
+      <SystemLocale>en-US</SystemLocale><UILanguage>en-US</UILanguage><UserLocale>en-US</UserLocale>
+    </component>
     ${component('Microsoft-Windows-Shell-Setup')}
-      <OOBE><HideEULAPage>true</HideEULAPage><HideOnlineAccountScreens>true</HideOnlineAccountScreens><HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE><ProtectYourPC>3</ProtectYourPC></OOBE>
+      <TimeZone>UTC</TimeZone>
+      <OOBE><HideEULAPage>true</HideEULAPage><HideOEMRegistrationScreen>true</HideOEMRegistrationScreen><HideOnlineAccountScreens>true</HideOnlineAccountScreens><HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE><ProtectYourPC>3</ProtectYourPC></OOBE>
       <UserAccounts><LocalAccounts><LocalAccount wcm:action="add"><Name>FotoEditorQA</Name><Group>Administrators</Group><Password><Value>${password}</Value><PlainText>true</PlainText></Password></LocalAccount></LocalAccounts></UserAccounts>
       <AutoLogon><Enabled>true</Enabled><LogonCount>1</LogonCount><Username>FotoEditorQA</Username><Password><Value>${password}</Value><PlainText>true</PlainText></Password></AutoLogon>
       <FirstLogonCommands><SynchronousCommand wcm:action="add"><Order>1</Order><Description>Verify CashGear FotoEditor</Description>
