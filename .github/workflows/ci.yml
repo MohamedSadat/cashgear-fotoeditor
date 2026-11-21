@@ -86,7 +86,10 @@ jobs:
           name: windows-nsis-x64
           path: target/release/bundle/nsis/*-setup.exe
           if-no-files-found: error
-      - run: cargo run --release -p fotoeditor-io --example layers -- bench/results/fixtures/layers-small.cgfoto 128 128 3
+      - name: Generate the installer test project
+        run: |
+          New-Item -ItemType Directory -Force bench/results/fixtures | Out-Null
+          cargo run --locked --release -p fotoeditor-io --example layers -- bench/results/fixtures/layers-small.cgfoto 128 128 3
       - run: pnpm exec node scripts/desktop-package-smoke.mjs prepare
       - run: pnpm exec node scripts/desktop-package-smoke.mjs verify
       - uses: actions/upload-artifact@v4

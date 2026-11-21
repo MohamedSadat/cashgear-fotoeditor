@@ -40,6 +40,13 @@ the verified update to the new process, and 1.44 s to uninstall and remove
 the associations. The test update installer was 2,871,644 bytes. This uses the
 workstation's installed WebView2 Runtime and a loopback update feed.
 
+The native dialogs opened a separate three-layer, 1536 × 1536 project in
+2.33 s and saved a 40,063,819-byte archive. The independent project reader
+found the canonical metadata and all 108 retained RGBA tiles byte-identical
+across legacy input and native save. Native PNG import and export preserved
+every RGBA sample in the 513 × 259 alpha fixture. Evidence is in
+`bench/results/p10-native-project-reference.json` and the installer smoke report.
+
 P10 completion requires a passing installer lifecycle on clean Windows 10 and
 Windows 11 and successful CI on the tagged commit. Check the platform reports
 and exact-head run recorded in the final phase evidence before certifying
