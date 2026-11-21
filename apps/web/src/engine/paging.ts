@@ -2,7 +2,8 @@
 // every complete project; this adapter only transports bounded byte chunks.
 import type { Engine } from './pkg/fotoeditor_wasm';
 import { yieldProjectTask } from './yield-task';
-export const CHUNK = 1048576;
+import { FILE_CHUNK, fileRange, type FileSource } from './file-io';
+export const CHUNK = FILE_CHUNK;
 export interface SyncFile {
   write(data: Uint8Array, options: { at: number }): number;
   read(data: Uint8Array, options: { at: number }): number;
@@ -185,14 +186,14 @@ export class PagingStore {
       if (!this.closed) engine.page_io_complete(ticket);
     }
   }
-  async copy(file: File, cancelled: () => void) {
+  async copy(file: FileSource, cancelled: () => void) {
     if (file.size > 4 * 1024 ** 3) throw new Error('Project exceeds the 4 GiB streamed file limit');
     const { id, handle } = await this.create();
     const access = await handle.createSyncAccessHandle();
     try {
       for (let offset = 0; offset < file.size;) {
         cancelled();
-        const bytes = new Uint8Array(await file.slice(offset, offset + CHUNK).arrayBuffer());
+        const bytes = new Uint8Array(await fileRange(file, offset, CHUNK));
         let written = 0;
         while (written < bytes.length) {
           const count = access.write(bytes.subarray(written), { at: offset + written });

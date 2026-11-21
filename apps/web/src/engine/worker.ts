@@ -1,4 +1,4 @@
-import { expose, transfer } from 'comlink';
+import { expose, releaseProxy, transfer, type ProxyMarked, type Remote } from 'comlink';
 import type {
   EngineApi,
   EngineInfo,
@@ -16,6 +16,7 @@ import { yieldProjectTask } from './yield-task';
 import { CHUNK, PagingStore } from './paging';
 import type { SyncHandle } from './paging';
 import { brushInputBytes, queuedBrushLimit } from './brush-assets';
+import { fileRange, readRemoteFile, type FileSource, type ProjectSink } from './file-io';
 const pages = new PagingStore();
 
 let engine: Engine | undefined;
@@ -172,7 +173,10 @@ async function readImageFile(file: File): Promise<ArrayBuffer> {
     reader.abort();
   }
 }
-async function importImage(input: File | ArrayBuffer, fileName: string): Promise<DocumentSnapshot> {
+async function importImage(
+  input: FileSource | ArrayBuffer,
+  fileName: string,
+): Promise<DocumentSnapshot> {
   const e = requireIdle();
   const fromFile = !(input instanceof ArrayBuffer);
   const length = input instanceof ArrayBuffer ? input.byteLength : input.size;
@@ -189,7 +193,12 @@ async function importImage(input: File | ArrayBuffer, fileName: string): Promise
     // Admission precedes file reading. Include an encoded File/Blob owner and
     // its read buffer; Rust separately admits its argument and owned input copy.
     external(priorExternal + 2 * length + 2 * CHUNK);
-    let bytes = input instanceof ArrayBuffer ? input : await readImageFile(input);
+    let bytes =
+      input instanceof ArrayBuffer
+        ? input
+        : input instanceof File
+          ? await readImageFile(input)
+          : await readRemoteFile(input, () => cancelled(token));
     cancelled(token);
     operation = 'Decoding image…';
     e.begin_import(new Uint8Array(bytes));
@@ -265,7 +274,7 @@ async function runComposite(token = job, committing = false, memoryProbe?: () =>
   dirty = true;
 }
 async function readStream(
-  file: File,
+  file: FileSource,
   commit: boolean,
   token = job,
   existing?: { id: string; file: File },
@@ -286,7 +295,7 @@ async function readStream(
     e.stream_read_begin(source.file.size, source.id);
     for (let offset = 0; offset < source.file.size;) {
       cancelled(token);
-      const bytes = new Uint8Array(await source.file.slice(offset, offset + CHUNK).arrayBuffer());
+      const bytes = new Uint8Array(await fileRange(source.file, offset, CHUNK));
       for (let used = 0; used < bytes.length;) {
         let count: number;
         try {
@@ -321,7 +330,7 @@ async function readStream(
     if (!disposed && token === job) external(priorExternal);
   }
 }
-async function readZip(file: File, commit: boolean, token: number) {
+async function readZip(file: FileSource, commit: boolean, token: number) {
   const e = requireEngine();
   const priorExternal = externalBytes;
   external(priorExternal + 2 * CHUNK);
@@ -353,9 +362,7 @@ async function readZip(file: File, commit: boolean, token: number) {
           length: number;
         } | null;
         if (!request) break;
-        const bytes = new Uint8Array(
-          await file.slice(request.offset, request.offset + request.length).arrayBuffer(),
-        );
+        const bytes = new Uint8Array(await fileRange(file, request.offset, request.length));
         cancelled(token);
         e.zip_read_feed(bytes);
         await yieldProjectTask();
@@ -521,10 +528,11 @@ async function writeRecoveryStream(handle: SyncHandle, token: number, fault?: Re
     access.close();
   }
 }
-async function readProject(input: Uint8Array | File, commit: boolean, token = job) {
+async function readProject(input: Uint8Array | FileSource, commit: boolean, token = job) {
   const e = requireEngine();
-  if (input instanceof File) {
-    const header = await input.slice(0, 12).arrayBuffer();
+  if (!(input instanceof Uint8Array)) {
+    const header = await fileRange(input, 0, 12);
+    cancelled(token);
     if (header.byteLength >= 4 && new DataView(header).getUint32(0, true) === 0x04034b50) {
       await readZip(input, commit, token);
       return;
@@ -535,7 +543,11 @@ async function readProject(input: Uint8Array | File, commit: boolean, token = jo
     }
     if (input.size > 128 * CHUNK) throw new Error('Legacy project exceeds its 128 MiB file limit');
     e.admit_project_buffer(input.size);
-    input = new Uint8Array(await input.arrayBuffer());
+    input = new Uint8Array(
+      input instanceof File
+        ? await input.arrayBuffer()
+        : await readRemoteFile(input, () => cancelled(token)),
+    );
   }
   const bytes = input;
   const priorExternal = externalBytes;
@@ -585,6 +597,28 @@ function replaced(fileName: string) {
   cursorScreen = undefined;
   editError = undefined;
   sampledColor = undefined;
+}
+async function openProjectSource(file: FileSource) {
+  const e = requireIdle();
+  busy = true;
+  operation = 'Opening project…';
+  const token = beginJob();
+  const finishFileJob = beginFileJob();
+  try {
+    await readProject(file, true, token);
+    replaced(file.name);
+    return snapshot();
+  } finally {
+    try {
+      if (token === job) {
+        e.cancel_job();
+        busy = false;
+        operation = undefined;
+      }
+    } finally {
+      finishFileJob();
+    }
+  }
 }
 async function runPreview(
   adjustment: Adjustment | SpatialFilter,
@@ -1817,26 +1851,17 @@ const api: EngineApi = {
       }
     }
   },
-  async openProjectFile(file) {
-    const e = requireIdle();
-    busy = true;
-    operation = 'Opening project…';
-    const token = beginJob();
-    const finishFileJob = beginFileJob();
+  openProjectFile(file) {
+    return openProjectSource(file);
+  },
+  async openNativeFile(file, read) {
+    const source = { ...file, read };
     try {
-      await readProject(file, true, token);
-      replaced(file.name);
-      return snapshot();
+      return await (/\.cgfoto$/i.test(file.name)
+        ? openProjectSource(source)
+        : importImage(source, file.name));
     } finally {
-      try {
-        if (token === job) {
-          e.cancel_job();
-          busy = false;
-          operation = undefined;
-        }
-      } finally {
-        finishFileJob();
-      }
+      (read as Remote<typeof read & ProxyMarked>)[releaseProxy]();
     }
   },
   async saveProjectFile(handle) {
@@ -1870,6 +1895,38 @@ const api: EngineApi = {
       } finally {
         finishFileJob();
       }
+    }
+  },
+  async saveNativeProject(fileName, sink) {
+    const remote = sink as Remote<ProjectSink & ProxyMarked>;
+    try {
+      const e = requireIdle();
+      if (!/\.cgfoto$/i.test(fileName)) throw new Error('Choose a .cgfoto file for this project.');
+      busy = true;
+      operation = 'Saving project…';
+      const token = beginJob();
+      const finishFileJob = beginFileJob();
+      try {
+        const size = await writeZip((bytes) => sink.write(bytes), token);
+        cancelled(token);
+        cancelAllowed = false;
+        await sink.commit();
+        name = fileName;
+        return size;
+      } finally {
+        try {
+          await sink.abort().catch(() => {});
+          if (token === job) {
+            e.cancel_job();
+            busy = false;
+            operation = undefined;
+          }
+        } finally {
+          finishFileJob();
+        }
+      }
+    } finally {
+      remote[releaseProxy]();
     }
   },
   async saveProjectDownload() {

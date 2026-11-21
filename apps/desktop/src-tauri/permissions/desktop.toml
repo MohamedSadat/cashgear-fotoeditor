@@ -1,0 +1,27 @@
+[[permission]]
+identifier = "files"
+description = "Open and write user-selected files and manage the recent file list"
+commands.allow = [
+  "pending_open",
+  "take_pending_open",
+  "pick_open",
+  "pick_save",
+  "open_native",
+  "read_native",
+  "begin_native_write",
+  "write_native",
+  "commit_native",
+  "recent_files",
+  "pick_recent",
+  "remember_native",
+  "forget_native",
+]
+
+[[permission]]
+identifier = "software-update"
+description = "Check and install verified Windows releases"
+commands.allow = [
+  "check_desktop_update",
+  "download_desktop_update",
+  "install_desktop_update",
+]

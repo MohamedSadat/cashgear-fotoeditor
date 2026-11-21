@@ -173,7 +173,9 @@ try {
       browser: browser.version(),
       origin,
     };
-    await page.goto(origin + (backend === 'WebGL2' ? '/?gpu=webgl2' : '/'));
+    await page.goto(
+      origin + '/?diagnostic=1&document=1' + (backend === 'WebGL2' ? '&gpu=webgl2' : ''),
+    );
     await expect(page.getByTestId('engine-status')).toHaveText('Engine ready', { timeout: 60000 });
     await dismissRecoveryPrompt();
     await page
@@ -234,33 +236,13 @@ try {
     const redone = PNG.sync.read(await page.getByTestId('gpu-canvas').screenshot());
     expect(redone.data.equals(painted.data)).toBe(true);
     result.brushUndoRedo = true;
-    // Capture the normal download Blob without opening WebView2's native save UI.
-    // This instruments browser download APIs only; the actual Rust save/load runs.
-    await page.evaluate(() => {
-      Reflect.set(window, 'showSaveFilePicker', undefined);
-      const create = URL.createObjectURL.bind(URL),
-        click = HTMLAnchorElement.prototype.click;
-      URL.createObjectURL = (blob) => {
-        if (blob.type !== 'application/octet-stream') return create(blob);
-        const reader = new FileReader();
-        reader.onload = () => {
-          window.__projectPayload = reader.result;
-        };
-        reader.readAsDataURL(blob);
-        return create(blob);
-      };
-      HTMLAnchorElement.prototype.click = function () {
-        if (!this.download.endsWith('.cgfoto')) click.call(this);
-      };
-    });
     async function savedProject() {
-      await page.evaluate(() => {
-        window.__projectPayload = undefined;
+      // The installer smoke separately drives native project save through the UI.
+      const data = await page.evaluate(async () => {
+        const file = await window.__fotoeditor.saveProjectDownload();
+        return new Uint8Array(await file.arrayBuffer()).toBase64();
       });
-      await page.getByRole('button', { name: 'Save project', exact: true }).click();
-      await page.waitForFunction(() => typeof window.__projectPayload === 'string');
-      const data = await page.evaluate(() => window.__projectPayload);
-      const bytes = Buffer.from(data.split(',')[1], 'base64');
+      const bytes = Buffer.from(data, 'base64');
       expect(bytes.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 3, 4]))).toBe(true);
       return bytes;
     }

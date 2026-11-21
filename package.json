@@ -37,6 +37,8 @@
     "bench:adjustment-preview": "node scripts/adjustment-preview-bench.mjs",
     "desktop:dev": "pnpm --filter @fotoeditor/desktop dev",
     "desktop:build": "pnpm build && pnpm --filter @fotoeditor/desktop build",
+    "desktop:package": "pnpm build && pnpm --filter @fotoeditor/desktop package",
+    "desktop:release-assets": "node scripts/desktop-release.mjs",
     "licenses:update": "node scripts/licenses.mjs",
     "licenses:check": "node scripts/licenses.mjs --check",
     "format": "prettier --write .",

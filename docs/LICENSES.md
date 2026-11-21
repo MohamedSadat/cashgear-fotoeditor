@@ -40,6 +40,7 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | alloc-stdlib | 0.3.0 | BSD-3-Clause |
 | Cargo | anyhow | 1.0.104 | MIT OR Apache-2.0 |
 | Cargo | arrayvec | 0.7.8 | MIT OR Apache-2.0 |
+| Cargo | atomic-waker | 1.1.2 | Apache-2.0 OR MIT |
 | Cargo | autocfg | 1.5.1 | Apache-2.0 OR MIT |
 | Cargo | base64 | 0.23.1 | MIT OR Apache-2.0 |
 | Cargo | bit-set | 0.10.0 | Apache-2.0 OR MIT |
@@ -114,6 +115,7 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | fnv | 1.0.7 | Apache-2.0 / MIT |
 | Cargo | foldhash | 0.2.0 | Zlib |
 | Cargo | form_urlencoded | 1.2.2 | MIT OR Apache-2.0 |
+| Cargo | futures-channel | 0.3.34 | MIT OR Apache-2.0 |
 | Cargo | futures-core | 0.3.34 | MIT OR Apache-2.0 |
 | Cargo | futures-io | 0.3.34 | MIT OR Apache-2.0 |
 | Cargo | futures-macro | 0.3.34 | MIT OR Apache-2.0 |
@@ -132,7 +134,13 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | heck | 0.5.0 | MIT OR Apache-2.0 |
 | Cargo | hex | 0.4.3 | MIT OR Apache-2.0 |
 | Cargo | html5ever | 0.39.0 | MIT OR Apache-2.0 |
+| Cargo | http-body-util | 0.1.5 | MIT |
+| Cargo | http-body | 1.1.0 | MIT |
 | Cargo | http | 1.5.0 | MIT OR Apache-2.0 |
+| Cargo | httparse | 1.10.1 | MIT OR Apache-2.0 |
+| Cargo | hyper-tls | 0.6.0 | MIT/Apache-2.0 |
+| Cargo | hyper-util | 0.1.21 | MIT |
+| Cargo | hyper | 1.12.0 | MIT |
 | Cargo | ico | 0.6.0 | MIT |
 | Cargo | icu_collections | 2.4.0 | Unicode-3.0 |
 | Cargo | icu_locale_core | 2.4.0 | Unicode-3.0 |
@@ -149,6 +157,7 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | indexmap | 1.9.3 | Apache-2.0 OR MIT |
 | Cargo | indexmap | 2.14.2 | Apache-2.0 OR MIT |
 | Cargo | infer | 0.22.0 | MIT |
+| Cargo | ipnet | 2.12.2 | MIT OR Apache-2.0 |
 | Cargo | itoa | 1.0.18 | MIT OR Apache-2.0 |
 | Cargo | jiff-core | 0.1.1 | Unlicense OR MIT |
 | Cargo | jiff-tzdb-platform | 0.1.3 | Unlicense OR MIT |
@@ -169,6 +178,7 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | markup5ever | 0.39.0 | MIT OR Apache-2.0 |
 | Cargo | memchr | 2.8.3 | Unlicense OR MIT |
 | Cargo | mime | 0.3.17 | MIT OR Apache-2.0 |
+| Cargo | minisign-verify | 0.3.0 | MIT |
 | Cargo | miniz_oxide | 0.8.9 | MIT OR Zlib OR Apache-2.0 |
 | Cargo | miniz_oxide | 0.9.1 | MIT OR Zlib OR Apache-2.0 |
 | Cargo | mio | 1.2.4 | MIT |
@@ -176,6 +186,7 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | muda | 0.20.0 | Apache-2.0 OR MIT |
 | Cargo | naga-types | 30.0.1 | MIT OR Apache-2.0 |
 | Cargo | naga | 30.0.1 | MIT OR Apache-2.0 |
+| Cargo | native-tls | 0.2.18 | MIT OR Apache-2.0 |
 | Cargo | new_debug_unreachable | 1.0.6 | MIT |
 | Cargo | num-conv | 0.2.2 | MIT OR Apache-2.0 |
 | Cargo | num-traits | 0.2.19 | MIT OR Apache-2.0 |
@@ -213,11 +224,15 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | regex-automata | 0.4.18 | MIT OR Apache-2.0 |
 | Cargo | regex-syntax | 0.8.11 | MIT OR Apache-2.0 |
 | Cargo | regex | 1.13.1 | MIT OR Apache-2.0 |
+| Cargo | reqwest | 0.13.5 | MIT OR Apache-2.0 |
+| Cargo | rfd | 0.17.2 | MIT |
 | Cargo | rustc_version | 0.4.1 | MIT OR Apache-2.0 |
 | Cargo | rustc-hash | 1.1.0 | Apache-2.0/MIT |
 | Cargo | rustc-hash | 2.1.3 | Apache-2.0 OR MIT |
+| Cargo | rustls-pki-types | 1.16.0 | MIT OR Apache-2.0 |
 | Cargo | rustversion | 1.0.23 | MIT OR Apache-2.0 |
 | Cargo | same-file | 1.0.6 | Unlicense/MIT |
+| Cargo | schannel | 0.1.30 | MIT |
 | Cargo | schemars_derive | 0.8.22 | MIT |
 | Cargo | schemars | 0.8.22 | MIT |
 | Cargo | schemars | 0.9.0 | MIT |
@@ -255,16 +270,24 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | strsim | 0.11.1 | MIT |
 | Cargo | syn | 2.0.119 | MIT OR Apache-2.0 |
 | Cargo | syn | 3.0.9 | MIT OR Apache-2.0 |
+| Cargo | sync_wrapper | 1.0.2 | Apache-2.0 |
 | Cargo | synstructure | 0.14.0 | MIT |
 | Cargo | tao | 0.37.1 | Apache-2.0 |
 | Cargo | tauri-build | 2.7.4 | Apache-2.0 OR MIT |
 | Cargo | tauri-codegen | 2.7.4 | Apache-2.0 OR MIT |
 | Cargo | tauri-macros | 2.7.4 | Apache-2.0 OR MIT |
+| Cargo | tauri-plugin-dialog | 2.8.4 | Apache-2.0 OR MIT |
+| Cargo | tauri-plugin-fs | 2.7.1 | Apache-2.0 OR MIT |
+| Cargo | tauri-plugin-single-instance | 2.5.5 | Apache-2.0 OR MIT |
+| Cargo | tauri-plugin-updater | 2.14.1 | Apache-2.0 OR MIT |
+| Cargo | tauri-plugin-window-state | 2.5.0 | Apache-2.0 OR MIT |
+| Cargo | tauri-plugin | 2.7.4 | Apache-2.0 OR MIT |
 | Cargo | tauri-runtime-wry | 2.12.3 | Apache-2.0 OR MIT |
 | Cargo | tauri-runtime | 2.12.2 | Apache-2.0 OR MIT |
-| Cargo | tauri-utils | 2.10.2 | Apache-2.0 OR MIT |
+| Cargo | tauri-utils | 2.10.4 | Apache-2.0 OR MIT |
 | Cargo | tauri-winres | 0.3.7 | MIT |
 | Cargo | tauri | 2.12.5 | Apache-2.0 OR MIT |
+| Cargo | tempfile | 3.27.0 | MIT OR Apache-2.0 |
 | Cargo | tendril | 0.5.1 | MIT OR Apache-2.0 |
 | Cargo | termcolor | 1.4.1 | Unlicense OR MIT |
 | Cargo | thiserror-impl | 2.0.21 | MIT OR Apache-2.0 |
@@ -275,14 +298,22 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | time | 0.3.55 | MIT OR Apache-2.0 |
 | Cargo | tinystr | 0.8.5 | Unicode-3.0 |
 | Cargo | tinyvec | 1.13.3 | Zlib OR Apache-2.0 OR MIT |
+| Cargo | tokio-native-tls | 0.3.1 | MIT |
+| Cargo | tokio-util | 0.7.20 | MIT |
 | Cargo | tokio | 1.54.1 | MIT |
 | Cargo | toml_datetime | 1.1.2+spec-1.1.0 | MIT OR Apache-2.0 |
 | Cargo | toml_parser | 1.1.5+spec-1.1.0 | MIT OR Apache-2.0 |
 | Cargo | toml_writer | 1.1.3+spec-1.1.0 | MIT OR Apache-2.0 |
 | Cargo | toml | 1.1.8+spec-1.1.0 | MIT OR Apache-2.0 |
+| Cargo | tower-http | 0.6.11 | MIT |
+| Cargo | tower-layer | 0.3.3 | MIT |
+| Cargo | tower-service | 0.3.3 | MIT |
+| Cargo | tower | 0.5.3 | MIT |
+| Cargo | tracing-attributes | 0.1.31 | MIT |
 | Cargo | tracing-core | 0.1.36 | MIT |
 | Cargo | tracing | 0.1.44 | MIT |
 | Cargo | tray-icon | 0.25.1 | MIT OR Apache-2.0 |
+| Cargo | try-lock | 0.2.5 | MIT |
 | Cargo | typeid | 1.0.3 | MIT OR Apache-2.0 |
 | Cargo | typenum | 1.20.1 | MIT OR Apache-2.0 |
 | Cargo | unarray | 0.1.4 | MIT OR Apache-2.0 |
@@ -297,6 +328,7 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | vswhom-sys | 0.1.3 | MIT |
 | Cargo | vswhom | 0.1.0 | MIT |
 | Cargo | walkdir | 2.5.0 | Unlicense/MIT |
+| Cargo | want | 0.3.2 | MIT |
 | Cargo | wasm-bindgen-futures | 0.4.79 | MIT OR Apache-2.0 |
 | Cargo | wasm-bindgen-macro-support | 0.2.129 | MIT OR Apache-2.0 |
 | Cargo | wasm-bindgen-macro | 0.2.129 | MIT OR Apache-2.0 |
@@ -325,6 +357,7 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | windows-interface | 0.59.3 | MIT OR Apache-2.0 |
 | Cargo | windows-link | 0.2.1 | MIT OR Apache-2.0 |
 | Cargo | windows-numerics | 0.3.1 | MIT OR Apache-2.0 |
+| Cargo | windows-registry | 0.6.1 | MIT OR Apache-2.0 |
 | Cargo | windows-result | 0.4.1 | MIT OR Apache-2.0 |
 | Cargo | windows-strings | 0.5.1 | MIT OR Apache-2.0 |
 | Cargo | windows-sys | 0.61.2 | MIT OR Apache-2.0 |
@@ -341,6 +374,7 @@ WebView2 are platform prerequisites, not bundled application libraries.
 | Cargo | zerocopy | 0.8.63 | BSD-2-Clause OR Apache-2.0 OR MIT |
 | Cargo | zerofrom-derive | 0.1.8 | Unicode-3.0 |
 | Cargo | zerofrom | 0.1.8 | Unicode-3.0 |
+| Cargo | zeroize | 1.9.2 | Apache-2.0 OR MIT |
 | Cargo | zerotrie | 0.2.5 | Unicode-3.0 |
 | Cargo | zerovec-derive | 0.11.7 | Unicode-3.0 |
 | Cargo | zerovec | 0.11.9 | Unicode-3.0 |

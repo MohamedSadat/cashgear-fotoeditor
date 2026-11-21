@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import type { EngineApi, ImageExportOptions } from './engine/types';
 import { useWorkspace } from './state';
+import { fileHost, isDesktop } from './file-host';
 
 const defaults: ImageExportOptions = {
   format: 'png',
@@ -41,13 +42,7 @@ export function ExportDialog({
       if (token !== request.current) return;
       setPrepared({ key, file });
       if (download) {
-        const url = URL.createObjectURL(file);
-        const link = window.document.createElement('a');
-        link.href = url;
-        link.download = file.name;
-        link.click();
-        setTimeout(() => URL.revokeObjectURL(url), 30_000);
-        setNotice('Image exported.');
+        if (await fileHost.export(file, file.name)) setNotice('Image exported.');
       }
     } catch (error) {
       if (token === request.current) setNotice(String(error));
@@ -187,7 +182,7 @@ export function ExportDialog({
           Preview encoded size
         </button>
         <button className="primary" disabled={busy} onClick={() => void encode(true)}>
-          Download image
+          {isDesktop ? 'Save image…' : 'Download image'}
         </button>
       </div>
     </dialog>

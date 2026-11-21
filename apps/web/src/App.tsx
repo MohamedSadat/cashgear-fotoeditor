@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react';
 import { CanvasHost } from './CanvasHost';
 import { BrushPanel } from './BrushPanel';
 import { HistoryPanel } from './HistoryPanel';
@@ -10,21 +10,17 @@ import { GeometryPanel } from './GeometryPanel';
 import { TransformPanel } from './TransformPanel';
 import { CropPanel } from './CropPanel';
 import { ExportDialog } from './ExportDialog';
+import { DesktopUpdates } from './DesktopUpdates';
 import { useCrop, startCrop, resetCrop } from './crop-state';
 import { startTransform, cancelTransform, useTransform, resetTransform } from './transform-state';
 import { useSelection } from './selection-state';
 import { useBrush } from './brush-state';
 import { updateWorkspace, useWorkspace } from './state';
 import type { DocumentSnapshot, EngineApi, Interaction } from './engine/types';
-import {
-  fileAccessError,
-  filePermission,
-  forgetRecent,
-  pickerCancelled,
-  recentFiles,
-  rememberFile,
-} from './file-access';
-import type { RecentFile } from './file-access';
+import { fileAccessError, pickerCancelled } from './file-access';
+import { download, fileHost, isDesktop, openBrowserFile } from './file-host';
+import type { FileLocation, RecentFile } from './file-host';
+import { listenForDesktopOpen, pendingDesktopOpen, takeDesktopOpen } from './desktop-file-host';
 
 const presets = [
   { name: 'Full HD', width: 1920, height: 1080, dpi: 72 },
@@ -60,6 +56,7 @@ export function App() {
   const [generation, setGeneration] = useState(0);
   const [dialog, setDialog] = useState(false);
   const [exportDialog, setExportDialog] = useState(false);
+  const [updatesDialog, setUpdatesDialog] = useState(false);
   const [showBrush, setShowBrush] = useState(false);
   const [preset, setPreset] = useState('Full HD');
   const [width, setWidth] = useState(1920);
@@ -69,7 +66,9 @@ export function App() {
   const [notice, setNotice] = useState('');
   const [recents, setRecents] = useState<RecentFile[]>([]);
   const [fileNotice, setFileNotice] = useState('');
-  const projectHandle = useRef<FileSystemFileHandle | undefined>(undefined);
+  const projectLocation = useRef<FileLocation | undefined>(undefined);
+  const [pendingOpen, setPendingOpen] = useState<string | null>(null);
+  const [openSequence, setOpenSequence] = useState(0);
   const diagnostic = new URLSearchParams(location.search).get('diagnostic') === '1';
   const fault = useRef<((kind: 'device-loss' | 'panic') => void) | undefined>(undefined);
   const api = useRef<EngineApi | undefined>(undefined);
@@ -84,20 +83,28 @@ export function App() {
   const onFaultReady = useCallback((handler: typeof fault.current) => {
     fault.current = handler;
   }, []);
-  const onApiReady = useCallback((engine: EngineApi | undefined) => {
-    resetTransform();
-    resetCrop();
-    api.current = engine;
-    projectHandle.current = undefined;
-    setEngineApi(() => engine);
-    if (new URLSearchParams(location.search).get('diagnostic') === '1')
-      Reflect.set(window, '__fotoeditor', engine);
-    setRecoveryDismissed(false);
-    if (!engine) {
-      ++operation.current;
-      setBusy('');
-    }
+  const setProjectLocation = useCallback((next?: FileLocation) => {
+    const prior = projectLocation.current;
+    projectLocation.current = next;
+    if (prior && prior !== next) fileHost.release(prior);
   }, []);
+  const onApiReady = useCallback(
+    (engine: EngineApi | undefined) => {
+      resetTransform();
+      resetCrop();
+      api.current = engine;
+      setProjectLocation();
+      setEngineApi(() => engine);
+      if (new URLSearchParams(location.search).get('diagnostic') === '1')
+        Reflect.set(window, '__fotoeditor', engine);
+      setRecoveryDismissed(false);
+      if (!engine) {
+        ++operation.current;
+        setBusy('');
+      }
+    },
+    [setProjectLocation],
+  );
   const status = useWorkspace((s) => s.status);
   const backend = useWorkspace((s) => s.backend);
   const adapter = useWorkspace((s) => s.adapter);
@@ -117,20 +124,21 @@ export function App() {
   const recoverable = recovery?.candidates[0];
   useEffect(() => {
     let active = true;
-    void recentFiles()
+    void fileHost
+      .recents()
       .then((files) => {
         if (active) setRecents(files);
       })
       .catch(() => {
-        if (active) setFileNotice('Recent files are unavailable in this browser.');
+        if (active) setFileNotice('Recent files are unavailable.');
       });
     return () => {
       active = false;
     };
   }, []);
-  const remember = async (handle: FileSystemFileHandle, kind: RecentFile['kind']) => {
+  const remember = async (location: FileLocation, kind: RecentFile['kind']) => {
     try {
-      setRecents(await rememberFile(handle, kind));
+      setRecents(await fileHost.remember(location, kind));
       setFileNotice('');
     } catch {
       setFileNotice('The file opened or saved, but could not be added to recent files.');
@@ -166,46 +174,51 @@ export function App() {
       setNotice(String(e)),
     );
   };
-  const open = async (selected: File, handle?: FileSystemFileHandle, pickedToken?: number) => {
+  const beginWorkerJob = (token: number) => {
+    if (token !== operation.current) throw new DOMException('Operation cancelled', 'AbortError');
+    workerJobStarted.current = true;
+  };
+  const open = async (selected: File | FileLocation, pickedToken?: number) => {
+    const location = selected instanceof File ? undefined : selected;
     if (
       !api.current ||
       (pickedToken === undefined && (working || useWorkspace.getState().snapshot?.painting))
-    )
+    ) {
+      if (location) fileHost.release(location);
       return;
+    }
     const token = pickedToken ?? ++operation.current;
-    if (token !== operation.current) return;
+    if (token !== operation.current) {
+      if (location) fileHost.release(location);
+      return;
+    }
     workerJobStarted.current = false;
     setBusy('Opening ' + selected.name + '…');
     setNotice('');
     const start = performance.now();
     try {
       const project = /\.cgfoto$/i.test(selected.name);
-      if (selected.size > (project ? 4 * 1024 ** 3 : 128 * 1048576))
-        throw new Error(
-          project ? 'Projects must be at most 4 GiB' : 'Image files must be at most 128 MiB',
-        );
-      if (token !== operation.current) return;
-      workerJobStarted.current = true;
-      const next = project
-        ? await api.current.openProjectFile(selected)
-        : await api.current.openImageFile(selected);
+      let next: DocumentSnapshot;
+      if (selected instanceof File) {
+        beginWorkerJob(token);
+        next = await openBrowserFile(selected, api.current);
+      } else next = await fileHost.open(selected, api.current, () => beginWorkerJob(token));
       if (token === operation.current) {
-        projectHandle.current = project ? handle : undefined;
+        setProjectLocation(project ? location : undefined);
         updateWorkspace({ snapshot: next });
         setNotice('Opened in ' + ((performance.now() - start) / 1000).toFixed(2) + ' s');
-        if (handle) await remember(handle, project ? 'project' : 'image');
+        if (location) await remember(location, project ? 'project' : 'image');
       }
     } catch (e) {
-      if (token === operation.current) setNotice(String(e));
+      if (token === operation.current && !pickerCancelled(e)) setNotice(fileAccessError(e));
     } finally {
+      if (location && location !== projectLocation.current) fileHost.release(location);
       if (token === operation.current) setBusy('');
     }
   };
   const chooseFile = async (kind: RecentFile['kind'], recent?: RecentFile) => {
     if (!api.current || working || painting) return;
-    const picker = Reflect.get(window, 'showOpenFilePicker') as
-      ((options: object) => Promise<FileSystemFileHandle[]>) | undefined;
-    if (!recent && !picker) {
+    if (!recent && fileHost.usesInput()) {
       (kind === 'project' ? projectFile : file).current?.click();
       return;
     }
@@ -214,83 +227,109 @@ export function App() {
     setBusy(recent ? 'Opening ' + recent.name + '…' : 'Choose a file…');
     setNotice('');
     try {
-      let handle = recent?.handle;
-      if (handle) await filePermission(handle, 'read');
-      else
-        [handle] = await picker!({
-          multiple: false,
-          types: [
-            {
-              description: kind === 'project' ? 'FotoEditor project' : 'Images',
-              accept:
-                kind === 'project'
-                  ? { 'application/octet-stream': ['.cgfoto'] }
-                  : {
-                      'image/png': ['.png'],
-                      'image/jpeg': ['.jpg', '.jpeg'],
-                      'image/webp': ['.webp'],
-                      'image/bmp': ['.bmp'],
-                      'image/gif': ['.gif'],
-                      'image/tiff': ['.tif', '.tiff'],
-                      'image/vnd.adobe.photoshop': ['.psd'],
-                    },
-            },
-          ],
-        });
-      if (!handle || token !== operation.current) return;
-      const selected = await handle.getFile();
-      if (token !== operation.current) return;
-      await open(selected, handle, token);
+      const location = await fileHost.pickOpen(kind, recent);
+      if (location) await open(location, token);
     } catch (e) {
       if (token === operation.current && !pickerCancelled(e)) setNotice(fileAccessError(e));
     } finally {
       if (token === operation.current) setBusy('');
     }
   };
+  useEffect(() => {
+    if (!isDesktop) return;
+    let active = true;
+    const listener = listenForDesktopOpen(() => {
+      if (active) setOpenSequence((value) => value + 1);
+    });
+    void listener
+      .then(() => {
+        if (active) setOpenSequence((value) => value + 1);
+      })
+      .catch((error) => {
+        if (active) setNotice(String(error));
+      });
+    return () => {
+      active = false;
+      void listener.then((unlisten) => unlisten()).catch(() => {});
+    };
+  }, []);
+  const canOpenDesktop =
+    isDesktop &&
+    status === 'ready' &&
+    !!engineApi &&
+    !!recovery &&
+    recovery.state !== 'starting' &&
+    (!recoverable || recoveryDismissed) &&
+    !working &&
+    !painting &&
+    !dialog &&
+    !exportDialog &&
+    !updatesDialog;
+  useEffect(() => {
+    if (!canOpenDesktop) return;
+    let active = true;
+    void pendingDesktopOpen()
+      .then((name) => {
+        if (active) setPendingOpen(name);
+      })
+      .catch((error) => {
+        if (active) setNotice(String(error));
+      });
+    return () => {
+      active = false;
+    };
+  }, [canOpenDesktop, openSequence]);
+  const handleExternalOpen = async (accept: boolean) => {
+    if (!pendingOpen || !canOpenDesktop) return;
+    const token = ++operation.current;
+    workerJobStarted.current = false;
+    setPendingOpen(null);
+    setBusy('Opening ' + pendingOpen + '…');
+    try {
+      const location = await takeDesktopOpen(accept);
+      if (location) await open(location, token);
+    } catch (error) {
+      if (token === operation.current) setNotice(fileAccessError(error));
+    } finally {
+      if (token === operation.current) setBusy('');
+      setOpenSequence((value) => value + 1);
+    }
+  };
+  const openAtStartup = useEffectEvent(() => void handleExternalOpen(true));
+  useEffect(() => {
+    if (canOpenDesktop && pendingOpen && !doc) openAtStartup();
+  }, [canOpenDesktop, doc, pendingOpen]);
   const saveProject = async (saveAs = false) => {
     if (!api.current || !doc || working) return;
     const token = ++operation.current;
     workerJobStarted.current = false;
     setBusy('Saving project…');
     setNotice('');
+    const original = projectLocation.current;
+    let location: FileLocation | undefined;
+    const suggestedName = (snapshot?.name ?? 'Untitled').replace(/\.[^.]+$/, '') + '.cgfoto';
     try {
-      const picker = Reflect.get(window, 'showSaveFilePicker') as
-        ((options: object) => Promise<FileSystemFileHandle>) | undefined;
-      let handle = saveAs ? undefined : projectHandle.current;
-      if (handle) await filePermission(handle, 'readwrite');
-      else if (picker)
-        handle = await picker({
-          suggestedName: (snapshot?.name ?? 'Untitled').replace(/\.[^.]+$/, '') + '.cgfoto',
-          types: [
-            {
-              description: 'FotoEditor project',
-              accept: { 'application/octet-stream': ['.cgfoto'] },
-            },
-          ],
-        });
-      if (handle) {
+      const engine = api.current;
+      location = (!saveAs && original) || (await fileHost.pickProject(suggestedName));
+      if (token !== operation.current) return;
+      if (location) {
+        const size = await fileHost.saveProject(location, engine, () => beginWorkerJob(token));
         if (token !== operation.current) return;
-        workerJobStarted.current = true;
-        const size = await api.current.saveProjectFile(handle);
-        if (token !== operation.current) return;
-        projectHandle.current = handle;
+        setProjectLocation(location);
         setNotice('Project saved · document only · ' + (size / 1048576).toFixed(1) + ' MiB');
-        await remember(handle, 'project');
+        await remember(location, 'project');
         return;
       }
       workerJobStarted.current = true;
-      const file = await api.current.saveProjectDownload();
+      const file = await engine.saveProjectDownload();
       if (token !== operation.current) return;
-      const url = URL.createObjectURL(file);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = (snapshot?.name ?? 'Untitled').replace(/\.[^.]+$/, '') + '.cgfoto';
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      download(file, suggestedName);
       setNotice('Project saved · document only · ' + (file.size / 1048576).toFixed(1) + ' MiB');
     } catch (e) {
       if (token === operation.current && !pickerCancelled(e)) setNotice(fileAccessError(e));
     } finally {
+      if (location && location !== original && location !== projectLocation.current)
+        fileHost.release(location);
       if (token === operation.current) setBusy('');
     }
   };
@@ -303,15 +342,12 @@ export function App() {
     try {
       const bytes = await api.current.exportPng();
       if (token !== operation.current) return;
-      const url = URL.createObjectURL(
+      const exported = await fileHost.export(
         new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'image/png' }),
+        (snapshot?.name ?? 'Untitled').replace(/\.[^.]+$/, '') + '.png',
       );
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = (snapshot?.name ?? 'Untitled').replace(/\.[^.]+$/, '') + '.png';
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 30000);
-      setNotice('PNG exported · ' + (bytes.length / 1024).toFixed(0) + ' KB');
+      if (exported && token === operation.current)
+        setNotice('PNG exported · ' + (bytes.length / 1024).toFixed(0) + ' KB');
     } catch (e) {
       if (token === operation.current) setNotice(String(e));
     } finally {
@@ -323,7 +359,7 @@ export function App() {
     try {
       const next = await api.current?.newDocument(width, height, dpi);
       if (next) {
-        projectHandle.current = undefined;
+        setProjectLocation();
         updateWorkspace({ snapshot: next });
       }
       setDialog(false);
@@ -334,6 +370,42 @@ export function App() {
   };
   return (
     <div className="app" data-status={status}>
+      {updatesDialog && (
+        <DesktopUpdates
+          onClose={() => setUpdatesDialog(false)}
+          prepareInstall={async () => {
+            if (useWorkspace.getState().snapshot?.document && !(await api.current?.autosave())) {
+              throw new Error(
+                'Save your project before restarting. The recovery snapshot is unavailable.',
+              );
+            }
+          }}
+        />
+      )}
+      {canOpenDesktop && pendingOpen && doc && (
+        <dialog
+          aria-labelledby="desktop-open-heading"
+          ref={(node) => {
+            if (node && !node.open) node.showModal();
+          }}
+          onCancel={(event) => {
+            event.preventDefault();
+            void handleExternalOpen(false);
+          }}
+        >
+          <h2 id="desktop-open-heading">Open {pendingOpen}?</h2>
+          <p>
+            This will replace the current document. Save the current project first to keep its
+            edits.
+          </p>
+          <div className="dialog-actions">
+            <button onClick={() => void handleExternalOpen(false)}>Cancel</button>
+            <button className="primary" onClick={() => void handleExternalOpen(true)}>
+              Open file
+            </button>
+          </div>
+        </dialog>
+      )}
       {exportDialog && engineApi && (
         <ExportDialog
           api={engineApi}
@@ -408,6 +480,14 @@ export function App() {
           >
             Export image…
           </button>
+          {isDesktop && (
+            <button
+              disabled={status !== 'ready' || working || painting}
+              onClick={() => setUpdatesDialog(true)}
+            >
+              Updates…
+            </button>
+          )}
         </nav>
         <input
           ref={projectFile}
@@ -453,8 +533,9 @@ export function App() {
               <button
                 aria-label={'Remove ' + recent.name + ' from recent files'}
                 onClick={() => {
-                  void forgetRecent(recent.id)
-                    .then(() => setRecents((files) => files.filter((f) => f.id !== recent.id)))
+                  void fileHost
+                    .forget(recent.id)
+                    .then(setRecents)
                     .catch(() => setFileNotice('Could not remove this recent file.'));
                 }}
               >
@@ -462,7 +543,9 @@ export function App() {
               </button>
             </div>
           ))}
-          {recents.length > 0 && <p>Opening a recent file may ask for access again.</p>}
+          {!isDesktop && recents.length > 0 && (
+            <p>Opening a recent file may ask for access again.</p>
+          )}
           {fileNotice && <p role="status">{fileNotice}</p>}
         </div>
       </details>
@@ -666,7 +749,7 @@ export function App() {
                 <div className="welcome-actions">
                   <button
                     className="primary"
-                    onClick={() => file.current?.click()}
+                    onClick={() => (isDesktop ? void chooseFile('image') : file.current?.click())}
                     disabled={!!busy}
                   >
                     Open an image
@@ -1018,7 +1101,7 @@ export function App() {
                 void api.current
                   ?.restoreRecovery(recoverable.file)
                   .then((next) => {
-                    projectHandle.current = undefined;
+                    setProjectLocation();
                     updateWorkspace({ snapshot: next });
                     setRecoveryDismissed(true);
                     setNotice('Session restored · fresh undo history');

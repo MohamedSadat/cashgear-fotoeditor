@@ -1,5 +1,6 @@
 export type BackendPreference = 'auto' | 'webgl2';
 import type { BrushSettings, Rgba, CoverageImage, PaintingSymmetry } from '../brush-state';
+import type { ProjectSink, ReadFileRange, RemoteFile } from './file-io';
 export type Backend = 'WebGPU' | 'WebGL2';
 export interface PhysicalSize {
   width: number;
@@ -211,7 +212,9 @@ export interface EngineApi {
   layerAction(action: LayerAction): Promise<DocumentSnapshot>;
   applyMask(target: number): Promise<DocumentSnapshot>;
   openProjectFile(file: File): Promise<DocumentSnapshot>;
+  openNativeFile(file: RemoteFile, read: ReadFileRange): Promise<DocumentSnapshot>;
   saveProjectFile(handle: FileSystemFileHandle): Promise<number>;
+  saveNativeProject(name: string, sink: ProjectSink): Promise<number>;
   saveProjectDownload(): Promise<File>;
   configureHistory(bytes: number, steps: number): Promise<void>;
   historyJump(target: number): Promise<void>;
