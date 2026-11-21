@@ -1,10 +1,12 @@
 # Progress
 
-## P10 - Windows packaging and file integration started
+## P10 - Windows packaging and file integration
 
 Started 2026-11-21 on clean main at verified `p9-retouch` (`2e1f7f4`). Reviewed
 the full P10 section on printed pages 17–18 of the original roadmap and
 confirmed its five product choices. PLAN.md records the acceptance gates.
+The installer, native file host and signed stable updater are implemented.
+See P10-REPORT.md for measurements and the remaining certification gates.
 
 ## P9 - M5 implemented and current-layer speed verified locally
 

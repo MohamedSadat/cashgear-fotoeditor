@@ -59,3 +59,64 @@ jobs:
             bench/results/
             playwright-report/
             test-results/
+  windows-package:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      GPU_TEST_SOFTWARE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.11.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.1
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm setup:wasm
+      - run: pnpm desktop:package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-nsis-x64
+          path: target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
+      - run: cargo run --release -p fotoeditor-io --example layers -- bench/results/fixtures/layers-small.cgfoto 128 128 3
+      - run: pnpm exec node scripts/desktop-package-smoke.mjs prepare
+      - run: pnpm exec node scripts/desktop-package-smoke.mjs verify
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-installer-upgrade-verification
+          path: bench/results/desktop-acceptance/
+  windows-11-package:
+    needs: windows-package
+    runs-on: windows-11-arm
+    timeout-minutes: 15
+    env:
+      GPU_TEST_SOFTWARE: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.11.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-installer-upgrade-verification
+          path: bench/results/desktop-acceptance/
+      - run: pnpm exec node scripts/desktop-package-smoke.mjs verify
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: windows-11-arm-emulated-x64-verification
+          path: bench/results/desktop-acceptance/verification.json

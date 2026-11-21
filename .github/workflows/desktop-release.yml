@@ -1,0 +1,76 @@
+name: Stable Windows release
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish approved assets to the stable GitHub Releases channel
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.11.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.1
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm setup:wasm
+      - run: pnpm build
+      - name: Sign the installer for the updater and sign the release manifest
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          pnpm --filter @fotoeditor/desktop package --config src-tauri/updater-artifacts.json
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          pnpm desktop:release-assets
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stable-windows-release
+          path: bench/results/desktop-release
+          if-no-files-found: error
+  publish:
+    if: inputs.publish
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: stable-windows-release
+          path: release-assets
+      - name: Publish the approved desktop release
+        run: |
+          git merge-base --is-ancestor p10-desktop "$GITHUB_SHA"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$GITHUB_SHA"
+          for workflow in ci.yml azure-static-web-apps-proud-pebble-07b8b4f10.yml; do
+            test "$(gh run list --workflow "$workflow" --commit "$GITHUB_SHA" --event push --limit 1 --json conclusion --jq '.[0].conclusion')" = success
+          done
+          version="$(jq -r .version apps/desktop/package.json)"
+          tag="desktop-v$version"
+          cd release-assets
+          sha256sum --check SHA256SUMS.txt
+          gh release create "$tag" CashGearFotoEditor-Setup-x64.exe latest.json SHA256SUMS.txt \
+            --target "$GITHUB_SHA" --draft --title "CashGear FotoEditor $version" \
+            --notes "Windows x64 installer. In-app updates verify the signed release manifest and installer."
+          gh release edit "$tag" --draft=false --latest
