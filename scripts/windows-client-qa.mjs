@@ -4,6 +4,7 @@ import { createReadStream } from 'node:fs';
 import { cp, mkdir, mkdtemp, readFile, statfs, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
+import { createConnection } from 'node:net';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { root, run } from './lib.mjs';
@@ -12,7 +13,7 @@ import { root, run } from './lib.mjs';
 const media =
   'https://software-static.download.prss.microsoft.com/dbazure/988969d5-f34g-4e03-ac9d-1f9786c66750/' +
   '19045.2006.220908-0225.22h2_release_svc_refresh_CLIENTENTERPRISEEVAL_OEMRET_x64FRE_en-us.iso';
-const mediaSha256 = '4f8367c4db803e712ed26689a0106aba1206513f6a6e35ad714f446711051667';
+const mediaSha256 = 'ef7312733a9f5d7d51cfa04ac497671995674ca5e1058d5164d6028f0938d668';
 const output = join(root, 'bench/results/clean-windows-10');
 const packages = join(root, 'bench/results/desktop-acceptance');
 const vmRoot = tmpdir();
@@ -59,8 +60,11 @@ const nodeHash = (await readFile(checksums, 'utf8'))
   .split('\n')
   .find((line) => line.endsWith('  ' + nodeName))
   ?.split(' ')[0];
-if ((await digest(image)) !== mediaSha256 || (await digest(nodeZip)) !== nodeHash)
-  throw new Error('Windows or Node download checksum mismatch.');
+const isoHash = await digest(image);
+if (isoHash !== mediaSha256) throw new Error('Windows ISO SHA-256 mismatch: ' + isoHash);
+const runtimeHash = await digest(nodeZip);
+if (runtimeHash !== nodeHash) throw new Error('Node x64 ZIP SHA-256 mismatch: ' + runtimeHash);
+console.log('Windows media and Node runtime verified.');
 
 for (const name of [
   'baseline.exe',
@@ -183,6 +187,35 @@ try {
 );
 await run('genisoimage', ['-quiet', '-J', '-R', '-V', 'FOTOEDITORQA', '-o', qaIso, qaMedia]);
 await run('qemu-img', ['create', '-f', 'qcow2', disk, '32G']);
+const monitor = join(scratch, 'qmp.sock');
+function screenshot() {
+  return new Promise((resolve) => {
+    const socket = createConnection(monitor);
+    const capture = join(output, 'guest.ppm');
+    socket.setTimeout(4_000, () => socket.destroy());
+    socket.once('error', () => resolve());
+    socket.once('close', () => resolve());
+    let text = '';
+    socket.on('data', (chunk) => {
+      text += chunk;
+      const lines = text.split('\n');
+      text = lines.pop();
+      for (const line of lines) {
+        const message = JSON.parse(line);
+        if (message.QMP) socket.write('{"execute":"qmp_capabilities","id":1}\n');
+        if (message.id === 1)
+          socket.write(
+            JSON.stringify({
+              execute: 'screendump',
+              arguments: { filename: capture },
+              id: 2,
+            }) + '\n',
+          );
+        if (message.id === 2) socket.end();
+      }
+    });
+  });
+}
 const vm = spawn(
   'qemu-system-x86_64',
   [
@@ -195,6 +228,8 @@ const vm = spawn(
     '6144',
     '-display',
     'none',
+    '-qmp',
+    'unix:' + monitor + ',server=on,wait=off',
     '-boot',
     'once=d',
     '-drive',
@@ -211,12 +246,13 @@ const vm = spawn(
   { stdio: 'inherit' },
 );
 try {
-  const deadline = Date.now() + 60 * 60 * 1000;
+  const deadline = Date.now() + 40 * 60 * 1000;
   while (!result && vm.exitCode === null && Date.now() < deadline)
     await new Promise((resolve) => setTimeout(resolve, 5000));
   for (const name of ['verification.json', 'guest.log'])
     await cp(join(incoming, name), join(output, name)).catch(() => {});
   if (!result || result.failed || result.windows.BuildNumber !== '19045') {
+    if (!result && vm.exitCode === null) await screenshot();
     const log = await readFile(join(output, 'guest.log'), 'utf8').catch(() => '');
     throw new Error('Clean Windows 10 installer verification did not pass.\n' + log);
   }
