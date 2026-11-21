@@ -8,9 +8,7 @@ permissions:
 jobs:
   foundation:
     runs-on: windows-latest
-    # P9's 560-case software matrix measured 72 minutes; the full job took 84.
-    # Leave aggregate headroom for builds and both WebView2 backends.
-    timeout-minutes: 120
+    timeout-minutes: 45
     env:
       GPU_TEST_SOFTWARE: '1'
     steps:
@@ -44,19 +42,51 @@ jobs:
       - run: pnpm format:check
       - run: pnpm test
       - run: pnpm licenses:check
-      - run: pnpm exec playwright install chromium
-      - name: Run pnpm test:e2e
-        # Acceptance requires one clean full matrix. Stop a failed run promptly;
-        # the retained artifact records the failure, never a retried pass.
-        run: pnpm test:e2e --max-failures=1 --retries=0
       - run: pnpm desktop:build
       - run: pnpm desktop:smoke
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: phase-verification
+          path: bench/results/
+  software-browsers:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      GPU_TEST_SOFTWARE: '1'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.11.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.1
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm setup:wasm
+      - run: pnpm build
+      - run: pnpm exec playwright install chromium
+      - name: Run pnpm test:e2e
+        # Fresh runners bound the lifetime of each software rendering process.
+        run: pnpm test:e2e --shard=${{ matrix.shard }}/4 --max-failures=1 --retries=0
+      - run: node scripts/verify-browser-report.mjs bench/results/browser-tests.json bench/results/browser-verification.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: software-browser-${{ matrix.shard }}
           path: |
-            bench/results/
+            bench/results/browser-tests.json
+            bench/results/browser-verification.json
             playwright-report/
             test-results/
   windows-package:

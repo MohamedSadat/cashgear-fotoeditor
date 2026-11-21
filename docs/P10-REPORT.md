@@ -15,7 +15,7 @@ menu and one stable update channel on GitHub Releases.
 - Native project I/O reads bounded ranges and streams writes to a temporary
   sibling file. The desktop host flushes that file before atomically replacing
   the destination. Cancellation and failed writes preserve the original.
-- Updates verifies both the stable manifest and the version-bound installer
+- The updater verifies both the stable manifest and the version-bound installer
   signature. It checkpoints the current document in recovery before restarting.
   The release workflow assembles and signs the GitHub Release assets.
 - Installer CI prepares a pair of locally signed packages and tests Explorer
@@ -30,6 +30,10 @@ probe opened and saved a filename with spaces and a non-ASCII character. The
 three-layer input was 787,493 bytes and the file after duplicating a layer
 was 893,895 bytes. Both WebView2 157.0.4341.60 backends passed on the development
 workstation, with NVIDIA WebGPU and ANGLE D3D11 on a GeForce GTX 1650 for WebGL2.
+A local hardware run passed all 756 Chrome and Edge cases without retries. An
+additional 32 file-access and viewport cases passed on the deployed build.
+Recent files survived a native restart and reopened the original project. The
+window restored its maximized 1920 × 1017-pixel client area.
 
 On the Windows 10 Pro x64 development workstation (build 19045), the packaged
 upgrade from 0.90.0 to 0.90.1 passed Explorer open, edit/save, single-instance
