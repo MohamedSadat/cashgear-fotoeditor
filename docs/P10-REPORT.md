@@ -31,6 +31,15 @@ three-layer input was 787,493 bytes and the file after duplicating a layer
 was 893,895 bytes. Both WebView2 157.0.4341.60 backends passed on the development
 workstation, with NVIDIA WebGPU and ANGLE D3D11 on a GeForce GTX 1650 for WebGL2.
 
+On the Windows 10 Pro x64 development workstation (build 19045), the packaged
+upgrade from 0.90.0 to 0.90.1 passed Explorer open, edit/save, single-instance
+forwarding, both signature rejection tests, session recovery and uninstall.
+One run with the 787,493-byte project measured 2.45 s to install, 3.76 s from
+Explorer launch to opening the project, 0.82 s to save, 3.82 s from requesting
+the verified update to the new process, and 1.44 s to uninstall and remove
+the associations. The test update installer was 2,871,644 bytes. This uses the
+workstation's installed WebView2 Runtime and a loopback update feed.
+
 P10 completion requires a passing installer lifecycle on clean Windows 10 and
 Windows 11 and successful CI on the tagged commit. Check the platform reports
 and exact-head run recorded in the final phase evidence before certifying

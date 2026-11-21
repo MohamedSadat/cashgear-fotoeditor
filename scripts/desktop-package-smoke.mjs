@@ -15,6 +15,7 @@ const id = 'com.cashgear.fotoeditor.acceptance';
 const feed = 'http://127.0.0.1:4193';
 const assets = resolve(process.argv[3] ?? join(root, 'bench/results/desktop-acceptance'));
 const binary = 'fotoeditor-desktop.exe';
+const extensions = ['cgfoto', 'png', 'jpg', 'jpeg'];
 const software = process.env.GPU_TEST_SOFTWARE === '1';
 const hosted = process.env.RUNNER_ENVIRONMENT === 'github-hosted';
 
@@ -146,6 +147,15 @@ async function verify() {
   const openWith = (extension) => fileAssociation(extension) + '\\OpenWithProgids';
   const associated = (extension) =>
     registry('query', openWith(extension), '/v', id + '.' + extension);
+  const associationsRemoved = () =>
+    extensions.every((extension) => {
+      try {
+        associated(extension);
+        return false;
+      } catch {
+        return true;
+      }
+    });
   const shellOpen = (path) =>
     powershell('Invoke-Item -LiteralPath $env:FOTOEDITOR_TEST_DOCUMENT', {
       ...env,
@@ -194,7 +204,7 @@ async function verify() {
       windowsVerbatimArguments: true,
     });
     const installMs = performance.now() - startInstall;
-    for (const extension of ['cgfoto', 'png', 'jpg', 'jpeg']) associated(extension);
+    for (const extension of extensions) associated(extension);
     expect(registry('query', fileAssociation('cgfoto'), '/ve')).toContain(id + '.cgfoto');
     const startOpen = performance.now();
     shellOpen(document);
@@ -266,15 +276,16 @@ async function verify() {
     const updated = page.getByRole('dialog', { name: 'CashGear FotoEditor updates' });
     await expect(updated).toContainText('Installed version ' + upgrade);
     await expect(updated.getByRole('status')).toHaveText('You have the latest version.');
+    const webview = browser.version();
     await page.screenshot({ path: join(assets, 'installed-update.png') });
 
     closeApp();
     const startUninstall = performance.now();
     await run(uninstaller, ['/S'], { env });
-    await waitFor(() => !existsSync(exe) && !existsSync(uninstaller));
+    // NSIS detaches a child uninstaller which finishes registry cleanup after
+    // deleting the installed executable and original uninstall launcher.
+    await waitFor(() => !existsSync(exe) && !existsSync(uninstaller) && associationsRemoved());
     const uninstallMs = performance.now() - startUninstall;
-    for (const extension of ['cgfoto', 'png', 'jpg', 'jpeg'])
-      expect(() => associated(extension)).toThrow();
     expect(existsSync(document)).toBe(true);
     const windows = powershell(
       'Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, BuildNumber | ConvertTo-Json -Compress',
@@ -282,6 +293,8 @@ async function verify() {
     );
     const result = {
       windows: JSON.parse(windows),
+      architecture: process.arch,
+      webview,
       software,
       adapter,
       baseline,
